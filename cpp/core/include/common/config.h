@@ -1,5 +1,5 @@
-#ifndef CONFIG_H
-#define CONFIG_H
+#ifndef COMMON_CONFIG_H
+#define COMMON_CONFIG_H
 
 // Common headers.
 #include <algorithm>
@@ -47,6 +47,9 @@ using Matrix24r = Eigen::Matrix<real, 24, 24>;
 using MatrixXr = Eigen::Matrix<real, -1, -1>;
 using MatrixX2r = Eigen::Matrix<real, -1, 2>;
 using MatrixX3r = Eigen::Matrix<real, -1, 3>;
+using Matrix2Xr = Eigen::Matrix<real, 2, -1>;
+using Matrix3Xr = Eigen::Matrix<real, 3, -1>;
+using Matrix4Xi = Eigen::Matrix<int, 4, -1>;
 
 using SparseVector = Eigen::SparseVector<real>;
 using SparseMatrix = Eigen::SparseMatrix<real>;

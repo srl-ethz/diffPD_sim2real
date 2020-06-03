@@ -1,5 +1,5 @@
-#ifndef FILE_HELPER_H
-#define FILE_HELPER_H
+#ifndef COMMON_FILE_HELPER_H
+#define COMMON_FILE_HELPER_H
 
 #include "common/config.h"
 #include "common/common.h"
