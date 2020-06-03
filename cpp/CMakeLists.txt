@@ -22,8 +22,8 @@ file(GLOB_RECURSE CORE_CPP "./core/src/**/*.cpp")
 add_library(diff_pd_core SHARED ${CORE_CPP})
 
 # Python wrapper library.
-file(GLOB_RECURSE PYTHON_BINDING "./core/src/**/*.cpp" "./core/src/py_diff_pd_wrap.cxx")
-add_library(py_diff_pd SHARED ${CORE_HEADER} ${PYTHON_BINDING})
+file(GLOB_RECURSE PYTHON_BINDING "./core/src/**/*.cpp" "./core/src/py_diff_pd_core_wrap.cxx")
+add_library(py_diff_pd_core SHARED ${CORE_HEADER} ${PYTHON_BINDING})
 
 # Demo.
 file(GLOB DEMO_CPP "./main.cpp")

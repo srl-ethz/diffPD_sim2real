@@ -44,10 +44,10 @@ void QuadMesh::LoadFromFile(const std::string& obj_file_name) {
             v[1] = ToReal(std::stod(v_str[1]));
             vertices.push_back(v);
         } else if (line[0] == 'f') {
-            const std::vector<std::string> v_str = ParseNumberFromLine(line);
-            CheckError(static_cast<int>(v_str.size()) == 4, "Found more numbers in " + line);
+            const std::vector<std::string> f_str = ParseNumberFromLine(line);
+            CheckError(static_cast<int>(f_str.size()) == 4, "Found more numbers in " + line);
             std::array<int, 4> f;
-            for (int i = 0; i < 4; ++i) f[i] = std::stoi(v_str[i]) - 1;
+            for (int i = 0; i < 4; ++i) f[i] = std::stoi(f_str[i]) - 1;
             faces.push_back(f);
         } else {
             PrintError("Unidentified line in " + obj_file_name + ": " + line);
@@ -61,7 +61,7 @@ void QuadMesh::LoadFromFile(const std::string& obj_file_name) {
         vertices_(1, i) = vertices[i][1];
     }
     const int face_num = static_cast<int>(faces.size());
-    faces_ = Matrix4Xi::Zero(4, vertex_num);
+    faces_ = Matrix4Xi::Zero(4, face_num);
     for (int i = 0; i < face_num; ++i) {
         faces_(0, i) = faces[i][0];
         faces_(1, i) = faces[i][1];
@@ -83,6 +83,6 @@ void QuadMesh::SaveToFile(const std::string& obj_file_name) const {
     const int face_num = NumOfFaces();
     for (int i = 0; i < face_num; ++i) {
         fout << "f " << faces_(0, i) + 1 << " " << faces_(1, i) + 1
-            << " " << faces_(2, i) << " " << faces_(3, i) << std::endl;
+            << " " << faces_(2, i) + 1 << " " << faces_(3, i) + 1 << std::endl;
     }
 }
