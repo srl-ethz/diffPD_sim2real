@@ -1,7 +1,7 @@
 #ifndef COMMON_H
 #define COMMON_H
 
-#include "config.h"
+#include "common/config.h"
 
 const real ToReal(const double v);
 const double ToDouble(const real v);

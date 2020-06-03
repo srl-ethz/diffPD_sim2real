@@ -1,8 +1,8 @@
 #ifndef FILE_HELPER_H
 #define FILE_HELPER_H
 
-#include "config.h"
-#include "common.h"
+#include "common/config.h"
+#include "common/common.h"
 
 template<typename DataType>
 void Save(std::ofstream& f, const DataType& val);

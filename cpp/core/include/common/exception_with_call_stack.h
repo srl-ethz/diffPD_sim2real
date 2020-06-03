@@ -1,7 +1,7 @@
 #ifndef EXCEPTION_WITH_CALL_STACK_H
 #define EXCEPTION_WITH_CALL_STACK_H
 
-#include "config.h"
+#include "common/config.h"
 
 class ExceptionWithCallStack : public std::runtime_error {
 public:

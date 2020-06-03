@@ -1,6 +1,6 @@
-#include "file_helper.h"
+#include "common/file_helper.h"
 #include <sys/stat.h>
-#include "common.h"
+#include "common/common.h"
 
 template<>
 void Save<int>(std::ofstream& f, const int& val) {

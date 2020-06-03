@@ -1,5 +1,5 @@
-#include "common.h"
-#include "exception_with_call_stack.h"
+#include "common/common.h"
+#include "common/exception_with_call_stack.h"
 
 const real ToReal(const double v) {
     return static_cast<real>(v);

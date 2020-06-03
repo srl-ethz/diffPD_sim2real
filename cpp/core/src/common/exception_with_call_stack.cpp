@@ -1,9 +1,9 @@
-#include "exception_with_call_stack.h"
+#include "common/exception_with_call_stack.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <execinfo.h>
 #include <cxxabi.h>
-#include "common.h"
+#include "common/common.h"
 
 /** Print a demangled stack backtrace of the caller function to FILE* out. */
 static inline void PrintStacktrace() {

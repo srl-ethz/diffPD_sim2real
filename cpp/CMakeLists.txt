@@ -13,16 +13,16 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}")
 
 # Include directories.
 include_directories("./lib/eigen-3.3.7")
-include_directories("./core/")
+include_directories("./core/include")
 execute_process(COMMAND bash -c "python3-config --includes|sed 's/-I//g'|awk '{print $1;}'" OUTPUT_VARIABLE PYTHON_INCLUDES)
 include_directories(${PYTHON_INCLUDES})
 
 # The core library.
-file(GLOB_RECURSE CORE_CPP "./core/*.cpp")
+file(GLOB_RECURSE CORE_CPP "./core/src/**/*.cpp")
 add_library(diff_pd_core SHARED ${CORE_CPP})
 
 # Python wrapper library.
-file(GLOB_RECURSE PYTHON_BINDING "./core/*.cpp" "./core/py_diff_pd_wrap.cxx")
+file(GLOB_RECURSE PYTHON_BINDING "./core/src/**/*.cpp" "./core/src/py_diff_pd_wrap.cxx")
 add_library(py_diff_pd SHARED ${CORE_HEADER} ${PYTHON_BINDING})
 
 # Demo.
