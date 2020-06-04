@@ -4,7 +4,8 @@ swig -c++ -python py_diff_pd_core.i
 
 # Compile c++ code.
 cd ../../
-mkdir -p build
+rm -rf build
+mkdir build
 cd build
 cmake ..
 make -j4
