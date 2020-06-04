@@ -3,7 +3,7 @@
 
 #include "material/material.h"
 
-class CorotatedMaterial : Material {
+class CorotatedMaterial : public Material {
 public:
     const real EnergyDensity(const Matrix2r& F) const override;
     const Matrix2r StressTensor(const Matrix2r& F) const override;

@@ -130,3 +130,11 @@ const real ClipWithGradient(const real val, const real min, const real max, real
 const real Pi() {
     return ToReal(3.1415926535897932384626);
 }
+
+const std::vector<real> ToStdVector(const VectorXr& v) {
+    return std::vector<real>(v.data(), v.data() + v.size());
+}
+
+const VectorXr ToEigenVector(const std::vector<real>& v) {
+    return Eigen::Map<const VectorXr>(v.data(), v.size());
+}

@@ -7,8 +7,8 @@ class QuadMesh {
 public:
     QuadMesh();
 
+    void Initialize(const std::string& obj_file_name);
     void Initialize(const Matrix2Xr& vertices, const Matrix4Xi& faces);
-    void LoadFromFile(const std::string& obj_file_name);
     void SaveToFile(const std::string& obj_file_name) const;
 
     const int NumOfVertices() const {

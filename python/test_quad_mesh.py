@@ -4,6 +4,6 @@ from py_diff_pd.common.display import display_quad_mesh
 
 if __name__ == '__main__':
     mesh = QuadMesh()
-    mesh.LoadFromFile('../asset/rectangle.obj')
+    mesh.Initialize('../asset/rectangle.obj')
 
     display_quad_mesh(mesh)

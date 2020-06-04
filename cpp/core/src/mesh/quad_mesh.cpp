@@ -30,7 +30,7 @@ void QuadMesh::Initialize(const Matrix2Xr& vertices, const Matrix4Xi& faces) {
     faces_ = faces;
 }
 
-void QuadMesh::LoadFromFile(const std::string& obj_file_name) {
+void QuadMesh::Initialize(const std::string& obj_file_name) {
     std::ifstream fin(obj_file_name);
 
     // Load all vertices.
