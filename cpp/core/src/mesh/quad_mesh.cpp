@@ -25,6 +25,11 @@ static const std::vector<std::string> ParseNumberFromLine(const std::string& lin
     return ret;
 }
 
+void QuadMesh::Initialize(const Matrix2Xr& vertices, const Matrix4Xi& faces) {
+    vertices_ = vertices;
+    faces_ = faces;
+}
+
 void QuadMesh::LoadFromFile(const std::string& obj_file_name) {
     std::ifstream fin(obj_file_name);
 

@@ -32,9 +32,6 @@ void CheckError(const bool condition, const std::string& error_message);
 void PrintNumpyStyleMatrix(const MatrixXr& mat);
 void PrintNumpyStyleVector(const VectorXr& vec);
 
-// If you do SparseMatrix + MatrixXr::Identity(). The resulting matrix will be dense.
-const SparseMatrix AddDiagonalElementToSparseMatrix(const SparseMatrix& sparse_matrix, const real diagonal_element);
-
 const real Clip(const real val, const real min, const real max);
 const real ClipWithGradient(const real val, const real min, const real max, real& grad);
 
