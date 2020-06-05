@@ -2,6 +2,7 @@
 #define COMMON_QUAD_MESH_H
 
 #include "common/config.h"
+#include "common/common.h"
 
 class QuadMesh {
 public:
@@ -10,6 +11,9 @@ public:
     void Initialize(const std::string& obj_file_name);
     void Initialize(const Matrix2Xr& vertices, const Matrix4Xi& faces);
     void SaveToFile(const std::string& obj_file_name) const;
+
+    const Matrix2Xr& vertices() const { return vertices_; }
+    const Matrix4Xi& faces() const { return faces_; }
 
     const int NumOfVertices() const {
         return static_cast<int>(vertices_.cols());
@@ -25,6 +29,10 @@ public:
             vertices_(0, i),
             vertices_(1, i)
         };
+    }
+    const std::vector<real> py_vertices() const {
+        const VectorXr q(Eigen::Map<const VectorXr>(vertices_.data(), vertices_.size()));
+        return ToStdVector(q);
     }
     const Vector4i face(const int i) const {
         return faces_.col(i);

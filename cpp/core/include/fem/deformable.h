@@ -14,13 +14,13 @@ public:
     void Initialize(const Matrix2Xr& vertices, const Matrix4Xi& faces,
         const std::string& material_type, const real youngs_modulus, const real poissons_ratio);
 
+    const int dofs() const { return dofs_; }
+
     void Forward(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
         VectorXr& q_next, VectorXr& v_next) const;
     void Backward(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
         const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const;
-    const VectorXr GetInitialPosition() const;
-    const VectorXr GetInitialVelocity() const;
     void SaveToMeshFile(const VectorXr& q, const std::string& obj_file_name) const;
 
     // For Python binding.
@@ -30,15 +30,13 @@ public:
         const std::vector<real>& q_next, const std::vector<real>& v_next,
         const std::vector<real>& dl_dq_next, const std::vector<real>& dl_dv_next,
         std::vector<real>& dl_dq, std::vector<real>& dl_dv, std::vector<real>& dl_df_ext) const;
-    const std::vector<real> PyGetInitialPosition() const;
-    const std::vector<real> PyGetInitialVelocity() const;
     void PySaveToMeshFile(const std::vector<real>& q, const std::string& obj_file_name) const;
 
 private:
     const std::shared_ptr<Material> InitializeMaterial(const std::string& material_type,
         const real youngs_modulus, const real poissons_ratio) const;
 
-    QuadMesh mesh_;
+    mutable QuadMesh mesh_;
     std::shared_ptr<Material> material_;
     int dofs_;
 };

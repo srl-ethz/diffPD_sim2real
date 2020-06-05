@@ -31,6 +31,7 @@ void QuadMesh::Initialize(const Matrix2Xr& vertices, const Matrix4Xi& faces) {
 }
 
 void QuadMesh::Initialize(const std::string& obj_file_name) {
+    CheckError(FileExist(obj_file_name), "File " + obj_file_name + " does not exist.");
     std::ifstream fin(obj_file_name);
 
     // Load all vertices.

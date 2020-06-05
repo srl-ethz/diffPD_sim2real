@@ -33,6 +33,8 @@ const std::shared_ptr<Material> Deformable::InitializeMaterial(const std::string
 void Deformable::Forward(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
     VectorXr& q_next, VectorXr& v_next) const {
     // TODO.
+    q_next = q;
+    v_next = v;
 }
 
 void Deformable::Backward(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
@@ -41,17 +43,11 @@ void Deformable::Backward(const VectorXr& q, const VectorXr& v, const VectorXr& 
     // TODO.
 }
 
-const VectorXr Deformable::GetInitialPosition() const {
-    // TODO.
-    return VectorXr::Zero(dofs_);
-}
-
-const VectorXr Deformable::GetInitialVelocity() const {
-    return VectorXr::Zero(dofs_);
-}
-
 void Deformable::SaveToMeshFile(const VectorXr& q, const std::string& obj_file_name) const {
-    // TODO.
+    CheckError(static_cast<int>(q.size()) == dofs_, "Inconsistent q size. " + std::to_string(q.size())
+        + " != " + std::to_string(dofs_));
+    mesh_.Initialize(Eigen::Map<const Matrix2Xr>(q.data(), 2, dofs_ / 2), mesh_.faces());
+    mesh_.SaveToFile(obj_file_name);
 }
 
 // For Python binding.
@@ -73,14 +69,6 @@ void Deformable::PyBackward(const std::vector<real>& q, const std::vector<real>&
     dl_dq = ToStdVector(dl_dq_eig);
     dl_dv = ToStdVector(dl_dv_eig);
     dl_df_ext = ToStdVector(dl_df_ext_eig);
-}
-
-const std::vector<real> Deformable::PyGetInitialPosition() const {
-    return ToStdVector(GetInitialPosition());
-}
-
-const std::vector<real> Deformable::PyGetInitialVelocity() const {
-    return ToStdVector(GetInitialVelocity());
 }
 
 void Deformable::PySaveToMeshFile(const std::vector<real>& q, const std::string& obj_file_name) const {

@@ -1,6 +1,7 @@
 %module py_diff_pd_core
 %{
 #include "../include/mesh/quad_mesh.h"
+#include "../include/fem/deformable.h"
 %}
 
 %exception {
@@ -20,8 +21,10 @@
 %include <std_string.i>
 %include "../include/common/config.h"
 %include "../include/mesh/quad_mesh.h"
+%include "../include/fem/deformable.h"
 
 namespace std {
     %template(StdRealArray2d) array<real, 2>;
     %template(StdIntArray4d) array<int, 4>;
+    %template(StdRealVector) vector<real>;
 }
