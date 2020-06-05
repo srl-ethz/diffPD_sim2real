@@ -9,13 +9,14 @@ if __name__ == '__main__':
     obj_file_name = '../asset/rectangle.obj'
     youngs_modulus = 1e3
     poissons_ratio = 0.45
+    density = 1e3
     folder = Path('test_deformable')
 
     # Initialization.
     mesh = QuadMesh()
     mesh.Initialize(obj_file_name)
     deformable = Deformable()
-    deformable.Initialize(obj_file_name, 'corotated', youngs_modulus, poissons_ratio)
+    deformable.Initialize(obj_file_name, density, 'corotated', youngs_modulus, poissons_ratio)
     create_folder(folder)
 
     dofs = deformable.dofs()

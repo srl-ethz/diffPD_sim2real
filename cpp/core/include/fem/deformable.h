@@ -9,11 +9,15 @@ class Deformable {
 public:
     Deformable();
 
-    void Initialize(const std::string& obj_file_name,
+    // Initialize with the undeformed shape.
+    void Initialize(const std::string& obj_file_name, const real density,
         const std::string& material_type, const real youngs_modulus, const real poissons_ratio);
-    void Initialize(const Matrix2Xr& vertices, const Matrix4Xi& faces,
+    void Initialize(const Matrix2Xr& vertices, const Matrix4Xi& faces, const real density,
         const std::string& material_type, const real youngs_modulus, const real poissons_ratio);
 
+    const real density() const { return density_; }
+    const real cell_volume() const { return cell_volume_; }
+    const real dx() const { return dx_; }
     const int dofs() const { return dofs_; }
 
     void Forward(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
@@ -35,8 +39,12 @@ public:
 private:
     const std::shared_ptr<Material> InitializeMaterial(const std::string& material_type,
         const real youngs_modulus, const real poissons_ratio) const;
+    const real InitializeCellSize(const QuadMesh& mesh) const;
 
-    mutable QuadMesh mesh_;
+    QuadMesh mesh_;
+    real density_;
+    real cell_volume_;
+    real dx_;
     std::shared_ptr<Material> material_;
     int dofs_;
 };

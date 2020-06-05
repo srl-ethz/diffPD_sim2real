@@ -11,7 +11,7 @@ static const std::vector<std::string> ParseNumberFromLine(const std::string& lin
     std::vector<std::string> ret;
     for (int i = 0; i < len; ++i) {
         const char ch = line_ext[i];
-        if (('0' <= ch && ch <= '9') || (ch == '.')) {
+        if (('0' <= ch && ch <= '9') || ch == '.' || ch == 'e' || ch == '-') {
             // Part of the number.
             if (word_begin == -1) word_begin = i;
         } else {
