@@ -6,6 +6,7 @@
 #include <cmath>
 #include <deque>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>

@@ -7,9 +7,10 @@ from py_diff_pd.common.display import display_quad_mesh, export_gif
 if __name__ == '__main__':
     # Hyperparameters.
     obj_file_name = '../asset/rectangle.obj'
-    youngs_modulus = 1e4
+    youngs_modulus = 1e5
     poissons_ratio = 0.45
     density = 1e4
+    method = 'newton'
     folder = Path('test_deformable')
 
     # Initialization.
@@ -40,7 +41,7 @@ if __name__ == '__main__':
         f_ext = ndarray(f_ext).ravel()
         q_next_array = StdRealVector(dofs)
         v_next_array = StdRealVector(dofs)
-        deformable.PyForward(to_std_real_vector(q_cur), to_std_real_vector(v_cur),
+        deformable.PyForward(method, to_std_real_vector(q_cur), to_std_real_vector(v_cur),
             to_std_real_vector(f_ext), dt, q_next_array, v_next_array)
 
         q_next = ndarray(q_next_array)
