@@ -11,19 +11,22 @@ if __name__ == '__main__':
     print_info('seed: {}'.format(seed))
     np.random.seed(seed)
     obj_file_name = '../asset/rectangle.obj'
-    youngs_modulus = 1e5
+    youngs_modulus = 1e6
     poissons_ratio = 0.45
     density = 1e4
     method = 'newton'
     opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'rel_tol': 1e-3 }
     folder = Path('test_deformable')
+    create_folder(folder)
 
     # Initialization.
     mesh = QuadMesh()
     mesh.Initialize(obj_file_name)
     deformable = Deformable()
     deformable.Initialize(obj_file_name, density, 'corotated', youngs_modulus, poissons_ratio)
-    create_folder(folder)
+    # Boundary conditions.
+    deformable.SetDirichletBoundaryCondition(0, 0)
+    deformable.SetDirichletBoundaryCondition(1, 0)
 
     dofs = deformable.dofs()
     vertex_num = int(dofs / 2)
@@ -32,7 +35,7 @@ if __name__ == '__main__':
 
     # Simulation.
     dt = 0.01
-    num_frames = 100
+    num_frames = 2000
     q = [q0,]
     v = [v0,]
     f_ext = np.zeros((vertex_num, 2))
@@ -55,10 +58,13 @@ if __name__ == '__main__':
         v.append(v_next)
 
     # Display the results.
-    for i in range(num_frames):
+    frame_cnt = 0
+    frame_skip = 20
+    for i in range(0, num_frames, frame_skip):
         mesh = QuadMesh()
-        mesh.Initialize(str(folder / '{:04d}.obj'.format(i)))
-        display_quad_mesh(mesh, title='Frame {:04d}'.format(i),
+        mesh.Initialize(str(folder / '{:04d}.obj'.format(frame_cnt)))
+        display_quad_mesh(mesh, xlim=[-0.5, 2], ylim=[-0.5, 2], title='Frame {:04d}'.format(i),
             file_name=folder / '{:04d}.png'.format(i), show=False)
+        frame_cnt += 1
 
     export_gif(folder, '{}.gif'.format(str(folder)), 50)

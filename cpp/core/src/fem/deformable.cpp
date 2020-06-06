@@ -87,6 +87,14 @@ void Deformable::ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const
         v_next.segment(2 * i, 2) += fi * dt / mass;
     }
     q_next += v_next * dt;
+
+    // Enforce boundary conditions.
+    for (const auto& pair : dirichlet_) {
+        const int dof = pair.first;
+        const real val = pair.second;
+        q_next(dof) = val;
+        v_next(dof) = (val - q(dof)) / dt;
+    }
 }
 
 void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
@@ -109,6 +117,12 @@ void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const Vecto
     const VectorXr rhs = q + dt * v + h2m * f_ext;
     // q_next - h2m * f_int(q_next) = rhs.
     VectorXr q_sol = rhs;
+    // Enforce boundary conditions.
+    for (const auto& pair : dirichlet_) {
+        const int dof = pair.first;
+        const real val = pair.second;
+        q_sol(dof) = val;
+    }
     VectorXr force_sol = ElasticForce(q_sol);
     for (int i = 0; i < max_newton_iter; ++i) {
         // q_sol + dq - h2m * f_int(q_sol + dq) = rhs.
@@ -121,7 +135,14 @@ void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const Vecto
         // Solve for the search direction.
         Eigen::ConjugateGradient<MatrixOp, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
         cg.compute(op);
-        const VectorXr dq = cg.solve(rhs - q_sol + h2m * force_sol);
+        VectorXr new_rhs = rhs - q_sol + h2m * force_sol;
+        // Enforce boundary conditions.
+        for (const auto& pair : dirichlet_) {
+            const int dof = pair.first;
+            new_rhs(dof) = 0;
+        }
+        const VectorXr dq = cg.solve(new_rhs);
+        CheckError(cg.info() == Eigen::Success, "CG solver failed.");
 
         // Line search.
         real step_size = 1;
@@ -308,5 +329,15 @@ const VectorXr Deformable::ElasticForceDifferential(const VectorXr& q, const Vec
 }
 
 const VectorXr Deformable::NewtonMatrixOp(const VectorXr& q_sol, const real h2m, const VectorXr& dq) const {
-    return dq - h2m * ElasticForceDifferential(q_sol, dq);
+    VectorXr dq_w_bonudary = dq;
+    for (const auto& pair : dirichlet_) {
+        const int dof = pair.first;
+        dq_w_bonudary(dof) = 0;
+    }
+    VectorXr ret = dq_w_bonudary - h2m * ElasticForceDifferential(q_sol, dq_w_bonudary);
+    for (const auto& pair : dirichlet_) {
+        const int dof = pair.first;
+        ret(dof) = dq(dof);
+    }
+    return ret;
 }

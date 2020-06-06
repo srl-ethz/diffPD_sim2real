@@ -4,7 +4,7 @@ from matplotlib import collections as mc
 from py_diff_pd.core.py_diff_pd_core import QuadMesh
 from py_diff_pd.common.common import ndarray
 
-def display_quad_mesh(quad_mesh, title=None, file_name=None, show=True):
+def display_quad_mesh(quad_mesh, xlim=None, ylim=None, title=None, file_name=None, show=True):
     vertex_num = quad_mesh.NumOfVertices()
     face_num = quad_mesh.NumOfFaces()
 
@@ -28,8 +28,14 @@ def display_quad_mesh(quad_mesh, title=None, file_name=None, show=True):
     x_max = np.max(v[:, :, 0]) + padding
     y_min = np.min(v[:, :, 1]) - padding
     y_max = np.max(v[:, :, 1]) + padding
-    ax.set_xlim([x_min, x_max])
-    ax.set_ylim([y_min, y_max])
+    if xlim is None:
+        ax.set_xlim([x_min, x_max])
+    else:
+        ax.set_xlim(xlim)
+    if ylim is None:
+        ax.set_ylim([y_min, y_max])
+    else:
+        ax.set_yticks(ylim)
     ax.set_xticks([])
     ax.set_yticks([])
     if title is not None:

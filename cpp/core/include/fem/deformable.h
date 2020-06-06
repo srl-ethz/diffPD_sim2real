@@ -20,6 +20,13 @@ public:
     const real dx() const { return dx_; }
     const int dofs() const { return dofs_; }
 
+    void SetDirichletBoundaryCondition(const int dof, const real val) {
+        dirichlet_[dof] = val;
+    }
+    void RemoveDirichletBoundaryCondition(const int dof) {
+        if (dirichlet_.find(dof) != dirichlet_.end()) dirichlet_.erase(dof);
+    }
+
     void Forward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
         const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
     void Backward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
@@ -60,6 +67,9 @@ private:
     real dx_;
     std::shared_ptr<Material> material_;
     int dofs_;
+
+    // Boundary conditions.
+    std::map<int, real> dirichlet_;
 };
 
 #endif
