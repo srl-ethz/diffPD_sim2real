@@ -78,23 +78,18 @@ void Deformable::Forward(const VectorXr& q, const VectorXr& v, const VectorXr& f
     undeformed_samples.col(3) = Vector2r(r, r);
     undeformed_samples = (undeformed_samples.array() + 1) / 2;
 
-    // undeformed_samples = X = (u, v) \in [0, 1]^2.
+    // undeformed_samples = (u, v) \in [0, 1]^2.
     // phi(X) = (1 - u)(1 - v)x00 + (1 - u)v x01 + u(1 - v) x10 + uv x11.
-    // Note that the order of elements in the face are (x00, x01, x11, x10).
-    std::array<Vector4r, sample_num> undeformed_sample_weights;
+    // Note that the order of elements in the face are (x00, x10, x11, x01).
     std::array<Matrix2Xr, sample_num> grad_undeformed_sample_weights;   // d/dX.
     for (int i = 0; i < sample_num; ++i) {
         const Vector2r X = undeformed_samples.col(i);
         const real u = X(0), v = X(1);
-        undeformed_sample_weights[i][0] = (1 - u) * (1 - v);
-        undeformed_sample_weights[i][1] = (1 - u) * v;
-        undeformed_sample_weights[i][2] = u * v;
-        undeformed_sample_weights[i][3] = u * (1 - v);
         grad_undeformed_sample_weights[i] = Matrix2Xr::Zero(2, 4);
         grad_undeformed_sample_weights[i].col(0) = Vector2r(v - 1, u - 1);
-        grad_undeformed_sample_weights[i].col(1) = Vector2r(-v, 1 - u);
+        grad_undeformed_sample_weights[i].col(1) = Vector2r(1 - v, -u);
         grad_undeformed_sample_weights[i].col(2) = Vector2r(v, u);
-        grad_undeformed_sample_weights[i].col(3) = Vector2r(1 - v, -u);
+        grad_undeformed_sample_weights[i].col(3) = Vector2r(-v, 1 - u);
     }
 
     for (int i = 0; i < face_num; ++i) {
@@ -105,6 +100,7 @@ void Deformable::Forward(const VectorXr& q, const VectorXr& v, const VectorXr& f
         for (int j = 0; j < 4; ++j) {
             deformed.col(j) = q.segment(2 * vi(j), 2);
         }
+        deformed /= dx_;
         for (int j = 0; j < sample_num; ++j) {
             Matrix2r F = Matrix2r::Zero();
             for (int k = 0; k < 4; ++k) {

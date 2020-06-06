@@ -7,9 +7,9 @@ from py_diff_pd.common.display import display_quad_mesh, export_gif
 if __name__ == '__main__':
     # Hyperparameters.
     obj_file_name = '../asset/rectangle.obj'
-    youngs_modulus = 1e3
+    youngs_modulus = 1e4
     poissons_ratio = 0.45
-    density = 1e3
+    density = 1e4
     folder = Path('test_deformable')
 
     # Initialization.
@@ -30,7 +30,7 @@ if __name__ == '__main__':
     q = [q0,]
     v = [v0,]
     f_ext = np.zeros((vertex_num, 2))
-    f_ext[:, 1] = np.random.random(vertex_num)
+    f_ext[:, 1] = np.random.random(vertex_num) * density * deformable.cell_volume()
     f_ext = ndarray(f_ext)
     for i in range(num_frames):
         q_cur = np.copy(q[-1])
