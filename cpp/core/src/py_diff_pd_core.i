@@ -19,6 +19,7 @@
 %include <std_array.i>
 %include <std_vector.i>
 %include <std_string.i>
+%include <std_map.i>
 %include "../include/common/config.h"
 %include "../include/mesh/quad_mesh.h"
 %include "../include/fem/deformable.h"
@@ -27,4 +28,5 @@ namespace std {
     %template(StdRealArray2d) array<real, 2>;
     %template(StdIntArray4d) array<int, 4>;
     %template(StdRealVector) vector<real>;
+    %template(StdMap) map<string, real>;
 }

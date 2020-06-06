@@ -1,7 +1,8 @@
 import numpy as np
 from pathlib import Path
 from py_diff_pd.core.py_diff_pd_core import Deformable, QuadMesh, StdRealVector
-from py_diff_pd.common.common import ndarray, create_folder, to_std_real_vector, print_info
+from py_diff_pd.common.common import ndarray, create_folder, to_std_real_vector, to_std_map
+from py_diff_pd.common.common import print_info
 from py_diff_pd.common.display import display_quad_mesh, export_gif
 
 if __name__ == '__main__':
@@ -14,6 +15,7 @@ if __name__ == '__main__':
     poissons_ratio = 0.45
     density = 1e4
     method = 'newton'
+    opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'rel_tol': 1e-3 }
     folder = Path('test_deformable')
 
     # Initialization.
@@ -45,7 +47,7 @@ if __name__ == '__main__':
         q_next_array = StdRealVector(dofs)
         v_next_array = StdRealVector(dofs)
         deformable.PyForward(method, to_std_real_vector(q_cur), to_std_real_vector(v_cur),
-            to_std_real_vector(f_ext), dt, q_next_array, v_next_array)
+            to_std_real_vector(f_ext), dt, to_std_map(opt), q_next_array, v_next_array)
 
         q_next = ndarray(q_next_array)
         v_next = ndarray(v_next_array)

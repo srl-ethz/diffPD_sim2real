@@ -21,7 +21,7 @@ public:
     const int dofs() const { return dofs_; }
 
     void Forward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
-        VectorXr& q_next, VectorXr& v_next) const;
+        const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
     void Backward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
         const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const;
@@ -29,7 +29,8 @@ public:
 
     // For Python binding.
     void PyForward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v,
-        const std::vector<real>& f_ext, const real dt, std::vector<real>& q_next, std::vector<real>& v_next) const;
+        const std::vector<real>& f_ext, const real dt, const std::map<std::string, real>& options,
+        std::vector<real>& q_next, std::vector<real>& v_next) const;
     void PyBackward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v,
         const std::vector<real>& f_ext, const real dt, const std::vector<real>& q_next, const std::vector<real>& v_next,
         const std::vector<real>& dl_dq_next, const std::vector<real>& dl_dv_next,
@@ -44,9 +45,9 @@ private:
     const real InitializeCellSize(const QuadMesh& mesh) const;
 
     void ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
-        const real dt, VectorXr& q_next, VectorXr& v_next) const;
+        const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
     void ForwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
-        const real dt, VectorXr& q_next, VectorXr& v_next) const;
+        const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
 
     const VectorXr ElasticForce(const VectorXr& q) const;
     const VectorXr ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const;

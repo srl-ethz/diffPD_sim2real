@@ -66,16 +66,16 @@ const real Deformable::InitializeCellSize(const QuadMesh& mesh) const {
 }
 
 void Deformable::Forward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
-    const real dt, VectorXr& q_next, VectorXr& v_next) const {
-    if (method == "semi_implicit") ForwardSemiImplicit(q, v, f_ext, dt, q_next, v_next);
-    else if (method == "newton") ForwardNewton(q, v, f_ext, dt, q_next, v_next);
+    const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
+    if (method == "semi_implicit") ForwardSemiImplicit(q, v, f_ext, dt, options, q_next, v_next);
+    else if (method == "newton") ForwardNewton(q, v, f_ext, dt, options, q_next, v_next);
     else {
         PrintError("Unsupported forward method: " + method);
     }
 }
 
 void Deformable::ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
-    VectorXr& q_next, VectorXr& v_next) const {
+    const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
     // Semi-implicit Euler.
     v_next = v;
     q_next = q;
@@ -90,7 +90,16 @@ void Deformable::ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const
 }
 
 void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
-    VectorXr& q_next, VectorXr& v_next) const {
+    const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
+    CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
+    CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
+    CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
+    const int max_newton_iter = static_cast<int>(options.at("max_newton_iter"));
+    const int max_ls_iter = static_cast<int>(options.at("max_ls_iter"));
+    const real rel_tol = options.at("rel_tol");
+    CheckError(max_newton_iter > 0, "Invalid max_newton_iter: " + std::to_string(max_newton_iter));
+    CheckError(max_ls_iter > 0, "Invalid max_ls_iter: " + std::to_string(max_ls_iter));
+
     // q_next = q + h * v_next.
     // v_next = v + h * (f_ext + f_int(q_next)) / m.
     // q_next - q = h * v + h^2 / m * (f_ext + f_int(q_next)).
@@ -101,12 +110,6 @@ void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const Vecto
     // q_next - h2m * f_int(q_next) = rhs.
     VectorXr q_sol = rhs;
     VectorXr force_sol = ElasticForce(q_sol);
-    // Hyperparameters for Newton's method.
-    // TODO: shift them to input arguments.
-    const int max_newton_iter = 10;
-    const int max_ls_iter = 10;
-    CheckError(max_ls_iter > 0, "Invalid max_ls_iter: " + std::to_string(max_ls_iter));
-    const real rel_tol = ToReal(1e-3);
     for (int i = 0; i < max_newton_iter; ++i) {
         // q_sol + dq - h2m * f_int(q_sol + dq) = rhs.
         // q_sol + dq - h2m * (f_int(q_sol) + J * dq) = rhs.
@@ -165,9 +168,10 @@ void Deformable::SaveToMeshFile(const VectorXr& q, const std::string& obj_file_n
 
 // For Python binding.
 void Deformable::PyForward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v,
-    const std::vector<real>& f_ext, const real dt, std::vector<real>& q_next, std::vector<real>& v_next) const {
+    const std::vector<real>& f_ext, const real dt, const std::map<std::string, real>& options,
+    std::vector<real>& q_next, std::vector<real>& v_next) const {
     VectorXr q_next_eig, v_next_eig;
-    Forward(method, ToEigenVector(q), ToEigenVector(v), ToEigenVector(f_ext), dt, q_next_eig, v_next_eig);
+    Forward(method, ToEigenVector(q), ToEigenVector(v), ToEigenVector(f_ext), dt, options, q_next_eig, v_next_eig);
     q_next = ToStdVector(q_next_eig);
     v_next = ToStdVector(v_next_eig);
 }

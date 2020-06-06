@@ -30,3 +30,10 @@ def to_std_real_vector(v):
     for i in range(n):
         v_array[i] = v[i]
     return v_array
+
+from py_diff_pd.core.py_diff_pd_core import StdMap
+def to_std_map(opt):
+    opt_map = StdMap()
+    for k, v in opt.items():
+        opt_map[k] = float(v)
+    return opt_map
