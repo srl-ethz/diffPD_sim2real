@@ -15,7 +15,7 @@ if __name__ == '__main__':
     poissons_ratio = 0.45
     density = 1e4
     method = 'newton'
-    opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'rel_tol': 1e-3 }
+    opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'rel_tol': 1e-2, 'verbose': 0 }
     folder = Path('test_deformable')
     create_folder(folder)
 
@@ -34,8 +34,8 @@ if __name__ == '__main__':
     v0 = np.zeros(dofs)
 
     # Simulation.
-    dt = 0.01
-    num_frames = 2000
+    dt = 0.05
+    num_frames = 500
     q = [q0,]
     v = [v0,]
     f_ext = np.zeros((vertex_num, 2))

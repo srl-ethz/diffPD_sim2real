@@ -102,9 +102,11 @@ void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const Vecto
     CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
+    CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
     const int max_newton_iter = static_cast<int>(options.at("max_newton_iter"));
     const int max_ls_iter = static_cast<int>(options.at("max_ls_iter"));
     const real rel_tol = options.at("rel_tol");
+    const int verbose_level = static_cast<int>(options.at("verbose"));
     CheckError(max_newton_iter > 0, "Invalid max_newton_iter: " + std::to_string(max_newton_iter));
     CheckError(max_ls_iter > 0, "Invalid max_ls_iter: " + std::to_string(max_ls_iter));
 
@@ -124,7 +126,9 @@ void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const Vecto
         q_sol(dof) = val;
     }
     VectorXr force_sol = ElasticForce(q_sol);
+    if (verbose_level > 0) PrintInfo("Newton's method");
     for (int i = 0; i < max_newton_iter; ++i) {
+        if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
         // q_sol + dq - h2m * f_int(q_sol + dq) = rhs.
         // q_sol + dq - h2m * (f_int(q_sol) + J * dq) = rhs.
         // dq - h2m * J * dq + q_sol - h2m * f_int(q_sol) = rhs.
@@ -143,6 +147,7 @@ void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const Vecto
         }
         const VectorXr dq = cg.solve(new_rhs);
         CheckError(cg.info() == Eigen::Success, "CG solver failed.");
+        if (verbose_level > 0) std::cout << "|dq| = " << dq.norm() << std::endl;
 
         // Line search.
         real step_size = 1;
@@ -153,6 +158,7 @@ void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const Vecto
             step_size /= 2;
             q_sol_next = q_sol + step_size * dq;
             force_next = ElasticForce(q_sol_next);
+            if (verbose_level > 1) std::cout << "Line search iteration: " << j << ", step size: " << step_size << std::endl;
             PrintWarning("Newton's method is using < 1 step size: " + std::to_string(step_size));
         }
         CheckError(!force_next.hasNaN(), "Elastic force has NaN.");
@@ -160,6 +166,7 @@ void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const Vecto
         // Check for convergence.
         const VectorXr lhs = q_sol_next - h2m * force_next;
         const real rel_error = (lhs - rhs).norm() / rhs.norm();
+        if (verbose_level > 0) std::cout << "Relative error: " << rel_error << std::endl;
         if (rel_error < rel_tol) {
             q_next = q_sol_next;
             v_next = (q_next - q) / dt;
