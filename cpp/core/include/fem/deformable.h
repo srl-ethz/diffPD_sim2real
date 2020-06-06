@@ -51,6 +51,8 @@ private:
     const VectorXr ElasticForce(const VectorXr& q) const;
     const VectorXr ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const;
 
+    const VectorXr NewtonMatrixOp(const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
+
     QuadMesh mesh_;
     real density_;
     real cell_volume_;

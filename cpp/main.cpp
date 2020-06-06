@@ -1,9 +1,9 @@
 #include <iostream>
 #include "Eigen/Dense"
+#include "common/config.h"
+#include "common/common.h"
 
 int main() {
-    Eigen::VectorXd v = Eigen::VectorXd::Zero(3);
-    std::cout << v << std::endl;
-    std::cout << "Hello, world!" << std::endl;
+    PrintInfo("The program compiles just fine.");
     return 0;
 }

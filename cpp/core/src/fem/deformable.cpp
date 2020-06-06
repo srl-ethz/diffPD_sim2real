@@ -100,6 +100,7 @@ void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const Vecto
     const VectorXr rhs = q + dt * v + h2m * f_ext;
     // q_next - h2m * f_int(q_next) = rhs.
     VectorXr q_sol = rhs;
+    VectorXr force_sol = ElasticForce(q_sol);
     // Hyperparameters for Newton's method.
     // TODO: shift them to input arguments.
     const int max_newton_iter = 10;
@@ -108,16 +109,16 @@ void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const Vecto
     const real rel_tol = ToReal(1e-3);
     for (int i = 0; i < max_newton_iter; ++i) {
         // q_sol + dq - h2m * f_int(q_sol + dq) = rhs.
-        // q_sol + dq - h2m * J * dq = rhs.
-        // (I - h2m * J) * dq = rhs - q_sol.
+        // q_sol + dq - h2m * (f_int(q_sol) + J * dq) = rhs.
+        // dq - h2m * J * dq + q_sol - h2m * f_int(q_sol) = rhs.
+        // (I - h2m * J) * dq = rhs - q_sol + h2m * f_int(q_sol).
         // Assemble the matrix-free operator:
         // M(dq) = dq - h2m * ElasticForceDifferential(q_sol, dq).
-        // TODO: fix the warning here.
-        MatrixOp op(dofs_, dofs_, [this, q_sol, h2m](const VectorXr& dq){ return dq - h2m * this->ElasticForceDifferential(q_sol, dq); });
+        MatrixOp op(dofs_, dofs_, [&](const VectorXr& dq){ return NewtonMatrixOp(q_sol, h2m, dq); });
         // Solve for the search direction.
         Eigen::ConjugateGradient<MatrixOp, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
         cg.compute(op);
-        const VectorXr dq = cg.solve(rhs - q_sol);
+        const VectorXr dq = cg.solve(rhs - q_sol + h2m * force_sol);
 
         // Line search.
         real step_size = 1;
@@ -143,6 +144,7 @@ void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const Vecto
 
         // Update.
         q_sol = q_sol_next;
+        force_sol = force_next;
     }
     PrintError("Newton's method fails to converge.");
 }
@@ -299,4 +301,8 @@ const VectorXr Deformable::ElasticForceDifferential(const VectorXr& q, const Vec
         }
     }
     return df_int;
+}
+
+const VectorXr Deformable::NewtonMatrixOp(const VectorXr& q_sol, const real h2m, const VectorXr& dq) const {
+    return dq - h2m * ElasticForceDifferential(q_sol, dq);
 }

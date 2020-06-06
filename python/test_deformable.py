@@ -1,11 +1,14 @@
 import numpy as np
 from pathlib import Path
 from py_diff_pd.core.py_diff_pd_core import Deformable, QuadMesh, StdRealVector
-from py_diff_pd.common.common import ndarray, create_folder, to_std_real_vector
+from py_diff_pd.common.common import ndarray, create_folder, to_std_real_vector, print_info
 from py_diff_pd.common.display import display_quad_mesh, export_gif
 
 if __name__ == '__main__':
     # Hyperparameters.
+    seed = np.random.randint(1e5)
+    print_info('seed: {}'.format(seed))
+    np.random.seed(seed)
     obj_file_name = '../asset/rectangle.obj'
     youngs_modulus = 1e5
     poissons_ratio = 0.45
