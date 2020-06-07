@@ -1,7 +1,7 @@
 import numpy as np
 from py_diff_pd.common.common import print_error, print_ok
 
-def check_gradients(loss_and_grad, x0, eps, atol, rtol):
+def check_gradients(loss_and_grad, x0, eps, atol, rtol, verbose):
     _, grad_analytic = loss_and_grad(x0)
     n = x0.size
     for i in range(n):
@@ -14,5 +14,5 @@ def check_gradients(loss_and_grad, x0, eps, atol, rtol):
         grad_numeric = (loss_pos - loss_neg) / 2 / eps
         if not np.isclose(grad_analytic[i], grad_numeric, atol=atol, rtol=rtol):
             print_error('Variable {}: analytic {}, numeric {}'.format(i, grad_analytic[i], grad_numeric))
-        else:
+        elif verbose:
             print_ok('Variable {} seems good: analytic {}, numeric {}'.format(i, grad_analytic[i], grad_numeric))

@@ -123,6 +123,9 @@ void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const Vecto
     for (const auto& pair : dirichlet_) {
         const int dof = pair.first;
         const real val = pair.second;
+        if (q(dof) != val)
+            PrintWarning("Inconsistent dirichlet boundary conditions at q(" + std::to_string(dof)
+                + "): " + std::to_string(q(dof)) + " != " + std::to_string(val));
         q_sol(dof) = val;
     }
     VectorXr force_sol = ElasticForce(q_sol);
@@ -182,8 +185,56 @@ void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const Vecto
 
 void Deformable::Backward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
     const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
+    const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
-    // TODO.
+    if (method == "newton")
+        BackwardNewton(q, v, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
+            dl_dq, dl_dv, dl_df_ext);
+    else
+        PrintError("Unsupported backward method: " + method);
+}
+
+void Deformable::BackwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
+    const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
+    const std::map<std::string, real>& options,
+    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
+    // q_next = q + h * v_next.
+    // v_next = v + h * (f_ext + f_int(q_next)) / m.
+    // q_next - q = h * v + h^2 / m * (f_ext + f_int(q_next)).
+    // q_next - h^2 / m * f_int(q_next) = q + h * v + h^2 / m * f_ext.
+    // v_next = (q_next - q) / dt.
+    // So, the computational graph looks like this:
+    // (q, v, f_ext) -> q_next.
+    // (q, q_next) -> v_next.
+    // Back-propagate (q, q_next) -> v_next.
+    const VectorXr dl_dq_next_agg = dl_dq_next + dl_dv_next / dt;
+    dl_dq = -dl_dv_next / dt;
+    // The hard part: (q, v, f_ext) -> q_next.
+    const real mass = density_ * cell_volume_;
+    const real h2m = dt * dt / mass;
+    // op(q_next) = q + h * v + h2m * f_ext.
+    // d_op/dq_next * dq_next/d* = drhs/d*.
+    // dq_next/d* = (d_op/dq_next)^(-1) * drhs/d*.
+    // dl/d* = (drhs/d*)^T * ((d_op/dq_next)^(-1) * dl_dq_next).
+
+    // d_op/dq_next * adjoint = dl_dq_next.
+    MatrixOp op(dofs_, dofs_, [&](const VectorXr& dq){ return NewtonMatrixOp(q_next, h2m, dq); });
+    // Solve for the search direction.
+    Eigen::ConjugateGradient<MatrixOp, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
+    cg.compute(op);
+    const VectorXr adjoint = cg.solve(dl_dq_next_agg);
+    CheckError(cg.info() == Eigen::Success, "CG solver failed.");
+
+    VectorXr dl_dq_single = adjoint;
+    dl_dv = adjoint * dt;
+    dl_df_ext = adjoint * h2m;
+    for (const auto& pair : dirichlet_) {
+        const int dof = pair.first;
+        dl_dq_single(dof) = 0;
+        dl_dv(dof) = 0;
+        dl_df_ext(dof) = 0;
+    }
+    dl_dq += dl_dq_single;
 }
 
 void Deformable::SaveToMeshFile(const VectorXr& q, const std::string& obj_file_name) const {
@@ -207,10 +258,12 @@ void Deformable::PyForward(const std::string& method, const std::vector<real>& q
 void Deformable::PyBackward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v,
     const std::vector<real>& f_ext, const real dt, const std::vector<real>& q_next, const std::vector<real>& v_next,
     const std::vector<real>& dl_dq_next, const std::vector<real>& dl_dv_next,
+    const std::map<std::string, real>& options,
     std::vector<real>& dl_dq, std::vector<real>& dl_dv, std::vector<real>& dl_df_ext) const {
     VectorXr dl_dq_eig, dl_dv_eig, dl_df_ext_eig;
     Backward(method, ToEigenVector(q), ToEigenVector(v), ToEigenVector(f_ext), dt, ToEigenVector(q_next),
-        ToEigenVector(v_next), ToEigenVector(dl_dq_next), ToEigenVector(dl_dv_next), dl_dq_eig, dl_dv_eig, dl_df_ext_eig);
+        ToEigenVector(v_next), ToEigenVector(dl_dq_next), ToEigenVector(dl_dv_next), options,
+        dl_dq_eig, dl_dv_eig, dl_df_ext_eig);
     dl_dq = ToStdVector(dl_dq_eig);
     dl_dv = ToStdVector(dl_dv_eig);
     dl_df_ext = ToStdVector(dl_df_ext_eig);
