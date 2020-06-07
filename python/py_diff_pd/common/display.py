@@ -35,7 +35,7 @@ def display_quad_mesh(quad_mesh, xlim=None, ylim=None, title=None, file_name=Non
     if ylim is None:
         ax.set_ylim([y_min, y_max])
     else:
-        ax.set_yticks(ylim)
+        ax.set_ylim(ylim)
     ax.set_xticks([])
     ax.set_yticks([])
     if title is not None:
