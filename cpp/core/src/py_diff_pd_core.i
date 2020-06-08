@@ -33,3 +33,5 @@ namespace std {
 
 %template(Mesh2d) Mesh<2, 4>;
 %template(Mesh3d) Mesh<3, 8>;
+%template(Deformable2d) Deformable<2, 4>;
+%template(Deformable3d) Deformable<3, 8>;

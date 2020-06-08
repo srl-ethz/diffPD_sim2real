@@ -3,33 +3,39 @@
 #include "solver/matrix_op.h"
 #include "material/corotated.h"
 
-Deformable::Deformable() : mesh_(), density_(0), cell_volume_(0), dx_(0), material_(nullptr), dofs_(0) {}
+template<int vertex_dim, int element_dim>
+Deformable<vertex_dim, element_dim>::Deformable()
+    : mesh_(), density_(0), cell_volume_(0), dx_(0), material_(nullptr), dofs_(0) {}
 
-void Deformable::Initialize(const std::string& obj_file_name, const real density,
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::Initialize(const std::string& binary_file_name, const real density,
     const std::string& material_type, const real youngs_modulus, const real poissons_ratio) {
-    mesh_.Initialize(obj_file_name);
+    mesh_.Initialize(binary_file_name);
     density_ = density;
     dx_ = InitializeCellSize(mesh_);
-    cell_volume_ = dx_ * dx_;
+    cell_volume_ = ToReal(std::pow(dx_, vertex_dim));
     material_ = InitializeMaterial(material_type, youngs_modulus, poissons_ratio);
-    dofs_ = 2 * mesh_.NumOfVertices();
+    dofs_ = vertex_dim * mesh_.NumOfVertices();
 }
 
-void Deformable::Initialize(const Matrix2Xr& vertices, const Matrix4Xi& faces, const real density,
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::Initialize(const Eigen::Matrix<real, vertex_dim, -1>& vertices,
+    const Eigen::Matrix<int, element_dim, -1>& faces, const real density,
     const std::string& material_type, const real youngs_modulus, const real poissons_ratio) {
     mesh_.Initialize(vertices, faces);
     density_ = density;
     dx_ = InitializeCellSize(mesh_);
-    cell_volume_ = dx_ * dx_;
+    cell_volume_ = ToReal(std::pow(dx_, vertex_dim));
     material_ = InitializeMaterial(material_type, youngs_modulus, poissons_ratio);
-    dofs_ = 2 * mesh_.NumOfVertices();
+    dofs_ = vertex_dim * mesh_.NumOfVertices();
 }
 
-const std::shared_ptr<Material> Deformable::InitializeMaterial(const std::string& material_type,
+template<int vertex_dim, int element_dim>
+const std::shared_ptr<Material<vertex_dim>> Deformable<vertex_dim, element_dim>::InitializeMaterial(const std::string& material_type,
     const real youngs_modulus, const real poissons_ratio) const {
-    std::shared_ptr<Material> material(nullptr);
+    std::shared_ptr<Material<vertex_dim>> material(nullptr);
     if (material_type == "corotated") {
-        material = std::make_shared<CorotatedMaterial>();
+        material = std::make_shared<CorotatedMaterial<vertex_dim>>();
         material->Initialize(youngs_modulus, poissons_ratio);
     } else {
         PrintError("Unidentified material: " + material_type);
@@ -37,35 +43,15 @@ const std::shared_ptr<Material> Deformable::InitializeMaterial(const std::string
     return material;
 }
 
-const real Deformable::InitializeCellSize(const Mesh<2, 4>& mesh) const {
-    const int face_num = mesh.NumOfFaces();
-    real dx_min = std::numeric_limits<real>::infinity();
-    real dx_max = -std::numeric_limits<real>::infinity();
-    real dx_sum = 0;
-    for (int i = 0; i < face_num; ++i) {
-        const Vector4i vi = mesh.face(i);
-        Matrix2Xr undeformed = Matrix2Xr::Zero(2, 4);
-        for (int j = 0; j < 4; ++j) {
-            undeformed.col(j) = mesh.vertex(vi(j));
-        }
-        CheckError(undeformed(0, 0) == undeformed(0, 1) &&
-            undeformed(1, 1) == undeformed(1, 3) &&
-            undeformed(0, 2) == undeformed(0, 3) &&
-            undeformed(1, 2) == undeformed(1, 0), "Irregular undeformed shape.");
-        const real dx = undeformed(0, 2) - undeformed(0, 0);
-        const real dy = undeformed(1, 1) - undeformed(1, 0);
-        dx_sum += dx + dy;
-        if (dx < dx_min) dx_min = dx;
-        if (dy < dx_min) dx_min = dy;
-        if (dx > dx_max) dx_max = dx;
-        if (dy > dx_max) dx_max = dy;
-    }
-    const real dx_mean = dx_sum / (2 * face_num);
-    CheckError((dx_max - dx_min) / dx_mean < 1e-3, "Cells are not square.");
-    return dx_mean;
+template<int vertex_dim, int element_dim>
+const real Deformable<vertex_dim, element_dim>::InitializeCellSize(const Mesh<vertex_dim, element_dim>& mesh) const {
+    const Eigen::Matrix<real, vertex_dim, 1> p0 = mesh.vertex(mesh.face(0)(0));
+    const Eigen::Matrix<real, vertex_dim, 1> p1 = mesh.vertex(mesh.face(0)(1));
+    return (p1 - p0).norm();
 }
 
-void Deformable::Forward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::Forward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
     const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
     if (method == "semi_implicit") ForwardSemiImplicit(q, v, f_ext, dt, options, q_next, v_next);
     else if (method == "newton") ForwardNewton(q, v, f_ext, dt, options, q_next, v_next);
@@ -74,7 +60,8 @@ void Deformable::Forward(const std::string& method, const VectorXr& q, const Vec
     }
 }
 
-void Deformable::ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
     const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
     // Semi-implicit Euler.
     v_next = v;
@@ -83,8 +70,8 @@ void Deformable::ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const
     const VectorXr f = ElasticForce(q) + f_ext;
     const real mass = density_ * cell_volume_;
     for (int i = 0; i < vertex_num; ++i) {
-        const Vector2r fi = f.segment(2 * i, 2);
-        v_next.segment(2 * i, 2) += fi * dt / mass;
+        const VectorXr fi = f.segment(vertex_dim * i, vertex_dim);
+        v_next.segment(vertex_dim * i, vertex_dim) += fi * dt / mass;
     }
     q_next += v_next * dt;
 
@@ -97,7 +84,8 @@ void Deformable::ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const
     }
 }
 
-void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::ForwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
     const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
     CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
@@ -183,7 +171,8 @@ void Deformable::ForwardNewton(const VectorXr& q, const VectorXr& v, const Vecto
     PrintError("Newton's method fails to converge.");
 }
 
-void Deformable::Backward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::Backward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
     const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
     const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
@@ -194,7 +183,8 @@ void Deformable::Backward(const std::string& method, const VectorXr& q, const Ve
         PrintError("Unsupported backward method: " + method);
 }
 
-void Deformable::BackwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::BackwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
     const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
     const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
@@ -237,16 +227,18 @@ void Deformable::BackwardNewton(const VectorXr& q, const VectorXr& v, const Vect
     dl_dq += dl_dq_single;
 }
 
-void Deformable::SaveToMeshFile(const VectorXr& q, const std::string& obj_file_name) const {
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::SaveToMeshFile(const VectorXr& q, const std::string& obj_file_name) const {
     CheckError(static_cast<int>(q.size()) == dofs_, "Inconsistent q size. " + std::to_string(q.size())
         + " != " + std::to_string(dofs_));
-    Mesh<2, 4> mesh;
-    mesh.Initialize(Eigen::Map<const Matrix2Xr>(q.data(), 2, dofs_ / 2), mesh_.faces());
+    Mesh<vertex_dim, element_dim> mesh;
+    mesh.Initialize(Eigen::Map<const MatrixXr>(q.data(), vertex_dim, dofs_ / vertex_dim), mesh_.faces());
     mesh.SaveToFile(obj_file_name);
 }
 
 // For Python binding.
-void Deformable::PyForward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v,
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::PyForward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v,
     const std::vector<real>& f_ext, const real dt, const std::map<std::string, real>& options,
     std::vector<real>& q_next, std::vector<real>& v_next) const {
     VectorXr q_next_eig, v_next_eig;
@@ -255,7 +247,8 @@ void Deformable::PyForward(const std::string& method, const std::vector<real>& q
     v_next = ToStdVector(v_next_eig);
 }
 
-void Deformable::PyBackward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v,
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::PyBackward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v,
     const std::vector<real>& f_ext, const real dt, const std::vector<real>& q_next, const std::vector<real>& v_next,
     const std::vector<real>& dl_dq_next, const std::vector<real>& dl_dv_next,
     const std::map<std::string, real>& options,
@@ -269,57 +262,67 @@ void Deformable::PyBackward(const std::string& method, const std::vector<real>& 
     dl_df_ext = ToStdVector(dl_df_ext_eig);
 }
 
-void Deformable::PySaveToMeshFile(const std::vector<real>& q, const std::string& obj_file_name) const {
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::PySaveToMeshFile(const std::vector<real>& q, const std::string& obj_file_name) const {
     SaveToMeshFile(ToEigenVector(q), obj_file_name);
 }
 
-const VectorXr Deformable::ElasticForce(const VectorXr& q) const {
+template<int vertex_dim, int element_dim>
+const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr& q) const {
     const int face_num = mesh_.NumOfFaces();
     VectorXr f_int = VectorXr::Zero(dofs_);
 
-    const int sample_num = 4;
-    Matrix2Xr undeformed_samples(2, 4);    // Gaussian quadratures.
+    const int sample_num = element_dim;
+    MatrixXr undeformed_samples(vertex_dim, element_dim);    // Gaussian quadratures.
     const real r = 1 / std::sqrt(3);
-    undeformed_samples.col(0) = Vector2r(-r, -r);
-    undeformed_samples.col(1) = Vector2r(-r, r);
-    undeformed_samples.col(2) = Vector2r(r, -r);
-    undeformed_samples.col(3) = Vector2r(r, r);
+    for (int i = 0; i < sample_num; ++i) {
+        for (int j = 0; j < vertex_dim; ++j) {
+            undeformed_samples(vertex_dim - 1 - j, i) = ((i & (1 << j)) ? 1 : -1) * r;
+        }
+    }
     undeformed_samples = (undeformed_samples.array() + 1) / 2;
 
+    // 2D:
     // undeformed_samples = (u, v) \in [0, 1]^2.
     // phi(X) = (1 - u)(1 - v)x00 + (1 - u)v x01 + u(1 - v) x10 + uv x11.
-    std::array<Matrix2Xr, sample_num> grad_undeformed_sample_weights;   // d/dX.
+    std::array<MatrixXr, sample_num> grad_undeformed_sample_weights;   // d/dX.
     for (int i = 0; i < sample_num; ++i) {
-        const Vector2r X = undeformed_samples.col(i);
-        const real u = X(0), v = X(1);
-        grad_undeformed_sample_weights[i] = Matrix2Xr::Zero(2, 4);
-        grad_undeformed_sample_weights[i].col(0) = Vector2r(v - 1, u - 1);
-        grad_undeformed_sample_weights[i].col(1) = Vector2r(-v, 1 - u);
-        grad_undeformed_sample_weights[i].col(2) = Vector2r(1 - v, -u);
-        grad_undeformed_sample_weights[i].col(3) = Vector2r(v, u);
+        const Eigen::Matrix<real, vertex_dim, 1> X = undeformed_samples.col(i);
+        grad_undeformed_sample_weights[i] = MatrixXr::Zero(vertex_dim, element_dim);
+        for (int j = 0; j < element_dim; ++j) {
+            for (int k = 0; k < vertex_dim; ++k) {
+                real factor = 1;
+                for (int s = 0; s < vertex_dim; ++s) {
+                    if (s == k) continue;
+                    factor *= ((j & (1 << s)) ? X(vertex_dim - 1 - s) : (1 - X(vertex_dim - 1 - s)));
+                }
+                grad_undeformed_sample_weights[i](vertex_dim - 1 - k, j) = ((j & (1 << k)) ? factor : -factor);
+            }
+        }
     }
 
     for (int i = 0; i < face_num; ++i) {
-        const Vector4i vi = mesh_.face(i);
+        const Eigen::Matrix<int, element_dim, 1> vi = mesh_.face(i);
         // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
         // when we load the obj file.
-        Matrix2Xr deformed = Matrix2Xr::Zero(2, 4);
-        for (int j = 0; j < 4; ++j) {
-            deformed.col(j) = q.segment(2 * vi(j), 2);
+        Eigen::Matrix<real, vertex_dim, element_dim> deformed;
+        for (int j = 0; j < element_dim; ++j) {
+            deformed.col(j) = q.segment(vertex_dim * vi(j), vertex_dim);
         }
         deformed /= dx_;
         for (int j = 0; j < sample_num; ++j) {
-            Matrix2r F = Matrix2r::Zero();
-            for (int k = 0; k < 4; ++k) {
+            Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
+            for (int k = 0; k < element_dim; ++k) {
                 F += deformed.col(k) * grad_undeformed_sample_weights[j].col(k).transpose();
             }
-            const Matrix2r P = material_->StressTensor(F);
-            for (int k = 0; k < 4; ++k) {
-                for (int d = 0; d < 2; ++d) {
+            const Eigen::Matrix<real, vertex_dim, vertex_dim> P = material_->StressTensor(F);
+            for (int k = 0; k < element_dim; ++k) {
+                for (int d = 0; d < vertex_dim; ++d) {
                     // Compute dF/dxk(d).
-                    const Matrix2r dF_dxkd = Vector2r::Unit(d) * grad_undeformed_sample_weights[j].col(k).transpose();
+                    const Eigen::Matrix<real, vertex_dim, vertex_dim> dF_dxkd =
+                        Eigen::Matrix<real, vertex_dim, 1>::Unit(d) * grad_undeformed_sample_weights[j].col(k).transpose();
                     const real f_kd = -(P.array() * dF_dxkd.array()).sum() * cell_volume_ / sample_num;
-                    f_int(2 * vi(k) + d) += f_kd;
+                    f_int(vertex_dim * vi(k) + d) += f_kd;
                 }
             }
         }
@@ -327,58 +330,66 @@ const VectorXr Deformable::ElasticForce(const VectorXr& q) const {
     return f_int;
 }
 
-const VectorXr Deformable::ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const {
+template<int vertex_dim, int element_dim>
+const VectorXr Deformable<vertex_dim, element_dim>::ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const {
     const int face_num = mesh_.NumOfFaces();
     VectorXr df_int = VectorXr::Zero(dofs_);
 
-    const int sample_num = 4;
-    Matrix2Xr undeformed_samples(2, 4);    // Gaussian quadratures.
+    const int sample_num = element_dim;
+    MatrixXr undeformed_samples(vertex_dim, element_dim);    // Gaussian quadratures.
     const real r = 1 / std::sqrt(3);
-    undeformed_samples.col(0) = Vector2r(-r, -r);
-    undeformed_samples.col(1) = Vector2r(-r, r);
-    undeformed_samples.col(2) = Vector2r(r, -r);
-    undeformed_samples.col(3) = Vector2r(r, r);
+    for (int i = 0; i < sample_num; ++i) {
+        for (int j = 0; j < vertex_dim; ++j) {
+            undeformed_samples(vertex_dim - 1 - j, i) = ((i & (1 << j)) ? 1 : -1) * r;
+        }
+    }
     undeformed_samples = (undeformed_samples.array() + 1) / 2;
 
+    // 2D:
     // undeformed_samples = (u, v) \in [0, 1]^2.
     // phi(X) = (1 - u)(1 - v)x00 + (1 - u)v x01 + u(1 - v) x10 + uv x11.
-    std::array<Matrix2Xr, sample_num> grad_undeformed_sample_weights;   // d/dX.
+    std::array<MatrixXr, sample_num> grad_undeformed_sample_weights;   // d/dX.
     for (int i = 0; i < sample_num; ++i) {
-        const Vector2r X = undeformed_samples.col(i);
-        const real u = X(0), v = X(1);
-        grad_undeformed_sample_weights[i] = Matrix2Xr::Zero(2, 4);
-        grad_undeformed_sample_weights[i].col(0) = Vector2r(v - 1, u - 1);
-        grad_undeformed_sample_weights[i].col(1) = Vector2r(-v, 1 - u);
-        grad_undeformed_sample_weights[i].col(2) = Vector2r(1 - v, -u);
-        grad_undeformed_sample_weights[i].col(3) = Vector2r(v, u);
+        const Eigen::Matrix<real, vertex_dim, 1> X = undeformed_samples.col(i);
+        grad_undeformed_sample_weights[i] = MatrixXr::Zero(vertex_dim, element_dim);
+        for (int j = 0; j < element_dim; ++j) {
+            for (int k = 0; k < vertex_dim; ++k) {
+                real factor = 1;
+                for (int s = 0; s < vertex_dim; ++s) {
+                    if (s == k) continue;
+                    factor *= ((j & (1 << s)) ? X(vertex_dim - 1 - s) : (1 - X(vertex_dim - 1 - s)));
+                }
+                grad_undeformed_sample_weights[i](vertex_dim - 1 - k, j) = ((j & (1 << k)) ? factor : -factor);
+            }
+        }
     }
 
     for (int i = 0; i < face_num; ++i) {
-        const Vector4i vi = mesh_.face(i);
+        const Eigen::Matrix<int, element_dim, 1> vi = mesh_.face(i);
         // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
         // when we load the obj file.
-        Matrix2Xr deformed = Matrix2Xr::Zero(2, 4);
-        Matrix2Xr ddeformed = Matrix2Xr::Zero(2, 4);
-        for (int j = 0; j < 4; ++j) {
-            deformed.col(j) = q.segment(2 * vi(j), 2);
-            ddeformed.col(j) = dq.segment(2 * vi(j), 2);
+        Eigen::Matrix<real, vertex_dim, element_dim> deformed, ddeformed;
+        for (int j = 0; j < element_dim; ++j) {
+            deformed.col(j) = q.segment(vertex_dim * vi(j), vertex_dim);
+            ddeformed.col(j) = dq.segment(vertex_dim * vi(j), vertex_dim);
         }
         deformed /= dx_;
         ddeformed /= dx_;
         for (int j = 0; j < sample_num; ++j) {
-            Matrix2r F = Matrix2r::Zero();
-            Matrix2r dF = Matrix2r::Zero();
-            for (int k = 0; k < 4; ++k) {
+            Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
+            Eigen::Matrix<real, vertex_dim, vertex_dim> dF = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
+            for (int k = 0; k < element_dim; ++k) {
                 F += deformed.col(k) * grad_undeformed_sample_weights[j].col(k).transpose();
                 dF += ddeformed.col(k) * grad_undeformed_sample_weights[j].col(k).transpose();
             }
-            const Matrix2r dP = material_->StressTensorDifferential(F, dF);
-            for (int k = 0; k < 4; ++k) {
-                for (int d = 0; d < 2; ++d) {
+            const Eigen::Matrix<real, vertex_dim, vertex_dim> dP = material_->StressTensorDifferential(F, dF);
+            for (int k = 0; k < element_dim; ++k) {
+                for (int d = 0; d < vertex_dim; ++d) {
                     // Compute dF/dxk(d).
-                    const Matrix2r dF_dxkd = Vector2r::Unit(d) * grad_undeformed_sample_weights[j].col(k).transpose();
+                    const Eigen::Matrix<real, vertex_dim, vertex_dim> dF_dxkd =
+                        Eigen::Matrix<real, vertex_dim, 1>::Unit(d) * grad_undeformed_sample_weights[j].col(k).transpose();
                     const real df_kd = -(dP.array() * dF_dxkd.array()).sum() * cell_volume_ / sample_num;
-                    df_int(2 * vi(k) + d) += df_kd;
+                    df_int(vertex_dim * vi(k) + d) += df_kd;
                 }
             }
         }
@@ -386,7 +397,8 @@ const VectorXr Deformable::ElasticForceDifferential(const VectorXr& q, const Vec
     return df_int;
 }
 
-const VectorXr Deformable::NewtonMatrixOp(const VectorXr& q_sol, const real h2m, const VectorXr& dq) const {
+template<int vertex_dim, int element_dim>
+const VectorXr Deformable<vertex_dim, element_dim>::NewtonMatrixOp(const VectorXr& q_sol, const real h2m, const VectorXr& dq) const {
     VectorXr dq_w_bonudary = dq;
     for (const auto& pair : dirichlet_) {
         const int dof = pair.first;
@@ -399,3 +411,6 @@ const VectorXr Deformable::NewtonMatrixOp(const VectorXr& q_sol, const real h2m,
     }
     return ret;
 }
+
+template class Deformable<2, 4>;
+template class Deformable<3, 8>;

@@ -2,7 +2,7 @@ import numpy as np
 from pathlib import Path
 import time
 import scipy.optimize
-from py_diff_pd.core.py_diff_pd_core import Mesh2d, Deformable, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import Mesh2d, Deformable2d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.common import to_std_map, to_std_real_vector
 from py_diff_pd.common.mesh import generate_rectangle_mesh
@@ -28,7 +28,7 @@ if __name__ == '__main__':
     density = 1e4
     method = 'newton'
     opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'rel_tol': 1e-2, 'verbose': 0 }
-    deformable = Deformable()
+    deformable = Deformable2d()
     deformable.Initialize(bin_file_name, density, 'corotated', youngs_modulus, poissons_ratio)
     # Boundary conditions.
     for i in range(cell_nums[0] + 1):

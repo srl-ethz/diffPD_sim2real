@@ -3,6 +3,7 @@
 
 #include "common/config.h"
 
+template<int dim>
 class Material {
 public:
     Material();
@@ -23,10 +24,12 @@ public:
         return mu_;
     }
 
-    virtual const real EnergyDensity(const Matrix2r& F) const = 0;
-    virtual const Matrix2r StressTensor(const Matrix2r& F) const = 0;
-    virtual const real EnergyDensityDifferential(const Matrix2r& F, const Matrix2r& dF) const = 0;
-    virtual const Matrix2r StressTensorDifferential(const Matrix2r& F, const Matrix2r& dF) const = 0;
+    virtual const real EnergyDensity(const Eigen::Matrix<real, dim, dim>& F) const = 0;
+    virtual const Eigen::Matrix<real, dim, dim> StressTensor(const Eigen::Matrix<real, dim, dim>& F) const = 0;
+    virtual const real EnergyDensityDifferential(const Eigen::Matrix<real, dim, dim>& F,
+        const Eigen::Matrix<real, dim, dim>& dF) const = 0;
+    virtual const Eigen::Matrix<real, dim, dim> StressTensorDifferential(const Eigen::Matrix<real, dim, dim>& F,
+        const Eigen::Matrix<real, dim, dim>& dF) const = 0;
 
 private:
     real youngs_modulus_;

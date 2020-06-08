@@ -1,6 +1,6 @@
 import numpy as np
 from pathlib import Path
-from py_diff_pd.core.py_diff_pd_core import Deformable, Mesh2d, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import Deformable2d, Mesh2d, StdRealVector
 from py_diff_pd.common.common import ndarray, create_folder, to_std_real_vector, to_std_map
 from py_diff_pd.common.common import print_info
 from py_diff_pd.common.display import display_quad_mesh, export_gif
@@ -31,7 +31,7 @@ if __name__ == '__main__':
     mesh = Mesh2d()
     mesh.Initialize(str(bin_file_name))
 
-    deformable = Deformable()
+    deformable = Deformable2d()
     deformable.Initialize(str(bin_file_name), density, 'corotated', youngs_modulus, poissons_ratio)
     # Boundary conditions.
     deformable.SetDirichletBoundaryCondition(0, mesh.py_vertex(0)[0])

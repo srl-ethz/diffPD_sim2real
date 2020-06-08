@@ -3,12 +3,15 @@
 
 #include "material/material.h"
 
-class CorotatedMaterial : public Material {
+template<int dim>
+class CorotatedMaterial : public Material<dim> {
 public:
-    const real EnergyDensity(const Matrix2r& F) const override;
-    const Matrix2r StressTensor(const Matrix2r& F) const override;
-    const real EnergyDensityDifferential(const Matrix2r& F, const Matrix2r& dF) const override;
-    const Matrix2r StressTensorDifferential(const Matrix2r& F, const Matrix2r& dF) const override;
+    const real EnergyDensity(const Eigen::Matrix<real, dim, dim>& F) const override;
+    const Eigen::Matrix<real, dim, dim> StressTensor(const Eigen::Matrix<real, dim, dim>& F) const override;
+    const real EnergyDensityDifferential(const Eigen::Matrix<real, dim, dim>& F,
+        const Eigen::Matrix<real, dim, dim>& dF) const override;
+    const Eigen::Matrix<real, dim, dim> StressTensorDifferential(const Eigen::Matrix<real, dim, dim>& F,
+        const Eigen::Matrix<real, dim, dim>& dF) const override;
 };
 
 #endif

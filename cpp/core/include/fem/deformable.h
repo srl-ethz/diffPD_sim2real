@@ -5,6 +5,7 @@
 #include "mesh/mesh.h"
 #include "material/material.h"
 
+template<int vertex_dim, int element_dim>
 class Deformable {
 public:
     Deformable();
@@ -12,7 +13,8 @@ public:
     // Initialize with the undeformed shape.
     void Initialize(const std::string& binary_file_name, const real density,
         const std::string& material_type, const real youngs_modulus, const real poissons_ratio);
-    void Initialize(const Matrix2Xr& vertices, const Matrix4Xi& faces, const real density,
+    void Initialize(const Eigen::Matrix<real, vertex_dim, -1>& vertices,
+        const Eigen::Matrix<int, element_dim, -1>& faces, const real density,
         const std::string& material_type, const real youngs_modulus, const real poissons_ratio);
 
     const real density() const { return density_; }
@@ -33,7 +35,7 @@ public:
         const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const;
-    void SaveToMeshFile(const VectorXr& q, const std::string& obj_file_name) const;
+    void SaveToMeshFile(const VectorXr& q, const std::string& file_name) const;
 
     // For Python binding.
     void PyForward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v,
@@ -44,14 +46,14 @@ public:
         const std::vector<real>& dl_dq_next, const std::vector<real>& dl_dv_next,
         const std::map<std::string, real>& options,
         std::vector<real>& dl_dq, std::vector<real>& dl_dv, std::vector<real>& dl_df_ext) const;
-    void PySaveToMeshFile(const std::vector<real>& q, const std::string& obj_file_name) const;
+    void PySaveToMeshFile(const std::vector<real>& q, const std::string& file_name) const;
 
     const VectorXr Apply(const VectorXr& x) const { return x; }
 
 private:
-    const std::shared_ptr<Material> InitializeMaterial(const std::string& material_type,
+    const std::shared_ptr<Material<vertex_dim>> InitializeMaterial(const std::string& material_type,
         const real youngs_modulus, const real poissons_ratio) const;
-    const real InitializeCellSize(const Mesh<2, 4>& mesh) const;
+    const real InitializeCellSize(const Mesh<vertex_dim, element_dim>& mesh) const;
 
     void ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
         const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
@@ -68,11 +70,11 @@ private:
 
     const VectorXr NewtonMatrixOp(const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
 
-    Mesh<2, 4> mesh_;
+    Mesh<vertex_dim, element_dim> mesh_;
     real density_;
     real cell_volume_;
     real dx_;
-    std::shared_ptr<Material> material_;
+    std::shared_ptr<Material<vertex_dim>> material_;
     int dofs_;
 
     // Boundary conditions.
