@@ -2,7 +2,7 @@
 #define FEM_DEFORMABLE_H
 
 #include "common/config.h"
-#include "mesh/quad_mesh.h"
+#include "mesh/mesh.h"
 #include "material/material.h"
 
 class Deformable {
@@ -10,7 +10,7 @@ public:
     Deformable();
 
     // Initialize with the undeformed shape.
-    void Initialize(const std::string& obj_file_name, const real density,
+    void Initialize(const std::string& binary_file_name, const real density,
         const std::string& material_type, const real youngs_modulus, const real poissons_ratio);
     void Initialize(const Matrix2Xr& vertices, const Matrix4Xi& faces, const real density,
         const std::string& material_type, const real youngs_modulus, const real poissons_ratio);
@@ -51,7 +51,7 @@ public:
 private:
     const std::shared_ptr<Material> InitializeMaterial(const std::string& material_type,
         const real youngs_modulus, const real poissons_ratio) const;
-    const real InitializeCellSize(const QuadMesh& mesh) const;
+    const real InitializeCellSize(const Mesh<2, 4>& mesh) const;
 
     void ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
         const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
@@ -68,7 +68,7 @@ private:
 
     const VectorXr NewtonMatrixOp(const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
 
-    QuadMesh mesh_;
+    Mesh<2, 4> mesh_;
     real density_;
     real cell_volume_;
     real dx_;

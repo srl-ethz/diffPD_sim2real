@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import collections as mc
-from py_diff_pd.core.py_diff_pd_core import QuadMesh
+from py_diff_pd.core.py_diff_pd_core import Mesh2d
 from py_diff_pd.common.common import ndarray
 
 def display_quad_mesh(quad_mesh, xlim=None, ylim=None, title=None, file_name=None, show=True):

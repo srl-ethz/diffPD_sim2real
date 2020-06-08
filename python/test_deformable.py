@@ -1,10 +1,10 @@
 import numpy as np
 from pathlib import Path
-from py_diff_pd.core.py_diff_pd_core import Deformable, QuadMesh, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import Deformable, Mesh2d, StdRealVector
 from py_diff_pd.common.common import ndarray, create_folder, to_std_real_vector, to_std_map
 from py_diff_pd.common.common import print_info
 from py_diff_pd.common.display import display_quad_mesh, export_gif
-from py_diff_pd.common.mesh import generate_rectangle_obj
+from py_diff_pd.common.mesh import generate_rectangle_mesh
 
 if __name__ == '__main__':
     # Uncomment the following line to try random seeds.
@@ -25,14 +25,14 @@ if __name__ == '__main__':
     # Initialization.
     folder = Path('test_deformable')
     create_folder(folder)
-    obj_file_name = folder / 'rectangle.obj'
-    generate_rectangle_obj(cell_nums, dx, (0, 0), obj_file_name)
+    bin_file_name = folder / 'rectangle.bin'
+    generate_rectangle_mesh(cell_nums, dx, (0, 0), bin_file_name)
 
-    mesh = QuadMesh()
-    mesh.Initialize(str(obj_file_name))
+    mesh = Mesh2d()
+    mesh.Initialize(str(bin_file_name))
 
     deformable = Deformable()
-    deformable.Initialize(str(obj_file_name), density, 'corotated', youngs_modulus, poissons_ratio)
+    deformable.Initialize(str(bin_file_name), density, 'corotated', youngs_modulus, poissons_ratio)
     # Boundary conditions.
     deformable.SetDirichletBoundaryCondition(0, mesh.py_vertex(0)[0])
     deformable.SetDirichletBoundaryCondition(1, mesh.py_vertex(0)[1])
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     f_ext = ndarray(f_ext)
     for i in range(num_frames):
         q_cur = np.copy(q[-1])
-        deformable.PySaveToMeshFile(to_std_real_vector(q_cur), str(folder / '{:04d}.obj'.format(i)))
+        deformable.PySaveToMeshFile(to_std_real_vector(q_cur), str(folder / '{:04d}.bin'.format(i)))
 
         v_cur = np.copy(v[-1])
         q_next_array = StdRealVector(dofs)
@@ -71,8 +71,8 @@ if __name__ == '__main__':
     frame_cnt = 0
     frame_skip = 20
     for i in range(0, num_frames, frame_skip):
-        mesh = QuadMesh()
-        mesh.Initialize(str(folder / '{:04d}.obj'.format(frame_cnt)))
+        mesh = Mesh2d()
+        mesh.Initialize(str(folder / '{:04d}.bin'.format(frame_cnt)))
         display_quad_mesh(mesh, xlim=[-0.5, 3], ylim=[-0.5, 2], title='Frame {:04d}'.format(i),
             file_name=folder / '{:04d}.png'.format(i), show=False)
         frame_cnt += 1

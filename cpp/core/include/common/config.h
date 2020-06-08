@@ -50,6 +50,7 @@ using MatrixX2r = Eigen::Matrix<real, -1, 2>;
 using MatrixX3r = Eigen::Matrix<real, -1, 3>;
 using Matrix2Xr = Eigen::Matrix<real, 2, -1>;
 using Matrix3Xr = Eigen::Matrix<real, 3, -1>;
+using MatrixXi = Eigen::Matrix<int, -1, -1>;
 using Matrix4Xi = Eigen::Matrix<int, 4, -1>;
 
 using SparseVector = Eigen::SparseVector<real>;

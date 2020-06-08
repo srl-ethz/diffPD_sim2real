@@ -138,3 +138,8 @@ const std::vector<real> ToStdVector(const VectorXr& v) {
 const VectorXr ToEigenVector(const std::vector<real>& v) {
     return Eigen::Map<const VectorXr>(v.data(), v.size());
 }
+
+const bool EndsWith(const std::string& full, const std::string& ending) {
+    return full.length() >= ending.length() &&
+        full.compare(full.length() - ending.length(), ending.length(), ending) == 0;
+}

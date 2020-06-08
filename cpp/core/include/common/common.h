@@ -41,4 +41,7 @@ const real Pi();
 const std::vector<real> ToStdVector(const VectorXr& v);
 const VectorXr ToEigenVector(const std::vector<real>& v);
 
+// String functions.
+const bool EndsWith(const std::string& full, const std::string& ending);
+
 #endif

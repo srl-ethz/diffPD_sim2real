@@ -37,7 +37,7 @@ const std::shared_ptr<Material> Deformable::InitializeMaterial(const std::string
     return material;
 }
 
-const real Deformable::InitializeCellSize(const QuadMesh& mesh) const {
+const real Deformable::InitializeCellSize(const Mesh<2, 4>& mesh) const {
     const int face_num = mesh.NumOfFaces();
     real dx_min = std::numeric_limits<real>::infinity();
     real dx_max = -std::numeric_limits<real>::infinity();
@@ -240,7 +240,7 @@ void Deformable::BackwardNewton(const VectorXr& q, const VectorXr& v, const Vect
 void Deformable::SaveToMeshFile(const VectorXr& q, const std::string& obj_file_name) const {
     CheckError(static_cast<int>(q.size()) == dofs_, "Inconsistent q size. " + std::to_string(q.size())
         + " != " + std::to_string(dofs_));
-    QuadMesh mesh;
+    Mesh<2, 4> mesh;
     mesh.Initialize(Eigen::Map<const Matrix2Xr>(q.data(), 2, dofs_ / 2), mesh_.faces());
     mesh.SaveToFile(obj_file_name);
 }

@@ -79,6 +79,15 @@ void Save<MatrixXr>(std::ofstream& f, const MatrixXr& val) {
 }
 
 template<>
+void Save<MatrixXi>(std::ofstream& f, const MatrixXi& val) {
+    const int row = static_cast<int>(val.rows());
+    const int col = static_cast<int>(val.cols());
+    Save<int>(f, row);
+    Save<int>(f, col);
+    for (int i = 0; i < row; ++i) for (int j = 0; j < col; ++j) Save<int>(f, val(i, j));
+}
+
+template<>
 void Save<VectorXr>(std::ofstream& f, const VectorXr& val) {
     const int len = static_cast<int>(val.size());
     Save<int>(f, len);
@@ -162,6 +171,15 @@ const MatrixXr Load<MatrixXr>(std::ifstream& f) {
     const int col = Load<int>(f);
     MatrixXr val(row, col);
     for (int i = 0; i < row; ++i) for (int j = 0; j < col; ++j) val(i, j) = Load<real>(f);
+    return val;
+}
+
+template<>
+const MatrixXi Load<MatrixXi>(std::ifstream& f) {
+    const int row = Load<int>(f);
+    const int col = Load<int>(f);
+    MatrixXi val(row, col);
+    for (int i = 0; i < row; ++i) for (int j = 0; j < col; ++j) val(i, j) = Load<int>(f);
     return val;
 }
 

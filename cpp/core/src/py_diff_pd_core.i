@@ -1,6 +1,6 @@
 %module py_diff_pd_core
 %{
-#include "../include/mesh/quad_mesh.h"
+#include "../include/mesh/mesh.h"
 #include "../include/fem/deformable.h"
 %}
 
@@ -21,7 +21,7 @@
 %include <std_string.i>
 %include <std_map.i>
 %include "../include/common/config.h"
-%include "../include/mesh/quad_mesh.h"
+%include "../include/mesh/mesh.h"
 %include "../include/fem/deformable.h"
 
 namespace std {
@@ -30,3 +30,6 @@ namespace std {
     %template(StdRealVector) vector<real>;
     %template(StdMap) map<string, real>;
 }
+
+%template(Mesh2d) Mesh<2, 4>;
+%template(Mesh3d) Mesh<3, 8>;

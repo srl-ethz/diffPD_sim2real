@@ -2,10 +2,10 @@ import numpy as np
 from pathlib import Path
 import time
 import scipy.optimize
-from py_diff_pd.core.py_diff_pd_core import QuadMesh, Deformable, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import Mesh2d, Deformable, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.common import to_std_map, to_std_real_vector
-from py_diff_pd.common.mesh import generate_rectangle_obj
+from py_diff_pd.common.mesh import generate_rectangle_mesh
 from py_diff_pd.common.display import display_quad_mesh, export_gif
 
 if __name__ == '__main__':
@@ -16,10 +16,10 @@ if __name__ == '__main__':
     cell_nums = (2, 4)
     dx = 0.1
     origin = (0, 0)
-    obj_file_name = str(folder / 'rectangle.obj')
-    generate_rectangle_obj(cell_nums, dx, origin, obj_file_name)
-    mesh = QuadMesh()
-    mesh.Initialize(obj_file_name)
+    bin_file_name = str(folder / 'rectangle.bin')
+    generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name)
+    mesh = Mesh2d()
+    mesh.Initialize(bin_file_name)
     vertex_num = mesh.NumOfVertices()
 
     # FEM parameters.
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     method = 'newton'
     opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'rel_tol': 1e-2, 'verbose': 0 }
     deformable = Deformable()
-    deformable.Initialize(obj_file_name, density, 'corotated', youngs_modulus, poissons_ratio)
+    deformable.Initialize(bin_file_name, density, 'corotated', youngs_modulus, poissons_ratio)
     # Boundary conditions.
     for i in range(cell_nums[0] + 1):
         node_idx = i * (cell_nums[1] + 1)
@@ -49,7 +49,7 @@ if __name__ == '__main__':
         v = [v0,]
         for i in range(frame_num):
             q_cur = q[-1]
-            deformable.PySaveToMeshFile(to_std_real_vector(q_cur), str(folder / f_folder / '{:04d}.obj'.format(i)))
+            deformable.PySaveToMeshFile(to_std_real_vector(q_cur), str(folder / f_folder / '{:04d}.bin'.format(i)))
 
             v_cur = v[-1]
             q_next_array = StdRealVector(dofs)
@@ -66,8 +66,8 @@ if __name__ == '__main__':
         frame_cnt = 0
         frame_skip = 1
         for i in range(0, frame_num, frame_skip):
-            mesh = QuadMesh()
-            mesh.Initialize(str(folder / f_folder / '{:04d}.obj'.format(frame_cnt)))
+            mesh = Mesh2d()
+            mesh.Initialize(str(folder / f_folder / '{:04d}.bin'.format(frame_cnt)))
             display_quad_mesh(mesh, xlim=[-dx, (cell_nums[0] + 1) * dx], ylim=[-dx, (cell_nums[1] + 1) * dx],
                 title='Frame {:04d}'.format(i), file_name=folder / f_folder / '{:04d}.png'.format(i), show=False)
             frame_cnt += 1
