@@ -30,10 +30,10 @@ def generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name):
                 f.write(struct.pack('i', i * (ny + 1) + j))
         for i in range(nx):
             for j in range(ny):
+                f.write(struct.pack('i', i * (ny + 1) + j + 1))
+        for i in range(nx):
+            for j in range(ny):
                 f.write(struct.pack('i', (i + 1) * (ny + 1) + j))
         for i in range(nx):
             for j in range(ny):
                 f.write(struct.pack('i', (i + 1) * (ny + 1) + j + 1))
-        for i in range(nx):
-            for j in range(ny):
-                f.write(struct.pack('i', i * (ny + 1) + j + 1))

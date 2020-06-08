@@ -13,9 +13,10 @@ def display_quad_mesh(quad_mesh, xlim=None, ylim=None, title=None, file_name=Non
     lines = []
     for i in range(face_num):
         f = ndarray(quad_mesh.py_face(i))
-        for j in range(4):
-            j0 = int(f[j])
-            j1 = int(f[(j + 1) % 4])
+        j01 = [(0, 1), (1, 3), (3, 2), (2, 0)]
+        for j0, j1 in j01:
+            j0 = int(f[j0])
+            j1 = int(f[j1])
             v0 = ndarray(quad_mesh.py_vertex(j0))
             v1 = ndarray(quad_mesh.py_vertex(j1))
             lines.append((v0, v1))

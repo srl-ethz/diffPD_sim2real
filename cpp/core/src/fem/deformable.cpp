@@ -48,12 +48,12 @@ const real Deformable::InitializeCellSize(const Mesh<2, 4>& mesh) const {
         for (int j = 0; j < 4; ++j) {
             undeformed.col(j) = mesh.vertex(vi(j));
         }
-        CheckError(undeformed(1, 0) == undeformed(1, 1) &&
-            undeformed(0, 1) == undeformed(0, 2) &&
-            undeformed(1, 2) == undeformed(1, 3) &&
-            undeformed(0, 3) == undeformed(0, 0), "Irregular undeformed shape.");
-        const real dx = undeformed(0, 1) - undeformed(0, 0);
-        const real dy = undeformed(1, 3) - undeformed(1, 0);
+        CheckError(undeformed(0, 0) == undeformed(0, 1) &&
+            undeformed(1, 1) == undeformed(1, 3) &&
+            undeformed(0, 2) == undeformed(0, 3) &&
+            undeformed(1, 2) == undeformed(1, 0), "Irregular undeformed shape.");
+        const real dx = undeformed(0, 2) - undeformed(0, 0);
+        const real dy = undeformed(1, 1) - undeformed(1, 0);
         dx_sum += dx + dy;
         if (dx < dx_min) dx_min = dx;
         if (dy < dx_min) dx_min = dy;
@@ -288,16 +288,15 @@ const VectorXr Deformable::ElasticForce(const VectorXr& q) const {
 
     // undeformed_samples = (u, v) \in [0, 1]^2.
     // phi(X) = (1 - u)(1 - v)x00 + (1 - u)v x01 + u(1 - v) x10 + uv x11.
-    // Note that the order of elements in the face are (x00, x10, x11, x01).
     std::array<Matrix2Xr, sample_num> grad_undeformed_sample_weights;   // d/dX.
     for (int i = 0; i < sample_num; ++i) {
         const Vector2r X = undeformed_samples.col(i);
         const real u = X(0), v = X(1);
         grad_undeformed_sample_weights[i] = Matrix2Xr::Zero(2, 4);
         grad_undeformed_sample_weights[i].col(0) = Vector2r(v - 1, u - 1);
-        grad_undeformed_sample_weights[i].col(1) = Vector2r(1 - v, -u);
-        grad_undeformed_sample_weights[i].col(2) = Vector2r(v, u);
-        grad_undeformed_sample_weights[i].col(3) = Vector2r(-v, 1 - u);
+        grad_undeformed_sample_weights[i].col(1) = Vector2r(-v, 1 - u);
+        grad_undeformed_sample_weights[i].col(2) = Vector2r(1 - v, -u);
+        grad_undeformed_sample_weights[i].col(3) = Vector2r(v, u);
     }
 
     for (int i = 0; i < face_num; ++i) {
@@ -343,16 +342,15 @@ const VectorXr Deformable::ElasticForceDifferential(const VectorXr& q, const Vec
 
     // undeformed_samples = (u, v) \in [0, 1]^2.
     // phi(X) = (1 - u)(1 - v)x00 + (1 - u)v x01 + u(1 - v) x10 + uv x11.
-    // Note that the order of elements in the face are (x00, x10, x11, x01).
     std::array<Matrix2Xr, sample_num> grad_undeformed_sample_weights;   // d/dX.
     for (int i = 0; i < sample_num; ++i) {
         const Vector2r X = undeformed_samples.col(i);
         const real u = X(0), v = X(1);
         grad_undeformed_sample_weights[i] = Matrix2Xr::Zero(2, 4);
         grad_undeformed_sample_weights[i].col(0) = Vector2r(v - 1, u - 1);
-        grad_undeformed_sample_weights[i].col(1) = Vector2r(1 - v, -u);
-        grad_undeformed_sample_weights[i].col(2) = Vector2r(v, u);
-        grad_undeformed_sample_weights[i].col(3) = Vector2r(-v, 1 - u);
+        grad_undeformed_sample_weights[i].col(1) = Vector2r(-v, 1 - u);
+        grad_undeformed_sample_weights[i].col(2) = Vector2r(1 - v, -u);
+        grad_undeformed_sample_weights[i].col(3) = Vector2r(v, u);
     }
 
     for (int i = 0; i < face_num; ++i) {
