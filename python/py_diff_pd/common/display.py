@@ -47,6 +47,9 @@ def display_quad_mesh(quad_mesh, xlim=None, ylim=None, title=None, file_name=Non
         plt.show()
     plt.close()
 
+def display_hex_mesh(quad_mesh, xlim=None, ylim=None, title=None, file_name=None, show=True):
+    pass
+
 import imageio
 import os
 def export_gif(folder_name, gif_name, fps, name_prefix=''):

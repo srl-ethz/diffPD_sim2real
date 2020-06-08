@@ -16,6 +16,6 @@ conda activate diff_pd
 ### Examples
 ```
 cd python
-python open_loop_demo.py
-eog open_loop_demo/final.gif
+python open_loop_demo_2d.py
+eog open_loop_demo_2d/final.gif
 ```

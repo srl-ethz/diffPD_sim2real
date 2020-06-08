@@ -2,43 +2,51 @@ import numpy as np
 from pathlib import Path
 import time
 import scipy.optimize
-from py_diff_pd.core.py_diff_pd_core import Mesh2d, Deformable2d, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.common import to_std_map, to_std_real_vector
-from py_diff_pd.common.mesh import generate_rectangle_mesh
-from py_diff_pd.common.display import display_quad_mesh, export_gif
+from py_diff_pd.common.mesh import generate_hex_mesh
+from py_diff_pd.common.display import display_hex_mesh, export_gif
 
 if __name__ == '__main__':
-    folder = Path('open_loop_demo')
+    seed = 42
+    np.random.seed(seed)
+    print_info('Seed: {}'.format(seed))
+
+    folder = Path('open_loop_demo_3d')
     create_folder(folder)
 
     # Mesh parameters.
-    cell_nums = (2, 4)
+    cell_nums = (2, 2, 4)
+    node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
     dx = 0.1
-    origin = (0, 0)
-    bin_file_name = str(folder / 'rectangle.bin')
-    generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name)
-    mesh = Mesh2d()
+    origin = (0, 0, 0)
+    bin_file_name = str(folder / 'cube.bin')
+    voxels = np.ones(cell_nums)
+    generate_hex_mesh(voxels, dx, origin, bin_file_name)
+    mesh = Mesh3d()
     mesh.Initialize(bin_file_name)
     vertex_num = mesh.NumOfVertices()
 
     # FEM parameters.
-    youngs_modulus = 1e5
+    youngs_modulus = 1e6
     poissons_ratio = 0.45
-    density = 1e4
+    density = 1e3
     method = 'newton'
     opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'rel_tol': 1e-2, 'verbose': 0 }
-    deformable = Deformable2d()
+    deformable = Deformable3d()
     deformable.Initialize(bin_file_name, density, 'corotated', youngs_modulus, poissons_ratio)
     # Boundary conditions.
-    for i in range(cell_nums[0] + 1):
-        node_idx = i * (cell_nums[1] + 1)
-        vx, vy = mesh.py_vertex(node_idx)
-        deformable.SetDirichletBoundaryCondition(2 * node_idx, vx)
-        deformable.SetDirichletBoundaryCondition(2 * node_idx + 1, vy)
+    for i in range(node_nums[0]):
+        for j in range(node_nums[1]):
+            node_idx = i * node_nums[1] * node_nums[2] + j * node_nums[2]
+            vx, vy, vz = mesh.py_vertex(node_idx)
+            deformable.SetDirichletBoundaryCondition(3 * node_idx, vx)
+            deformable.SetDirichletBoundaryCondition(3 * node_idx + 1, vy)
+            deformable.SetDirichletBoundaryCondition(3 * node_idx + 2, vz)
 
     # Forward simulation.
-    dt = 0.01
+    dt = 1e-2
     frame_num = 25
     dofs = deformable.dofs()
     q0 = ndarray(mesh.py_vertices())
@@ -66,16 +74,16 @@ if __name__ == '__main__':
         frame_cnt = 0
         frame_skip = 1
         for i in range(0, frame_num, frame_skip):
-            mesh = Mesh2d()
+            mesh = Mesh3d()
             mesh.Initialize(str(folder / f_folder / '{:04d}.bin'.format(frame_cnt)))
-            display_quad_mesh(mesh, xlim=[-dx, (cell_nums[0] + 1) * dx], ylim=[-dx, (cell_nums[1] + 1) * dx],
+            display_hex_mesh(mesh, xlim=[-dx, (cell_nums[0] + 1) * dx], ylim=[-dx, (cell_nums[1] + 1) * dx],
                 title='Frame {:04d}'.format(i), file_name=folder / f_folder / '{:04d}.png'.format(i), show=False)
             frame_cnt += 1
 
         export_gif(folder / f_folder, '{}.gif'.format(str(folder / f_folder)), 10)
 
     # Optimization.
-    target_position = ndarray([(cell_nums[0] + 0.5) * dx, (cell_nums[1] - 0.5) * dx])
+    target_position = ndarray([(cell_nums[0] + 0.5) * dx, (cell_nums[1] + 0.5) * dx, (cell_nums[2] - 0.5) * dx])
     def loss_and_grad(f, verbose):
         t_begin = time.time()
         q = [to_std_real_vector(q0),]
@@ -90,13 +98,13 @@ if __name__ == '__main__':
             q.append(q_next_array)
             v.append(v_next_array)
         # Compute the loss.
-        target_q = ndarray(q[-1])[-2:]
+        target_q = ndarray(q[-1])[-3:]
         loss = np.sum((target_q - target_position) ** 2)
 
         # Compute the gradients.
         grad = np.zeros(f.size)
         dl_dq_next = np.zeros(dofs)
-        dl_dq_next[-2:] = 2 * (target_q - target_position)
+        dl_dq_next[-3:] = 2 * (target_q - target_position)
         dl_dv_next = np.zeros(f.size)
         dl_dq_next = to_std_real_vector(dl_dq_next)
         dl_dv_next = to_std_real_vector(dl_dv_next)
@@ -118,10 +126,10 @@ if __name__ == '__main__':
 
     # Now check the gradients.
     from py_diff_pd.common.grad_check import check_gradients
-    eps = 1e-4
+    eps = 1e-5
     atol = 1e-4
     rtol = 1e-2
-    x0 = np.random.normal(size=dofs) * density * dx * dx
+    x0 = np.random.normal(size=dofs) * density * dx * dx * dx
     print_info('Checking gradients...')
     check_gradients(lambda x: loss_and_grad(x, False), x0, eps, atol, rtol, True)
 
