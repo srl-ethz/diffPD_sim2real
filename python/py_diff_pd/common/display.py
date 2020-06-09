@@ -124,7 +124,8 @@ def export_gif(folder_name, gif_name, fps, name_prefix=''):
 
 def render_hex_mesh(hex_mesh, file_name,
     resolution=(800, 800), sample=128, max_depth=4,
-    camera_pos=(2, -2.2, 2), camera_lookat=(0.5, 0.5, 0.5), camear_up=(0, 0, 1), fov=33):
+    camera_pos=(2, -2.2, 2), camera_lookat=(0.5, 0.5, 0.5), camear_up=(0, 0, 1), fov=33,
+    translate=(0, 0, 0), scale=1.):
     from py_diff_pd.common.project_path import root_path
     from py_diff_pd.common.mesh import hex2obj
 
@@ -178,13 +179,15 @@ def render_hex_mesh(hex_mesh, file_name,
         f.write('\n')
         f.write('AttributeBegin\n')
         f.write('Material "plastic" "color Kd" [.4 .4 .4] "color Ks" [.4 .4 .4] "float roughness" .03\n')
+        f.write('Scale {:f} {:f} {:f}\n'.format(scale, scale, scale))
+        f.write('Translate {:f} {:f} {:f}\n'.format(translate[0], translate[1], translate[2]))
         f.write('Include "{}"\n'.format(scene_file_name))
         f.write('AttributeEnd\n')
 
         f.write('\n')
         f.write('WorldEnd\n')
 
-    os.system('{} {}'.format(str(root / 'external/pbrt_build/pbrt'), pbrt_script))
+    os.system('{} {} --quiet'.format(str(root / 'external/pbrt_build/pbrt'), pbrt_script))
 
     os.remove(scene_file_name)
     os.remove(obj_file_name)

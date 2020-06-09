@@ -6,7 +6,7 @@ from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.common import to_std_map, to_std_real_vector
 from py_diff_pd.common.mesh import generate_hex_mesh
-from py_diff_pd.common.display import display_hex_mesh, export_gif
+from py_diff_pd.common.display import display_hex_mesh, render_hex_mesh, export_gif
 
 if __name__ == '__main__':
     seed = 42
@@ -14,6 +14,9 @@ if __name__ == '__main__':
     print_info('Seed: {}'.format(seed))
 
     folder = Path('open_loop_demo_3d')
+    check_grad = False
+    display_method = 'pbrt' # 'matplotlib' or 'pbrt'.
+    render_samples = 4
     create_folder(folder)
 
     # Mesh parameters.
@@ -76,8 +79,12 @@ if __name__ == '__main__':
         for i in range(0, frame_num, frame_skip):
             mesh = Mesh3d()
             mesh.Initialize(str(folder / f_folder / '{:04d}.bin'.format(frame_cnt)))
-            display_hex_mesh(mesh, xlim=[-dx, (cell_nums[0] + 1) * dx], ylim=[-dx, (cell_nums[1] + 1) * dx],
-                title='Frame {:04d}'.format(i), file_name=folder / f_folder / '{:04d}.png'.format(i), show=False)
+            if display_method == 'pbrt':
+                render_hex_mesh(mesh, file_name=folder / f_folder / '{:04d}.png'.format(i), sample=render_samples,
+                    translate=(.1, .1, 0), scale=2.5)
+            elif display_method == 'matplotlib':
+                display_hex_mesh(mesh, xlim=[-dx, (cell_nums[0] + 1) * dx], ylim=[-dx, (cell_nums[1] + 1) * dx],
+                    title='Frame {:04d}'.format(i), file_name=folder / f_folder / '{:04d}.png'.format(i), show=False)
             frame_cnt += 1
 
         export_gif(folder / f_folder, '{}.gif'.format(str(folder / f_folder)), 10)
@@ -125,13 +132,14 @@ if __name__ == '__main__':
         return loss, grad
 
     # Now check the gradients.
-    from py_diff_pd.common.grad_check import check_gradients
-    eps = 1e-5
-    atol = 1e-4
-    rtol = 1e-2
     x0 = np.random.normal(size=dofs) * density * dx * dx * dx
-    print_info('Checking gradients...')
-    check_gradients(lambda x: loss_and_grad(x, False), x0, eps, atol, rtol, True)
+    if check_grad:
+        from py_diff_pd.common.grad_check import check_gradients
+        eps = 1e-5
+        atol = 1e-4
+        rtol = 1e-2
+        print_info('Checking gradients...')
+        check_gradients(lambda x: loss_and_grad(x, False), x0, eps, atol, rtol, True)
 
     # Optimize for the control signal.
     print_info('Optimizing control signals...')
