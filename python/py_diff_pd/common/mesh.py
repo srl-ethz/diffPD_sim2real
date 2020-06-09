@@ -6,7 +6,7 @@ def generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name):
     nx, ny = cell_nums
     with open(bin_file_name, 'wb') as f:
         vertex_num = (nx + 1) * (ny + 1)
-        face_num = nx * ny
+        element_num = nx * ny
         f.write(struct.pack('i', 2))
         f.write(struct.pack('i', 4))
         # Vertices.
@@ -23,7 +23,7 @@ def generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name):
 
         # Faces.
         f.write(struct.pack('i', 4))
-        f.write(struct.pack('i', face_num))
+        f.write(struct.pack('i', element_num))
         for i in range(nx):
             for j in range(ny):
                 f.write(struct.pack('i', i * (ny + 1) + j))

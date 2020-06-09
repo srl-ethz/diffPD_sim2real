@@ -1,18 +1,19 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import collections as mc
 from py_diff_pd.core.py_diff_pd_core import Mesh2d
 from py_diff_pd.common.common import ndarray
 
 def display_quad_mesh(quad_mesh, xlim=None, ylim=None, title=None, file_name=None, show=True):
     vertex_num = quad_mesh.NumOfVertices()
-    face_num = quad_mesh.NumOfElements()
+    element_num = quad_mesh.NumOfElements()
 
     fig = plt.figure()
     ax = fig.add_subplot()
     lines = []
-    for i in range(face_num):
-        f = ndarray(quad_mesh.py_face(i))
+    for i in range(element_num):
+        f = ndarray(quad_mesh.py_element(i))
         j01 = [(0, 1), (1, 3), (3, 2), (2, 0)]
         for j0, j1 in j01:
             j0 = int(f[j0])
@@ -47,8 +48,63 @@ def display_quad_mesh(quad_mesh, xlim=None, ylim=None, title=None, file_name=Non
         plt.show()
     plt.close()
 
-def display_hex_mesh(quad_mesh, xlim=None, ylim=None, title=None, file_name=None, show=True):
-    pass
+def display_hex_mesh(hex_mesh, xlim=None, ylim=None, zlim=None, title=None, file_name=None, show=True):
+    vertex_num = hex_mesh.NumOfVertices()
+    element_num = hex_mesh.NumOfElements()
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    x_min, y_min, z_min = np.inf, np.inf, np.inf
+    x_max, y_max, z_max = -np.inf, -np.inf, -np.inf
+    for e in range(element_num):
+        f = ndarray(hex_mesh.py_element(e))
+        v = []
+        for i in range(8):
+            v.append(hex_mesh.py_vertex(int(f[i])))
+        v = ndarray(v)
+        x_min = np.min([x_min, np.min(v[:, 0])])
+        x_max = np.max([x_max, np.max(v[:, 0])])
+        y_min = np.min([y_min, np.min(v[:, 1])])
+        y_max = np.max([y_max, np.max(v[:, 1])])
+        z_min = np.min([z_min, np.min(v[:, 2])])
+        z_max = np.max([z_max, np.max(v[:, 2])])
+        lines = [(0, 1), (1, 3), (3, 2), (2, 0),
+            (4, 5), (5, 7), (7, 6), (6, 4),
+            (0, 4), (1, 5), (2, 6), (3, 7)]
+        for i, j in lines:
+            ax.plot([v[i, 0], v[j, 0]], [v[i, 1], v[j, 1]], [v[i, 2], v[j, 2]], color='tab:red')
+
+    padding = 0.5
+    x_min = np.min(v[:, 0]) - padding
+    x_max = np.max(v[:, 0]) + padding
+    y_min = np.min(v[:, 1]) - padding
+    y_max = np.max(v[:, 1]) + padding
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_zlabel('z')
+    if xlim is None:
+        ax.set_xlim([x_min, x_max])
+    else:
+        ax.set_xlim(xlim)
+    if ylim is None:
+        ax.set_ylim([y_min, y_max])
+    else:
+        ax.set_ylim(ylim)
+    if zlim is None:
+        ax.set_zlim([z_min, z_max])
+    else:
+        ax.set_zlim(zlim)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_zticks([])
+    if title is not None:
+        ax.set_title(title)
+    if file_name is not None:
+        fig.savefig(file_name)
+    if show:
+        plt.show()
+    plt.close()
 
 import imageio
 import os

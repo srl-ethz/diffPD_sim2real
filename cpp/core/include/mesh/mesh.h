@@ -35,10 +35,10 @@ public:
         const VectorXr q(Eigen::Map<const VectorXr>(vertices_.data(), vertices_.size()));
         return ToStdVector(q);
     }
-    const Eigen::Matrix<int, element_dim, 1> face(const int i) const {
+    const Eigen::Matrix<int, element_dim, 1> element(const int i) const {
         return elements_.col(i);
     }
-    const std::array<int, element_dim> py_face(const int i) const {
+    const std::array<int, element_dim> py_element(const int i) const {
         std::array<int, element_dim> ret;
         for (int j = 0; j < element_dim; ++j) ret[j] = elements_(j, i);
         return ret;

@@ -45,8 +45,8 @@ const std::shared_ptr<Material<vertex_dim>> Deformable<vertex_dim, element_dim>:
 
 template<int vertex_dim, int element_dim>
 const real Deformable<vertex_dim, element_dim>::InitializeCellSize(const Mesh<vertex_dim, element_dim>& mesh) const {
-    const Eigen::Matrix<real, vertex_dim, 1> p0 = mesh.vertex(mesh.face(0)(0));
-    const Eigen::Matrix<real, vertex_dim, 1> p1 = mesh.vertex(mesh.face(0)(1));
+    const Eigen::Matrix<real, vertex_dim, 1> p0 = mesh.vertex(mesh.element(0)(0));
+    const Eigen::Matrix<real, vertex_dim, 1> p1 = mesh.vertex(mesh.element(0)(1));
     return (p1 - p0).norm();
 }
 
@@ -269,7 +269,7 @@ void Deformable<vertex_dim, element_dim>::PySaveToMeshFile(const std::vector<rea
 
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr& q) const {
-    const int face_num = mesh_.NumOfElements();
+    const int element_num = mesh_.NumOfElements();
     VectorXr f_int = VectorXr::Zero(dofs_);
 
     const int sample_num = element_dim;
@@ -301,8 +301,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr&
         }
     }
 
-    for (int i = 0; i < face_num; ++i) {
-        const Eigen::Matrix<int, element_dim, 1> vi = mesh_.face(i);
+    for (int i = 0; i < element_num; ++i) {
+        const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
         // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
         // when we load the obj file.
         Eigen::Matrix<real, vertex_dim, element_dim> deformed;
@@ -332,7 +332,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr&
 
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const {
-    const int face_num = mesh_.NumOfElements();
+    const int element_num = mesh_.NumOfElements();
     VectorXr df_int = VectorXr::Zero(dofs_);
 
     const int sample_num = element_dim;
@@ -364,8 +364,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::ElasticForceDifferential(con
         }
     }
 
-    for (int i = 0; i < face_num; ++i) {
-        const Eigen::Matrix<int, element_dim, 1> vi = mesh_.face(i);
+    for (int i = 0; i < element_num; ++i) {
+        const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
         // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
         // when we load the obj file.
         Eigen::Matrix<real, vertex_dim, element_dim> deformed, ddeformed;
