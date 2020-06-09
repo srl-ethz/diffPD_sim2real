@@ -8,17 +8,17 @@ void Mesh<vertex_dim, element_dim>::Initialize(const std::string& binary_file_na
     const int e_dim = Load<int>(fin);
     CheckError(v_dim == vertex_dim && e_dim == element_dim, "Corrupted mesh file: " + binary_file_name);
     const MatrixXr vertices = Load<MatrixXr>(fin);
-    const MatrixXi faces = Load<MatrixXi>(fin);
-    CheckError(vertices.rows() == vertex_dim && faces.rows() == element_dim, "Inconsistent mesh matrix size.");
+    const MatrixXi elements = Load<MatrixXi>(fin);
+    CheckError(vertices.rows() == vertex_dim && elements.rows() == element_dim, "Inconsistent mesh matrix size.");
     vertices_ = vertices;
-    faces_ = faces;
+    elements_ = elements;
 }
 
 template<int vertex_dim, int element_dim>
 void Mesh<vertex_dim, element_dim>::Initialize(const Eigen::Matrix<real, vertex_dim, -1>& vertices,
-    const Eigen::Matrix<int, element_dim, -1>& faces) {
+    const Eigen::Matrix<int, element_dim, -1>& elements) {
     vertices_ = vertices;
-    faces_ = faces;
+    elements_ = elements;
 }
 
 template<int vertex_dim, int element_dim>
@@ -35,7 +35,7 @@ void Mesh<vertex_dim, element_dim>::SaveToBinaryFile(const std::string& binary_f
     Save<int>(fout, vertex_dim);
     Save<int>(fout, element_dim);
     Save<MatrixXr>(fout, vertices_);
-    Save<MatrixXi>(fout, faces_);
+    Save<MatrixXi>(fout, elements_);
 }
 
 template<int vertex_dim, int element_dim>

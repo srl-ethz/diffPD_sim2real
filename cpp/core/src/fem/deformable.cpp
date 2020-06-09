@@ -20,9 +20,9 @@ void Deformable<vertex_dim, element_dim>::Initialize(const std::string& binary_f
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::Initialize(const Eigen::Matrix<real, vertex_dim, -1>& vertices,
-    const Eigen::Matrix<int, element_dim, -1>& faces, const real density,
+    const Eigen::Matrix<int, element_dim, -1>& elements, const real density,
     const std::string& material_type, const real youngs_modulus, const real poissons_ratio) {
-    mesh_.Initialize(vertices, faces);
+    mesh_.Initialize(vertices, elements);
     density_ = density;
     dx_ = InitializeCellSize(mesh_);
     cell_volume_ = ToReal(std::pow(dx_, vertex_dim));
@@ -232,7 +232,7 @@ void Deformable<vertex_dim, element_dim>::SaveToMeshFile(const VectorXr& q, cons
     CheckError(static_cast<int>(q.size()) == dofs_, "Inconsistent q size. " + std::to_string(q.size())
         + " != " + std::to_string(dofs_));
     Mesh<vertex_dim, element_dim> mesh;
-    mesh.Initialize(Eigen::Map<const MatrixXr>(q.data(), vertex_dim, dofs_ / vertex_dim), mesh_.faces());
+    mesh.Initialize(Eigen::Map<const MatrixXr>(q.data(), vertex_dim, dofs_ / vertex_dim), mesh_.elements());
     mesh.SaveToFile(obj_file_name);
 }
 
@@ -269,7 +269,7 @@ void Deformable<vertex_dim, element_dim>::PySaveToMeshFile(const std::vector<rea
 
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr& q) const {
-    const int face_num = mesh_.NumOfFaces();
+    const int face_num = mesh_.NumOfElements();
     VectorXr f_int = VectorXr::Zero(dofs_);
 
     const int sample_num = element_dim;
@@ -332,7 +332,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr&
 
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const {
-    const int face_num = mesh_.NumOfFaces();
+    const int face_num = mesh_.NumOfElements();
     VectorXr df_int = VectorXr::Zero(dofs_);
 
     const int sample_num = element_dim;

@@ -6,7 +6,7 @@ from py_diff_pd.common.common import ndarray
 
 def display_quad_mesh(quad_mesh, xlim=None, ylim=None, title=None, file_name=None, show=True):
     vertex_num = quad_mesh.NumOfVertices()
-    face_num = quad_mesh.NumOfFaces()
+    face_num = quad_mesh.NumOfElements()
 
     fig = plt.figure()
     ax = fig.add_subplot()

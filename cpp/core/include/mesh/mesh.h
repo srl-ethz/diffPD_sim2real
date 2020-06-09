@@ -11,17 +11,17 @@ public:
 
     void Initialize(const std::string& binary_file_name);
     void Initialize(const Eigen::Matrix<real, vertex_dim, -1>& vertices,
-        const Eigen::Matrix<int, element_dim, -1>& faces);
+        const Eigen::Matrix<int, element_dim, -1>& elements);
     void SaveToFile(const std::string& file_name) const;
 
     const Eigen::Matrix<real, vertex_dim, -1>& vertices() const { return vertices_; }
-    const Eigen::Matrix<int, element_dim, -1>& faces() const { return faces_; }
+    const Eigen::Matrix<int, element_dim, -1>& elements() const { return elements_; }
 
     const int NumOfVertices() const {
         return static_cast<int>(vertices_.cols());
     }
-    const int NumOfFaces() const {
-        return static_cast<int>(faces_.cols());
+    const int NumOfElements() const {
+        return static_cast<int>(elements_.cols());
     }
     const Eigen::Matrix<real, vertex_dim, 1> vertex(const int i) const {
         return vertices_.col(i);
@@ -36,11 +36,11 @@ public:
         return ToStdVector(q);
     }
     const Eigen::Matrix<int, element_dim, 1> face(const int i) const {
-        return faces_.col(i);
+        return elements_.col(i);
     }
     const std::array<int, element_dim> py_face(const int i) const {
         std::array<int, element_dim> ret;
-        for (int j = 0; j < element_dim; ++j) ret[j] = faces_(j, i);
+        for (int j = 0; j < element_dim; ++j) ret[j] = elements_(j, i);
         return ret;
     }
 
@@ -49,7 +49,7 @@ private:
     void SaveToObjFile(const std::string& obj_file_name) const;
 
     Eigen::Matrix<real, vertex_dim, -1> vertices_;
-    Eigen::Matrix<int, element_dim, -1> faces_;
+    Eigen::Matrix<int, element_dim, -1> elements_;
 };
 
 #endif
