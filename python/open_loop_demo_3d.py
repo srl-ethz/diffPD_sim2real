@@ -131,7 +131,7 @@ if __name__ == '__main__':
     rtol = 1e-2
     x0 = np.random.normal(size=dofs) * density * dx * dx * dx
     print_info('Checking gradients...')
-    #check_gradients(lambda x: loss_and_grad(x, False), x0, eps, atol, rtol, True)
+    check_gradients(lambda x: loss_and_grad(x, False), x0, eps, atol, rtol, True)
 
     # Optimize for the control signal.
     print_info('Optimizing control signals...')

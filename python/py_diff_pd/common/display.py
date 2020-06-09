@@ -1,4 +1,6 @@
 import numpy as np
+import os
+from pathlib import Path
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import collections as mc
@@ -119,3 +121,71 @@ def export_gif(folder_name, gif_name, fps, name_prefix=''):
         imageio.mimsave(gif_name, images, fps=fps)
     else:
         imageio.mimsave(gif_name, images)
+
+def render_hex_mesh(hex_mesh, file_name,
+    resolution=(800, 800), sample=128, max_depth=4,
+    camera_pos=(2, -2.2, 2), camera_lookat=(0.5, 0.5, 0.5), camear_up=(0, 0, 1), fov=33):
+    from py_diff_pd.common.project_path import root_path
+    from py_diff_pd.common.mesh import hex2obj
+
+    root = Path(root_path)
+    # Create a pbrt script.
+    pbrt_script = '.tmp.pbrt'
+    obj_file_name = '.tmp.obj'
+    scene_file_name = '.scene.pbrt'
+    hex2obj(hex_mesh, obj_file_name)
+    os.system('{} {} {}'.format(str(root / 'external/pbrt_build/obj2pbrt'), obj_file_name, scene_file_name))
+
+    x_res, y_res = resolution
+    with open(pbrt_script, 'w') as f:
+        f.write('Film "image" "integer xresolution" [{:d}] "integer yresolution" [{:d}]\n'.format(x_res, y_res))
+        f.write('    "string filename" "{}"\n'.format(file_name))
+        
+        f.write('\n')
+        f.write('Sampler "halton" "integer pixelsamples" [{:d}]\n'.format(sample))
+        f.write('Integrator "path" "integer maxdepth" {:d}\n'.format(max_depth))
+
+        f.write('\n')
+        f.write('LookAt {:f} {:f} {:f} {:f} {:f} {:f} {:f} {:f} {:f}\n'.format(
+            camera_pos[0], camera_pos[1], camera_pos[2],
+            camera_lookat[0], camera_lookat[1], camera_lookat[2],
+            camear_up[0], camear_up[1], camear_up[2]))
+        f.write('Camera "perspective" "float fov" [{:f}]\n'.format(fov))
+
+        f.write('\n')
+        f.write('WorldBegin\n')
+
+        f.write('\n')
+        f.write('AttributeBegin\n')
+        f.write('Rotate 90 0 0 1\n')
+        f.write('Rotate -90 1 0 0\n')
+        f.write('LightSource "infinite" "string mapname" "{}" "color scale" [2.5 2.5 2.5]\n'.format(
+            str(root / 'asset/texture/lightmap.exr')
+        ))
+        f.write('AttributeEnd\n')
+
+        f.write('\n')
+        f.write('AttributeBegin\n')
+        f.write('Texture "lines" "color" "imagemap" "string filename" "{}"\n'.format(
+            str(root / 'asset/texture/lines.exr')
+        ))
+        f.write('Material "plastic"\n')
+        f.write('    "color Kd" [.1 .1 .1] "color Ks" [.7 .7 .7] "float roughness" .1\n')
+        f.write('Shape "trianglemesh"\n')
+        f.write('"point P" [ -1000 -1000 0   1000 -1000 0   1000 1000 0 -1000 1000 0 ] "integer indices" [ 0 1 2 2 3 0]\n')
+        f.write('AttributeEnd\n')
+
+        f.write('\n')
+        f.write('AttributeBegin\n')
+        f.write('Material "plastic" "color Kd" [.4 .4 .4] "color Ks" [.4 .4 .4] "float roughness" .03\n')
+        f.write('Include "{}"\n'.format(scene_file_name))
+        f.write('AttributeEnd\n')
+
+        f.write('\n')
+        f.write('WorldEnd\n')
+
+    os.system('{} {}'.format(str(root / 'external/pbrt_build/pbrt'), pbrt_script))
+
+    os.remove(scene_file_name)
+    os.remove(obj_file_name)
+    os.remove(pbrt_script)

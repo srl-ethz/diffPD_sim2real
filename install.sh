@@ -21,3 +21,8 @@ make -j4
 cd ../core/src/
 mv py_diff_pd_core.py ../../../python/py_diff_pd/core
 mv ../../build/libpy_diff_pd_core.so ../../../python/py_diff_pd/core/_py_diff_pd_core.so
+
+# Log absolute path.
+cd ../../../
+root_path=$(pwd)
+printf "root_path = '%s'\n" "$root_path" > python/py_diff_pd/common/project_path.py
