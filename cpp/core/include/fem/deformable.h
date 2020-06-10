@@ -9,6 +9,7 @@ template<int vertex_dim, int element_dim>
 class Deformable {
 public:
     Deformable();
+    virtual ~Deformable() {}
 
     // Initialize with the undeformed shape.
     void Initialize(const std::string& binary_file_name, const real density,
@@ -21,6 +22,8 @@ public:
     const real cell_volume() const { return cell_volume_; }
     const real dx() const { return dx_; }
     const int dofs() const { return dofs_; }
+    const Mesh<vertex_dim, element_dim>& mesh() const { return mesh_; }
+    const std::map<int, real>& dirichlet() const { return dirichlet_; }
 
     void SetDirichletBoundaryCondition(const int dof, const real val) {
         dirichlet_[dof] = val;
@@ -50,24 +53,28 @@ public:
 
     const VectorXr Apply(const VectorXr& x) const { return x; }
 
-private:
-    const std::shared_ptr<Material<vertex_dim>> InitializeMaterial(const std::string& material_type,
-        const real youngs_modulus, const real poissons_ratio) const;
-    const real InitializeCellSize(const Mesh<vertex_dim, element_dim>& mesh) const;
+    const VectorXr ElasticForce(const VectorXr& q) const;
+    const VectorXr ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const;
 
-    void ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
+protected:
+    virtual void ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
         const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
-    void ForwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
+    virtual void ForwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
         const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
 
-    void BackwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
+    virtual void BackwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
+        const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
+        const std::map<std::string, real>& options,
+        VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const;
+    virtual void BackwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
         const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const;
 
-    const VectorXr ElasticForce(const VectorXr& q) const;
-    const VectorXr ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const;
-
+private:
+    const std::shared_ptr<Material<vertex_dim>> InitializeMaterial(const std::string& material_type,
+        const real youngs_modulus, const real poissons_ratio) const;
+    const real InitializeCellSize(const Mesh<vertex_dim, element_dim>& mesh) const;
     const VectorXr NewtonMatrixOp(const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
 
     Mesh<vertex_dim, element_dim> mesh_;

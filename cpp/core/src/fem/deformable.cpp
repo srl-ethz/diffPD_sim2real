@@ -105,6 +105,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const VectorXr& q, const
     const real mass = density_ * cell_volume_;
     const real h2m = dt * dt / mass;
     const VectorXr rhs = q + dt * v + h2m * f_ext;
+    VectorXr selected = VectorXr::Ones(dofs_);
     // q_next - h2m * f_int(q_next) = rhs.
     VectorXr q_sol = rhs;
     // Enforce boundary conditions.
@@ -115,6 +116,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const VectorXr& q, const
             PrintWarning("Inconsistent dirichlet boundary conditions at q(" + std::to_string(dof)
                 + "): " + std::to_string(q(dof)) + " != " + std::to_string(val));
         q_sol(dof) = val;
+        selected(dof) = 0;
     }
     VectorXr force_sol = ElasticForce(q_sol);
     if (verbose_level > 0) PrintInfo("Newton's method");
@@ -156,7 +158,8 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const VectorXr& q, const
 
         // Check for convergence.
         const VectorXr lhs = q_sol_next - h2m * force_next;
-        const real rel_error = (lhs - rhs).norm() / rhs.norm();
+        const real rel_error = VectorXr((lhs - rhs).array() * selected.array()).norm()
+            / VectorXr(selected.array() * rhs.array()).norm();
         if (verbose_level > 0) std::cout << "Relative error: " << rel_error << std::endl;
         if (rel_error < rel_tol) {
             q_next = q_sol_next;
@@ -176,11 +179,22 @@ void Deformable<vertex_dim, element_dim>::Backward(const std::string& method, co
     const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
     const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
-    if (method == "newton")
+    if (method == "semi_implicit")
+        BackwardSemiImplicit(q, v, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
+            dl_dq, dl_dv, dl_df_ext);
+    else if (method == "newton")
         BackwardNewton(q, v, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
             dl_dq, dl_dv, dl_df_ext);
     else
         PrintError("Unsupported backward method: " + method);
+}
+
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
+    const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
+    const std::map<std::string, real>& options,
+    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
+    // TODO.
 }
 
 template<int vertex_dim, int element_dim>

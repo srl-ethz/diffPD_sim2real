@@ -52,6 +52,7 @@ using Matrix2Xr = Eigen::Matrix<real, 2, -1>;
 using Matrix3Xr = Eigen::Matrix<real, 3, -1>;
 using MatrixXi = Eigen::Matrix<int, -1, -1>;
 using Matrix4Xi = Eigen::Matrix<int, 4, -1>;
+using Matrix8Xi = Eigen::Matrix<int, 8, -1>;
 
 using SparseVector = Eigen::SparseVector<real>;
 using SparseMatrix = Eigen::SparseMatrix<real>;
