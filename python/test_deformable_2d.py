@@ -21,7 +21,7 @@ if __name__ == '__main__':
     cell_nums = (20, 10)
     dx = 0.1
     opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'rel_tol': 1e-2, 'verbose': 0 }
-    
+
     # Initialization.
     folder = Path('test_deformable')
     create_folder(folder)

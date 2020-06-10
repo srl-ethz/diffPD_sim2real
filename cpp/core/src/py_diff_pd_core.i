@@ -2,6 +2,7 @@
 %{
 #include "../include/mesh/mesh.h"
 #include "../include/fem/deformable.h"
+#include "../include/fem/rotating_deformable_3d.h"
 %}
 
 %exception {
@@ -37,3 +38,5 @@ namespace std {
 %template(Mesh3d) Mesh<3, 8>;
 %template(Deformable2d) Deformable<2, 4>;
 %template(Deformable3d) Deformable<3, 8>;
+
+%include "../include/fem/rotating_deformable_3d.h"

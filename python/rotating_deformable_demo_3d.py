@@ -2,7 +2,7 @@ import numpy as np
 from pathlib import Path
 import time
 import scipy.optimize
-from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import Mesh3d, RotatingDeformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.common import to_std_map, to_std_real_vector
 from py_diff_pd.common.mesh import generate_hex_mesh
@@ -13,17 +13,18 @@ if __name__ == '__main__':
     np.random.seed(seed)
     print_info('Seed: {}'.format(seed))
 
-    folder = Path('open_loop_demo_3d')
+    folder = Path('rotating_deformable_demo_3d')
     check_grad = False
     display_method = 'pbrt' # 'matplotlib' or 'pbrt'.
     render_samples = 4
     create_folder(folder)
 
     # Mesh parameters.
-    cell_nums = (2, 2, 4)
+    cell_nums = (2, 2, 2)
     node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
     dx = 0.1
     origin = (0, 0, 0)
+    omega = (0, 0, np.pi)
     bin_file_name = str(folder / 'cube.bin')
     voxels = np.ones(cell_nums)
     generate_hex_mesh(voxels, dx, origin, bin_file_name)
@@ -37,12 +38,12 @@ if __name__ == '__main__':
     density = 1e3
     method = 'newton'
     opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'rel_tol': 1e-2, 'verbose': 0 }
-    deformable = Deformable3d()
-    deformable.Initialize(bin_file_name, density, 'corotated', youngs_modulus, poissons_ratio)
+    deformable = RotatingDeformable3d()
+    deformable.Initialize(bin_file_name, density, 'corotated', youngs_modulus, poissons_ratio, *omega)
     # Boundary conditions.
     for i in range(node_nums[0]):
-        for j in range(node_nums[1]):
-            node_idx = i * node_nums[1] * node_nums[2] + j * node_nums[2]
+        for k in range(node_nums[2]):
+            node_idx = i * node_nums[1] * node_nums[2] + k
             vx, vy, vz = mesh.py_vertex(node_idx)
             deformable.SetDirichletBoundaryCondition(3 * node_idx, vx)
             deformable.SetDirichletBoundaryCondition(3 * node_idx + 1, vy)
@@ -81,7 +82,11 @@ if __name__ == '__main__':
             mesh.Initialize(str(folder / f_folder / '{:04d}.bin'.format(frame_cnt)))
             if display_method == 'pbrt':
                 render_hex_mesh(mesh, file_name=folder / f_folder / '{:04d}.png'.format(i), sample=render_samples,
-                    transforms=[('t', (.1, .1, 0)), ('s', 2.5)])
+                    transforms=[
+                        ('s', 2.5),
+                        ('r', (omega[2] * dt * i, 0, 0, 1)),
+                        ('t', (0.5, 0.5, 0)),
+                    ])
             elif display_method == 'matplotlib':
                 display_hex_mesh(mesh, xlim=[-dx, (cell_nums[0] + 1) * dx], ylim=[-dx, (cell_nums[1] + 1) * dx],
                     title='Frame {:04d}'.format(i), file_name=folder / f_folder / '{:04d}.png'.format(i), show=False)
@@ -133,6 +138,7 @@ if __name__ == '__main__':
 
     # Now check the gradients.
     x0 = np.random.normal(size=dofs) * density * dx * dx * dx
+    '''
     if check_grad:
         from py_diff_pd.common.grad_check import check_gradients
         eps = 1e-5
@@ -146,7 +152,7 @@ if __name__ == '__main__':
     result = scipy.optimize.minimize(lambda x: loss_and_grad(x, True), np.copy(x0), method='L-BFGS-B', jac=True, bounds=None)
     assert result.success
     x_final = result.x
-
+    '''
     # Display initial and final results.
     visualize_results(x0, 'init')
-    visualize_results(x_final, 'final')
+    #visualize_results(x_final, 'final')

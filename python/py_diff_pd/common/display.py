@@ -122,10 +122,17 @@ def export_gif(folder_name, gif_name, fps, name_prefix=''):
     else:
         imageio.mimsave(gif_name, images)
 
+# The input argument transforms is a list of rotation, translation, and scaling applied to the mesh.
+# transforms = [rotation, translation, scaling, ...]
+# rotation = ('r', (radians, unit_axis.x, unit_axis.y, unit_axis.z))
+# translation = ('t', (tx, ty, tz))
+# scaling = ('s', s)
+# Note that we use right-handed coordinate systems in the project but pbrt uses a left-handed system.
+# As a result, we will take care of transforming the coordinate system in this function.
 def render_hex_mesh(hex_mesh, file_name,
     resolution=(800, 800), sample=128, max_depth=4,
     camera_pos=(2, -2.2, 2), camera_lookat=(0.5, 0.5, 0.5), camear_up=(0, 0, 1), fov=33,
-    translate=(0, 0, 0), scale=1.):
+    transforms=None):
     from py_diff_pd.common.project_path import root_path
     from py_diff_pd.common.mesh import hex2obj
 
@@ -147,10 +154,11 @@ def render_hex_mesh(hex_mesh, file_name,
         f.write('Integrator "path" "integer maxdepth" {:d}\n'.format(max_depth))
 
         f.write('\n')
+        # Flipped y because pbrt uses a left-handed coordinate system.
         f.write('LookAt {:f} {:f} {:f} {:f} {:f} {:f} {:f} {:f} {:f}\n'.format(
-            camera_pos[0], camera_pos[1], camera_pos[2],
-            camera_lookat[0], camera_lookat[1], camera_lookat[2],
-            camear_up[0], camear_up[1], camear_up[2]))
+            camera_pos[0], -camera_pos[1], camera_pos[2],
+            camera_lookat[0], -camera_lookat[1], camera_lookat[2],
+            camear_up[0], -camear_up[1], camear_up[2]))
         f.write('Camera "perspective" "float fov" [{:f}]\n'.format(fov))
 
         f.write('\n')
@@ -179,8 +187,19 @@ def render_hex_mesh(hex_mesh, file_name,
         f.write('\n')
         f.write('AttributeBegin\n')
         f.write('Material "plastic" "color Kd" [.4 .4 .4] "color Ks" [.4 .4 .4] "float roughness" .03\n')
-        f.write('Scale {:f} {:f} {:f}\n'.format(scale, scale, scale))
-        f.write('Translate {:f} {:f} {:f}\n'.format(translate[0], translate[1], translate[2]))
+        # Flipped y because pbrt uses a left-handed system.
+        f.write('Scale 1 -1 1\n')
+        if transforms is not None:
+            for key, vals in reversed(transforms):
+                if key == 's':
+                    f.write('Scale {:f} {:f} {:f}\n'.format(vals, vals, vals))
+                elif key == 'r':
+                    deg = np.rad2deg(vals[0])
+                    ax = vals[1:4]
+                    ax /= np.linalg.norm(ax)
+                    f.write('Rotate {:f} {:f} {:f} {:f}\n'.format(deg, ax[0], ax[1], ax[2]))
+                elif key == 't':
+                    f.write('Translate {:f} {:f} {:f}\n'.format(vals[0], vals[1], vals[2]))
         f.write('Include "{}"\n'.format(scene_file_name))
         f.write('AttributeEnd\n')
 
