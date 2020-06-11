@@ -1,5 +1,6 @@
 import numpy as np
 from pathlib import Path
+import os
 import time
 import scipy.optimize
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, RotatingDeformable3d, StdRealVector
@@ -82,12 +83,14 @@ if __name__ == '__main__':
             mesh = Mesh3d()
             mesh.Initialize(str(folder / f_folder / '{:04d}.bin'.format(frame_cnt)))
             if display_method == 'pbrt':
-                render_hex_mesh(mesh, file_name=folder / f_folder / '{:04d}.png'.format(i), sample=render_samples,
+                render_hex_mesh(mesh, file_name=folder / f_folder / '{:04d}.exr'.format(i), sample=render_samples,
                     transforms=[
                         ('s', 2.5),
                         ('r', (omega[2] * dt * i, 0, 0, 1)),
                         ('t', (0.5, 0.5, 0)),
                     ])
+                os.system('convert {} {}'.format(folder / f_folder / '{:04d}.exr'.format(i),
+                    folder / f_folder / '{:04d}.png'.format(i)))
             elif display_method == 'matplotlib':
                 display_hex_mesh(mesh, xlim=[-dx, (cell_nums[0] + 1) * dx], ylim=[-dx, (cell_nums[1] + 1) * dx],
                     title='Frame {:04d}'.format(i), file_name=folder / f_folder / '{:04d}.png'.format(i), show=False)
