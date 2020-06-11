@@ -41,6 +41,7 @@ protected:
 
 private:
     const VectorXr NewtonMatrixOp(const Matrix3r& B, const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
+    const VectorXr NewtonMatrixTransposeOp(const Matrix3r& B, const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
     const VectorXr Apply3dTransformToVector(const Matrix3r& H, const VectorXr& q) const;
 
     // Doesn't matter whether it is in the world or body frame of reference --- they are the same.

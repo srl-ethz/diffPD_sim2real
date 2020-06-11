@@ -14,6 +14,7 @@ if __name__ == '__main__':
     print_info('Seed: {}'.format(seed))
 
     folder = Path('rotating_deformable_demo_3d')
+    # Use youngs_modulus = 1e3 and check_grad = True to verify the gradients are correct.
     check_grad = False
     display_method = 'pbrt' # 'matplotlib' or 'pbrt'.
     render_samples = 4
@@ -138,11 +139,10 @@ if __name__ == '__main__':
 
     # Now check the gradients.
     x0 = np.random.normal(size=dofs) * density * dx * dx * dx
-    '''
     if check_grad:
         from py_diff_pd.common.grad_check import check_gradients
-        eps = 1e-5
-        atol = 1e-4
+        eps = 1e-6
+        atol = 1e-6
         rtol = 1e-2
         print_info('Checking gradients...')
         check_gradients(lambda x: loss_and_grad(x, False), x0, eps, atol, rtol, True)
@@ -152,7 +152,7 @@ if __name__ == '__main__':
     result = scipy.optimize.minimize(lambda x: loss_and_grad(x, True), np.copy(x0), method='L-BFGS-B', jac=True, bounds=None)
     assert result.success
     x_final = result.x
-    '''
+
     # Display initial and final results.
     visualize_results(x0, 'init')
-    #visualize_results(x_final, 'final')
+    visualize_results(x_final, 'final')

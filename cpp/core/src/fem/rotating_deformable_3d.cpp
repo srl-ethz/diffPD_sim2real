@@ -177,17 +177,17 @@ void RotatingDeformable3d::BackwardNewton(const VectorXr& q, const VectorXr& v, 
     // op(q_next) = Aq + h * v + h2m * f_ext.
     // d_op/dq_next * dq_next/d* = drhs/d*.
     // dq_next/d* = (d_op/dq_next)^(-1) * drhs/d*.
-    // dl/d* = (drhs/d*)^T * ((d_op/dq_next)^(-1) * dl_dq_next).
+    // dl/d* = (drhs/d*)^T * ((d_op/dq_next)^(-T) * dl_dq_next).
 
     // d_op/dq_next * adjoint = dl_dq_next.
-    MatrixOp op(dofs(), dofs(), [&](const VectorXr& dq){ return NewtonMatrixOp(B, q_next, h2m, dq); });
+    MatrixOp op(dofs(), dofs(), [&](const VectorXr& dq){ return NewtonMatrixTransposeOp(B, q_next, h2m, dq); });
     // Solve for the search direction.
     Eigen::BiCGSTAB<MatrixOp, Eigen::IdentityPreconditioner> bicg;
     bicg.compute(op);
     const VectorXr adjoint = bicg.solve(dl_dq_next_agg);
     CheckError(bicg.info() == Eigen::Success, "BiCGSTAB solver failed.");
 
-    VectorXr dl_dq_single = Apply3dTransformToVector(A, adjoint);
+    VectorXr dl_dq_single = Apply3dTransformToVector(A.transpose(), adjoint);
     dl_dv = adjoint * dt;
     dl_df_ext = adjoint * h2m;
     for (const auto& pair : dirichlet()) {
@@ -208,6 +208,22 @@ const VectorXr RotatingDeformable3d::NewtonMatrixOp(const Matrix3r& B, const Vec
         dq_w_bonudary(dof) = 0;
     }
     VectorXr ret = Apply3dTransformToVector(B, dq_w_bonudary) - h2m * ElasticForceDifferential(q_sol, dq_w_bonudary);
+    for (const auto& pair : dirichlet()) {
+        const int dof = pair.first;
+        ret(dof) = dq(dof);
+    }
+    return ret;
+}
+
+const VectorXr RotatingDeformable3d::NewtonMatrixTransposeOp(const Matrix3r& B, const VectorXr& q_sol, const real h2m,
+    const VectorXr& dq) const {
+    // (B * dq - h2m * ElasticForceDifferential(q_sol, dq)).T
+    VectorXr dq_w_bonudary = dq;
+    for (const auto& pair : dirichlet()) {
+        const int dof = pair.first;
+        dq_w_bonudary(dof) = 0;
+    }
+    VectorXr ret = Apply3dTransformToVector(B.transpose(), dq_w_bonudary) - h2m * ElasticForceDifferential(q_sol, dq_w_bonudary);
     for (const auto& pair : dirichlet()) {
         const int dof = pair.first;
         ret(dof) = dq(dof);
