@@ -14,7 +14,7 @@ if __name__ == '__main__':
     np.random.seed(seed)
     print_info('Seed: {}'.format(seed))
 
-    folder = Path('rotating_deformable_demo_3d')
+    folder = Path('rotating_deformable_quasistatic_demo_3d')
     display_method = 'pbrt' # 'matplotlib' or 'pbrt'.
     render_samples = 4
     create_folder(folder)
