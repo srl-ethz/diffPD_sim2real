@@ -20,7 +20,7 @@ if __name__ == '__main__':
     method = 'newton_pcg'
     cell_nums = (20, 10)
     dx = 0.1
-    opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'rel_tol': 1e-2, 'verbose': 0 }
+    opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-2, 'verbose': 0 }
 
     # Initialization.
     folder = Path('test_deformable_2d')

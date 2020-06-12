@@ -39,7 +39,7 @@ if __name__ == '__main__':
     poissons_ratio = 0.45
     density = 1e3
     method = 'newton'
-    opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'rel_tol': 1e-2, 'verbose': 0 }
+    opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-2, 'verbose': 0 }
     deformable = RotatingDeformable3d()
     deformable.Initialize(bin_file_name, density, 'corotated', youngs_modulus, poissons_ratio, *omega)
     # Boundary conditions.

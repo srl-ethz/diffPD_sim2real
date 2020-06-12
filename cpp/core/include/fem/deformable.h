@@ -38,6 +38,8 @@ public:
         const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const;
+    void GetQuasiStaticState(const std::string& method, const VectorXr& f_ext,
+        const std::map<std::string, real>& options, VectorXr& q) const;
     void SaveToMeshFile(const VectorXr& q, const std::string& file_name) const;
 
     // For Python binding.
@@ -49,6 +51,8 @@ public:
         const std::vector<real>& dl_dq_next, const std::vector<real>& dl_dv_next,
         const std::map<std::string, real>& options,
         std::vector<real>& dl_dq, std::vector<real>& dl_dv, std::vector<real>& dl_df_ext) const;
+    void PyGetQuasiStaticState(const std::string& method, const std::vector<real>& f_ext,
+        const std::map<std::string, real>& options, std::vector<real>& q) const;
     void PySaveToMeshFile(const std::vector<real>& q, const std::string& file_name) const;
 
     const VectorXr Apply(const VectorXr& x) const { return x; }
@@ -78,6 +82,9 @@ private:
     const real InitializeCellSize(const Mesh<vertex_dim, element_dim>& mesh) const;
     const VectorXr NewtonMatrixOp(const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
     const SparseMatrix NewtonMatrix(const VectorXr& q_sol, const real h2m) const;
+    const VectorXr QuasiStaticMatrixOp(const VectorXr& q, const VectorXr& dq) const;
+    const SparseMatrix QuasiStaticMatrix(const VectorXr& q) const;
+    const VectorXr GetUndeformedShape() const;
 
     Mesh<vertex_dim, element_dim> mesh_;
     real density_;

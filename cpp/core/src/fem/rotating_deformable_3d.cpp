@@ -56,10 +56,12 @@ void RotatingDeformable3d::ForwardNewton(const std::string& method, const Vector
     // TODO: what are the available methods?
     CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
+    CheckError(options.find("abs_rol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
     CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
     const int max_newton_iter = static_cast<int>(options.at("max_newton_iter"));
     const int max_ls_iter = static_cast<int>(options.at("max_ls_iter"));
+    const real abs_tol = options.at("abs_tol");
     const real rel_tol = options.at("rel_tol");
     const int verbose_level = static_cast<int>(options.at("verbose"));
     CheckError(max_newton_iter > 0, "Invalid max_newton_iter: " + std::to_string(max_newton_iter));
@@ -136,10 +138,10 @@ void RotatingDeformable3d::ForwardNewton(const std::string& method, const Vector
         // Check for convergence.
         // B * q_next - h2m * f_int(q_next) = rhs.
         const VectorXr lhs = Apply3dTransformToVector(B, q_sol_next) - h2m * force_next;
-        const real rel_error = VectorXr((lhs - rhs).array() * selected.array()).norm()
-            / VectorXr(selected.array() * rhs.array()).norm();
-        if (verbose_level > 0) std::cout << "Relative error: " << rel_error << std::endl;
-        if (rel_error < rel_tol) {
+        const real abs_error = VectorXr((lhs - rhs).array() * selected.array()).norm();
+        const real rhs_norm = VectorXr(selected.array() * rhs.array()).norm();
+        if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
+        if (abs_error <= rel_tol * rhs_norm + abs_tol) {
             q_next = q_sol_next;
             v_next = (q_next - q) / dt;
             return;
