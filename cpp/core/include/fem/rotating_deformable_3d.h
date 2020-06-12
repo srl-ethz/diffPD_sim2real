@@ -39,10 +39,15 @@ protected:
         const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options, VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const override;
 
+    void QuasiStaticStateNewton(const std::string& method, const VectorXr& f_ext,
+        const std::map<std::string, real>& options, VectorXr& q) const override;
+
 private:
     const VectorXr NewtonMatrixOp(const Matrix3r& B, const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
     const VectorXr NewtonMatrixTransposeOp(const Matrix3r& B, const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
     const VectorXr Apply3dTransformToVector(const Matrix3r& H, const VectorXr& q) const;
+    const VectorXr QuasiStaticMatrixOp(const VectorXr& q, const VectorXr& dq) const;
+    const SparseMatrix QuasiStaticMatrix(const VectorXr& q) const;
 
     // Doesn't matter whether it is in the world or body frame of reference --- they are the same.
     Vector3r omega_;

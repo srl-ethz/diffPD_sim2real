@@ -203,6 +203,88 @@ void RotatingDeformable3d::BackwardNewton(const std::string& method, const Vecto
     dl_dq += dl_dq_single;
 }
 
+void RotatingDeformable3d::QuasiStaticStateNewton(const std::string& method, const VectorXr& f_ext,
+    const std::map<std::string, real>& options, VectorXr& q) const {
+    CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
+    CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
+    CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
+    CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
+    CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
+    CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
+    const int max_newton_iter = static_cast<int>(options.at("max_newton_iter"));
+    const int max_ls_iter = static_cast<int>(options.at("max_ls_iter"));
+    const real abs_tol = options.at("abs_tol");
+    const real rel_tol = options.at("rel_tol");
+    const int verbose_level = static_cast<int>(options.at("verbose"));
+    CheckError(max_newton_iter > 0, "Invalid max_newton_iter: " + std::to_string(max_newton_iter));
+    CheckError(max_ls_iter > 0, "Invalid max_ls_iter: " + std::to_string(max_ls_iter));
+    // f_int(q) + f_ext - m[w]^2q = 0.
+    const VectorXr rhs = -f_ext;
+    VectorXr selected = VectorXr::Ones(dofs());
+    VectorXr q_sol = GetUndeformedShape();
+    const real mass = density() * cell_volume();
+    // Enforce boundary conditions.
+    for (const auto& pair : dirichlet()) selected(pair.first) = 0;
+    VectorXr force_sol = ElasticForce(q_sol);
+    if (verbose_level > 0) PrintInfo("Newton's method");
+    for (int i = 0; i < max_newton_iter; ++i) {
+        if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
+        // f_int(q_sol + dq) - m[w]^2(q_sol + dq) = -f_ext.
+        // J * dq - m[w]^2 dq = m[w]^2 q_sol - f_ext - f_int(q_sol).
+        VectorXr new_rhs = Apply3dTransformToVector(mass * skew_omega_ * skew_omega_, q_sol) - f_ext - force_sol;
+        // Enforce boundary conditions.
+        for (const auto& pair : dirichlet()) new_rhs(pair.first) = 0;
+        VectorXr dq = VectorXr::Zero(dofs());
+        // Solve for the search direction.
+        if (method == "newton_pcg") {
+            Eigen::ConjugateGradient<MatrixOp, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
+            MatrixOp op(dofs(), dofs(), [&](const VectorXr& dq){ return QuasiStaticMatrixOp(q_sol, dq); });
+            cg.compute(op);
+            dq = cg.solve(new_rhs);
+            CheckError(cg.info() == Eigen::Success, "CG solver failed.");
+        } else if (method == "newton_cholesky") {
+            // Cholesky.
+            Eigen::SimplicialLDLT<SparseMatrix> cholesky;
+            const SparseMatrix op = QuasiStaticMatrix(q_sol);
+            cholesky.compute(op);
+            dq = cholesky.solve(new_rhs);
+            CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
+        } else {
+            // Should never happen.
+        }
+        if (verbose_level > 0) std::cout << "|dq| = " << dq.norm() << std::endl;
+
+        // Line search.
+        real step_size = 1;
+        VectorXr q_sol_next = q_sol + step_size * dq;
+        VectorXr force_next = ElasticForce(q_sol_next);
+        for (int j = 0; j < max_ls_iter; ++j) {
+            if (!force_next.hasNaN()) break;
+            step_size /= 2;
+            q_sol_next = q_sol + step_size * dq;
+            force_next = ElasticForce(q_sol_next);
+            if (verbose_level > 1) std::cout << "Line search iteration: " << j << ", step size: " << step_size << std::endl;
+            PrintWarning("Newton's method is using < 1 step size: " + std::to_string(step_size));
+        }
+        CheckError(!force_next.hasNaN(), "Elastic force has NaN.");
+
+        // Check for convergence.
+        const VectorXr lhs = force_next - Apply3dTransformToVector(mass * skew_omega_ * skew_omega_, q_sol_next);
+        const real abs_error = VectorXr((lhs - rhs).array() * selected.array()).norm();
+        const real rhs_norm = VectorXr(selected.array() * rhs.array()).norm();
+        if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
+        if (abs_error <= rel_tol * rhs_norm + abs_tol) {
+            q = q_sol_next;
+            return;
+        }
+
+        // Update.
+        q_sol = q_sol_next;
+        force_sol = force_next;
+    }
+    PrintError("Newton's method fails to converge.");
+}
+
 const VectorXr RotatingDeformable3d::NewtonMatrixOp(const Matrix3r& B, const VectorXr& q_sol, const real h2m,
     const VectorXr& dq) const {
     // B * dq - h2m * ElasticForceDifferential(q_sol, dq).
@@ -239,4 +321,49 @@ const VectorXr RotatingDeformable3d::Apply3dTransformToVector(const Matrix3r& H,
     const Matrix3Xr Hq_mat(H * Eigen::Map<const Matrix3Xr>(q.data(), 3, q.size() / 3));
     const VectorXr Hq(Eigen::Map<const VectorXr>(Hq_mat.data(), Hq_mat.size()));
     return Hq;
+}
+
+const VectorXr RotatingDeformable3d::QuasiStaticMatrixOp(const VectorXr& q, const VectorXr& dq) const {
+    // ElasticForceDifferential(q, dq) - m * skew * skew * dq.
+    VectorXr dq_w_bonudary = dq;
+    for (const auto& pair : dirichlet()) {
+        const int dof = pair.first;
+        dq_w_bonudary(dof) = 0;
+    }
+    const real mass = density() * cell_volume();
+    VectorXr ret = ElasticForceDifferential(q, dq_w_bonudary) - Apply3dTransformToVector(mass * skew_omega_ * skew_omega_, dq_w_bonudary);
+    for (const auto& pair : dirichlet()) {
+        const int dof = pair.first;
+        ret(dof) = dq(dof);
+    }
+    return ret;
+}
+
+const SparseMatrix RotatingDeformable3d::QuasiStaticMatrix(const VectorXr& q) const {
+    // ElasticForceDifferential(q, dq) - m * skew * skew * dq.
+    const SparseMatrixElements nonzeros = ElasticForceDifferential(q);
+    SparseMatrixElements nonzeros_new;
+    for (const auto& element : nonzeros) {
+        const int row = element.row();
+        const int col = element.col();
+        const real val = element.value();
+        if (dirichlet().find(row) != dirichlet().end() || dirichlet().find(col) != dirichlet().end()) continue;
+        nonzeros_new.push_back(Eigen::Triplet<real>(row, col, val));
+    }
+    const int vertex_num = mesh().NumOfVertices();
+    const real mass = density() * cell_volume();
+    const Matrix3r W = -mass * skew_omega_ * skew_omega_;
+    for (int i = 0; i < vertex_num; ++i) {
+        for (int j = 0; j < 3; ++j)
+            for (int k = 0; k < 3; ++k) {
+                const int row = 3 * i + j;
+                const int col = 3 * i + k;
+                if (dirichlet().find(row) != dirichlet().end() || dirichlet().find(col) != dirichlet().end()) continue;
+                nonzeros_new.push_back(Eigen::Triplet<real>(row, col, W(j, k)));
+            }
+    }
+    for (const auto& pair : dirichlet()) nonzeros_new.push_back(Eigen::Triplet<real>(pair.first, pair.first, 1));
+    SparseMatrix A(dofs(), dofs());
+    A.setFromTriplets(nonzeros_new.begin(), nonzeros_new.end());
+    return A;
 }

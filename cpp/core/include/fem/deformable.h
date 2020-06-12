@@ -75,6 +75,10 @@ protected:
         const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const;
+    virtual void QuasiStaticStateNewton(const std::string& method, const VectorXr& f_ext,
+        const std::map<std::string, real>& options, VectorXr& q) const;
+
+    const VectorXr GetUndeformedShape() const;
 
 private:
     const std::shared_ptr<Material<vertex_dim>> InitializeMaterial(const std::string& material_type,
@@ -84,7 +88,6 @@ private:
     const SparseMatrix NewtonMatrix(const VectorXr& q_sol, const real h2m) const;
     const VectorXr QuasiStaticMatrixOp(const VectorXr& q, const VectorXr& dq) const;
     const SparseMatrix QuasiStaticMatrix(const VectorXr& q) const;
-    const VectorXr GetUndeformedShape() const;
 
     Mesh<vertex_dim, element_dim> mesh_;
     real density_;

@@ -209,6 +209,13 @@ void Deformable<vertex_dim, element_dim>::Backward(const std::string& method, co
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::GetQuasiStaticState(const std::string& method, const VectorXr& f_ext,
     const std::map<std::string, real>& options, VectorXr& q) const {
+    if (BeginsWith(method, "newton")) QuasiStaticStateNewton(method, f_ext, options, q);
+    else PrintError("Unsupport quasi-static method: " + method);
+}
+
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::string& method, const VectorXr& f_ext,
+    const std::map<std::string, real>& options, VectorXr& q) const {
     CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
     CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
@@ -651,10 +658,7 @@ const SparseMatrix Deformable<vertex_dim, element_dim>::NewtonMatrix(const Vecto
         const int row = element.row();
         const int col = element.col();
         const real val = element.value();
-        if (dirichlet_.find(row) != dirichlet_.end() || dirichlet_.find(col) != dirichlet_.end()) {
-            if (row == col) nonzeros_new.push_back(Eigen::Triplet<real>(row, col, 1));
-            else continue;
-        }
+        if (dirichlet_.find(row) != dirichlet_.end() || dirichlet_.find(col) != dirichlet_.end()) continue;
         nonzeros_new.push_back(Eigen::Triplet<real>(row, col, -h2m * val));
     }
     for (int i = 0; i < dofs_; ++i) nonzeros_new.push_back(Eigen::Triplet<real>(i, i, 1));
@@ -686,12 +690,10 @@ const SparseMatrix Deformable<vertex_dim, element_dim>::QuasiStaticMatrix(const 
         const int row = element.row();
         const int col = element.col();
         const real val = element.value();
-        if (dirichlet_.find(row) != dirichlet_.end() || dirichlet_.find(col) != dirichlet_.end()) {
-            if (row == col) nonzeros_new.push_back(Eigen::Triplet<real>(row, col, 1));
-            else continue;
-        }
+        if (dirichlet_.find(row) != dirichlet_.end() || dirichlet_.find(col) != dirichlet_.end()) continue;
         nonzeros_new.push_back(Eigen::Triplet<real>(row, col, val));
     }
+    for (const auto& pair : dirichlet_) nonzeros_new.push_back(Eigen::Triplet<real>(pair.first, pair.first, 1));
     SparseMatrix A(dofs_, dofs_);
     A.setFromTriplets(nonzeros_new.begin(), nonzeros_new.end());
     return A;
