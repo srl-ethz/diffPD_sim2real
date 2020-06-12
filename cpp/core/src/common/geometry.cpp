@@ -47,16 +47,26 @@ const Matrix2r dRFromdF(const Matrix2r& F, const Matrix2r& R, const Matrix2r& S,
     return R * W;
 }
 
-const Matrix3r dRFromdF(const Matrix3r& F, const Matrix3r& r, const Matrix3r& s, const Matrix3r& dF) {
-    const Matrix3r lhs = r.transpose() * dF - dF.transpose() * r;
+const Matrix4r dRFromdF(const Matrix2r& F, const Matrix2r& R, const Matrix2r& S) {
+    // lhs01 = R00 * dF01 + R10 * dF11 - dF00 * R01 - dF10 * R11.
+    // lhs10 = R01 * dF00 + R11 * dF10 - dF01 * R00 - dF11 * R10.
+    Vector4r lhs01(-R(0, 1), -R(1, 1), R(0, 0), R(1, 0));
+    const Vector4r x = lhs01 / S.trace();
+    // R * [0,  x] = [-xR01, xR00] = [-R01, -R11, R00, R10]x.
+    //     [-x, 0]   [-xR11, xR10].
+    return lhs01 * x.transpose();
+}
+
+const Matrix3r dRFromdF(const Matrix3r& F, const Matrix3r& R, const Matrix3r& S, const Matrix3r& dF) {
+    const Matrix3r lhs = R.transpose() * dF - dF.transpose() * R;
     // https://www.overleaf.com/read/rxssbpcxjypz.
     Matrix3r A = Matrix3r::Zero();
-    A(0, 0) = s(0, 0) + s(1, 1);
-    A(1, 1) = s(0, 0) + s(2, 2);
-    A(2, 2) = s(1, 1) + s(2, 2);
-    A(0, 1) = A(1, 0) = s(1, 2);
-    A(0, 2) = A(2, 0) = -s(0, 2);
-    A(1, 2) = A(2, 1) = s(0, 1);
+    A(0, 0) = S(0, 0) + S(1, 1);
+    A(1, 1) = S(0, 0) + S(2, 2);
+    A(2, 2) = S(1, 1) + S(2, 2);
+    A(0, 1) = A(1, 0) = S(1, 2);
+    A(0, 2) = A(2, 0) = -S(0, 2);
+    A(1, 2) = A(2, 1) = S(0, 1);
     const Matrix3r A_inv = A.inverse();
     const Vector3r b(lhs(0, 1), lhs(0, 2), lhs(1, 2));
     const Vector3r xyz = A_inv * b;
@@ -66,5 +76,38 @@ const Matrix3r dRFromdF(const Matrix3r& F, const Matrix3r& r, const Matrix3r& s,
     W(0, 1) = x; W(0, 2) = y;
     W(1, 0) = -x; W(1, 2) = z;
     W(2, 0) = -y; W(2, 1) = -z;
-    return r * W;
+    return R * W;
+}
+
+const Matrix9r dRFromdF(const Matrix3r& F, const Matrix3r& R, const Matrix3r& S) {
+    // lhs01 = R.col(0).dot(dF.col(1)) - dF.col(0).dot(R.col(1)).
+    Vector9r lhs01, lhs02, lhs12;
+    lhs01 << -R.col(1), R.col(0), Vector3r::Zero();
+    lhs02 << -R.col(2), Vector3r::Zero(), R.col(0);
+    lhs12 << Vector3r::Zero(), -R.col(2), R.col(1);
+    // https://www.overleaf.com/read/rxssbpcxjypz.
+    Matrix3r A = Matrix3r::Zero();
+    A(0, 0) = S(0, 0) + S(1, 1);
+    A(1, 1) = S(0, 0) + S(2, 2);
+    A(2, 2) = S(1, 1) + S(2, 2);
+    A(0, 1) = A(1, 0) = S(1, 2);
+    A(0, 2) = A(2, 0) = -S(0, 2);
+    A(1, 2) = A(2, 1) = S(0, 1);
+    const Matrix3r A_inv = A.inverse();
+    Matrix3Xr b(3, 9);
+    b.row(0) = lhs01; b.row(1) = lhs02; b.row(2) = lhs12;
+    const Matrix3Xr xyz = A_inv * b;
+    const Vector9r x = xyz.row(0), y = xyz.row(1), z = xyz.row(2);
+    Matrix3r W = Matrix3r::Zero();
+    W(0, 0) = W(1, 1) = W(2, 2) = 0;
+    // R01 * -x + R02 * -y
+    // R11 * -x + R12 * -y
+    // R21 * -x + R22 * -y
+    // R00 * x + R02 * -z
+    // R10 * x + R12 * -z
+    // R20 * x + R22 * -z
+    // R00 * y + R01 * z
+    // R10 * y + R11 * z
+    // R20 * y + R21 * z
+    return lhs01 * x.transpose() + lhs02 * y.transpose() + lhs12 * z.transpose();
 }

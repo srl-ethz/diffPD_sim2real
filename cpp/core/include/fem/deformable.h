@@ -55,6 +55,7 @@ public:
 
     const VectorXr ElasticForce(const VectorXr& q) const;
     const VectorXr ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const;
+    const SparseMatrixElements ElasticForceDifferential(const VectorXr& q) const;
 
 protected:
     virtual void ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,

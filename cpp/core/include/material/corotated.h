@@ -12,6 +12,8 @@ public:
         const Eigen::Matrix<real, dim, dim>& dF) const override;
     const Eigen::Matrix<real, dim, dim> StressTensorDifferential(const Eigen::Matrix<real, dim, dim>& F,
         const Eigen::Matrix<real, dim, dim>& dF) const override;
+    const Eigen::Matrix<real, dim * dim, dim * dim> StressTensorDifferential(
+        const Eigen::Matrix<real, dim, dim>& F) const override;
 };
 
 #endif

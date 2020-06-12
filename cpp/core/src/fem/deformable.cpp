@@ -2,6 +2,7 @@
 #include "common/common.h"
 #include "solver/matrix_op.h"
 #include "material/corotated.h"
+#include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
 Deformable<vertex_dim, element_dim>::Deformable()
@@ -144,13 +145,15 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
             cg.compute(op);
             dq = cg.solve(new_rhs);
             CheckError(cg.info() == Eigen::Success, "CG solver failed.");
-        } else {
+        } else if (method == "newton_cholesky") {
             // Cholesky.
-            Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
+            Eigen::SimplicialLDLT<SparseMatrix> cholesky;
             const SparseMatrix op = NewtonMatrix(q_sol, h2m);
-            cg.compute(op);
-            dq = cg.solve(new_rhs);
-            CheckError(cg.info() == Eigen::Success, "CG solver failed.");
+            cholesky.compute(op);
+            dq = cholesky.solve(new_rhs);
+            CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
+        } else {
+            // Should never happen.
         }
         if (verbose_level > 0) std::cout << "|dq| = " << dq.norm() << std::endl;
 
@@ -243,12 +246,14 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
         cg.compute(op);
         adjoint = cg.solve(dl_dq_next_agg);
         CheckError(cg.info() == Eigen::Success, "CG solver failed.");
-    } else {
-        Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
+    } else if (method == "newton_cholesky") {
+        Eigen::SimplicialLDLT<SparseMatrix> cholesky;
         const SparseMatrix op = NewtonMatrix(q_next, h2m);
-        cg.compute(op);
-        adjoint = cg.solve(dl_dq_next_agg);
-        CheckError(cg.info() == Eigen::Success, "CG solver failed.");
+        cholesky.compute(op);
+        adjoint = cholesky.solve(dl_dq_next_agg);
+        CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
+    } else {
+        // Should never happen.
     }
 
     VectorXr dl_dq_single = adjoint;
@@ -367,6 +372,75 @@ const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr&
 }
 
 template<int vertex_dim, int element_dim>
+const SparseMatrixElements Deformable<vertex_dim, element_dim>::ElasticForceDifferential(const VectorXr& q) const {
+    const int element_num = mesh_.NumOfElements();
+    const int sample_num = element_dim;
+    MatrixXr undeformed_samples(vertex_dim, element_dim);    // Gaussian quadratures.
+    const real r = 1 / std::sqrt(3);
+    for (int i = 0; i < sample_num; ++i) {
+        for (int j = 0; j < vertex_dim; ++j) {
+            undeformed_samples(vertex_dim - 1 - j, i) = ((i & (1 << j)) ? 1 : -1) * r;
+        }
+    }
+    undeformed_samples = (undeformed_samples.array() + 1) / 2;
+
+    // 2D:
+    // undeformed_samples = (u, v) \in [0, 1]^2.
+    // phi(X) = (1 - u)(1 - v)x00 + (1 - u)v x01 + u(1 - v) x10 + uv x11.
+    std::array<MatrixXr, sample_num> grad_undeformed_sample_weights;   // d/dX.
+    for (int i = 0; i < sample_num; ++i) {
+        const Eigen::Matrix<real, vertex_dim, 1> X = undeformed_samples.col(i);
+        grad_undeformed_sample_weights[i] = MatrixXr::Zero(vertex_dim, element_dim);
+        for (int j = 0; j < element_dim; ++j) {
+            for (int k = 0; k < vertex_dim; ++k) {
+                real factor = 1;
+                for (int s = 0; s < vertex_dim; ++s) {
+                    if (s == k) continue;
+                    factor *= ((j & (1 << s)) ? X(vertex_dim - 1 - s) : (1 - X(vertex_dim - 1 - s)));
+                }
+                grad_undeformed_sample_weights[i](vertex_dim - 1 - k, j) = ((j & (1 << k)) ? factor : -factor);
+            }
+        }
+    }
+
+    SparseMatrixElements nonzeros;
+    for (int i = 0; i < element_num; ++i) {
+        const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+        // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
+        // when we load the obj file.
+        Eigen::Matrix<real, vertex_dim, element_dim> deformed;
+        for (int j = 0; j < element_dim; ++j) {
+            deformed.col(j) = q.segment(vertex_dim * vi(j), vertex_dim);
+        }
+        deformed /= dx_;
+        for (int s = 0; s < element_dim; ++s)
+            for (int t = 0; t < vertex_dim; ++t) {
+                Eigen::Matrix<real, vertex_dim, element_dim> ddeformed; ddeformed.setZero();
+                ddeformed(t, s) = 1 / dx_;
+                for (int j = 0; j < sample_num; ++j) {
+                    Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
+                    Eigen::Matrix<real, vertex_dim, vertex_dim> dF = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
+                    for (int k = 0; k < element_dim; ++k) {
+                        F += deformed.col(k) * grad_undeformed_sample_weights[j].col(k).transpose();
+                        dF += ddeformed.col(k) * grad_undeformed_sample_weights[j].col(k).transpose();
+                    }
+                    const Eigen::Matrix<real, vertex_dim, vertex_dim> dP = material_->StressTensorDifferential(F, dF);
+                    for (int k = 0; k < element_dim; ++k) {
+                        for (int d = 0; d < vertex_dim; ++d) {
+                            // Compute dF/dxk(d).
+                            const Eigen::Matrix<real, vertex_dim, vertex_dim> dF_dxkd =
+                                Eigen::Matrix<real, vertex_dim, 1>::Unit(d) * grad_undeformed_sample_weights[j].col(k).transpose();
+                            const real df_kd = -(dP.array() * dF_dxkd.array()).sum() * cell_volume_ / sample_num;
+                            nonzeros.push_back(Eigen::Triplet<real>(vertex_dim * vi(k) + d, vertex_dim * vi(s) + t, df_kd));
+                        }
+                    }
+                }
+            }
+    }
+    return nonzeros;
+}
+
+template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const {
     const int element_num = mesh_.NumOfElements();
     VectorXr df_int = VectorXr::Zero(dofs_);
@@ -450,8 +524,22 @@ const VectorXr Deformable<vertex_dim, element_dim>::NewtonMatrixOp(const VectorX
 
 template<int vertex_dim, int element_dim>
 const SparseMatrix Deformable<vertex_dim, element_dim>::NewtonMatrix(const VectorXr& q_sol, const real h2m) const {
-    // TODO.
-    return SparseMatrix(dofs_, dofs_);
+    const SparseMatrixElements nonzeros = ElasticForceDifferential(q_sol);
+    SparseMatrixElements nonzeros_new;
+    for (const auto& element : nonzeros) {
+        const int row = element.row();
+        const int col = element.col();
+        const real val = element.value();
+        if (dirichlet_.find(row) != dirichlet_.end() || dirichlet_.find(col) != dirichlet_.end()) {
+            if (row == col) nonzeros_new.push_back(Eigen::Triplet<real>(row, col, 1));
+            else continue;
+        }
+        nonzeros_new.push_back(Eigen::Triplet<real>(row, col, -h2m * val));
+    }
+    for (int i = 0; i < dofs_; ++i) nonzeros_new.push_back(Eigen::Triplet<real>(i, i, 1));
+    SparseMatrix A(dofs_, dofs_);
+    A.setFromTriplets(nonzeros_new.begin(), nonzeros_new.end());
+    return A;
 }
 
 template class Deformable<2, 4>;

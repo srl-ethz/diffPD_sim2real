@@ -35,6 +35,7 @@ using Vector5r = Eigen::Matrix<real, 5, 1>;
 using Vector6r = Eigen::Matrix<real, 6, 1>;
 using Vector7r = Eigen::Matrix<real, 7, 1>;
 using Vector8r = Eigen::Matrix<real, 8, 1>;
+using Vector9r = Eigen::Matrix<real, 9, 1>;
 using Vector24r = Eigen::Matrix<real, 24, 1>;
 using VectorXr = Eigen::Matrix<real, -1, 1>;
 using Matrix2r = Eigen::Matrix<real, 2, 2>;
@@ -44,6 +45,7 @@ using Matrix5r = Eigen::Matrix<real, 5, 5>;
 using Matrix6r = Eigen::Matrix<real, 6, 6>;
 using Matrix7r = Eigen::Matrix<real, 7, 7>;
 using Matrix8r = Eigen::Matrix<real, 8, 8>;
+using Matrix9r = Eigen::Matrix<real, 9, 9>;
 using Matrix24r = Eigen::Matrix<real, 24, 24>;
 using MatrixXr = Eigen::Matrix<real, -1, -1>;
 using MatrixX2r = Eigen::Matrix<real, -1, 2>;
@@ -56,6 +58,7 @@ using Matrix8Xi = Eigen::Matrix<int, 8, -1>;
 
 using SparseVector = Eigen::SparseVector<real>;
 using SparseMatrix = Eigen::SparseMatrix<real>;
+using SparseMatrixElements = std::vector<Eigen::Triplet<real>>;
 
 using RowVectorXr = Eigen::Matrix<real, 1, -1>;
 using RowVector2r = Eigen::Matrix<real, 1, 2>;
