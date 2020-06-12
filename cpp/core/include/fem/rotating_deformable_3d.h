@@ -29,13 +29,13 @@ public:
 protected:
     void ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
         const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const override;
-    void ForwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
+    void ForwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
         const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const override;
 
     void BackwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
         const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options, VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const override;
-    void BackwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
+    void BackwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
         const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options, VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const override;
 

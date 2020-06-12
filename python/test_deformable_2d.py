@@ -17,13 +17,13 @@ if __name__ == '__main__':
     youngs_modulus = 1e6
     poissons_ratio = 0.45
     density = 1e4
-    method = 'newton'
+    method = 'newton_pcg'
     cell_nums = (20, 10)
     dx = 0.1
     opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'rel_tol': 1e-2, 'verbose': 0 }
 
     # Initialization.
-    folder = Path('test_deformable')
+    folder = Path('test_deformable_2d')
     create_folder(folder)
     bin_file_name = folder / 'rectangle.bin'
     generate_rectangle_mesh(cell_nums, dx, (0, 0), bin_file_name)

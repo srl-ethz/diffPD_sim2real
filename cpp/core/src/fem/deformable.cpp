@@ -54,7 +54,7 @@ template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::Forward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
     const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
     if (method == "semi_implicit") ForwardSemiImplicit(q, v, f_ext, dt, options, q_next, v_next);
-    else if (method == "newton") ForwardNewton(q, v, f_ext, dt, options, q_next, v_next);
+    else if (BeginsWith(method, "newton")) ForwardNewton(method, q, v, f_ext, dt, options, q_next, v_next);
     else {
         PrintError("Unsupported forward method: " + method);
     }
@@ -85,8 +85,10 @@ void Deformable<vertex_dim, element_dim>::ForwardSemiImplicit(const VectorXr& q,
 }
 
 template<int vertex_dim, int element_dim>
-void Deformable<vertex_dim, element_dim>::ForwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
+void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& method,
+    const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
     const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
+    CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
     CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
@@ -128,18 +130,28 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const VectorXr& q, const
         // (I - h2m * J) * dq = rhs - q_sol + h2m * f_int(q_sol).
         // Assemble the matrix-free operator:
         // M(dq) = dq - h2m * ElasticForceDifferential(q_sol, dq).
-        MatrixOp op(dofs_, dofs_, [&](const VectorXr& dq){ return NewtonMatrixOp(q_sol, h2m, dq); });
-        // Solve for the search direction.
-        Eigen::ConjugateGradient<MatrixOp, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
-        cg.compute(op);
         VectorXr new_rhs = rhs - q_sol + h2m * force_sol;
         // Enforce boundary conditions.
         for (const auto& pair : dirichlet_) {
             const int dof = pair.first;
             new_rhs(dof) = 0;
         }
-        const VectorXr dq = cg.solve(new_rhs);
-        CheckError(cg.info() == Eigen::Success, "CG solver failed.");
+        VectorXr dq = VectorXr::Zero(dofs_);
+        // Solve for the search direction.
+        if (method == "newton_pcg") {
+            Eigen::ConjugateGradient<MatrixOp, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
+            MatrixOp op(dofs_, dofs_, [&](const VectorXr& dq){ return NewtonMatrixOp(q_sol, h2m, dq); });
+            cg.compute(op);
+            dq = cg.solve(new_rhs);
+            CheckError(cg.info() == Eigen::Success, "CG solver failed.");
+        } else {
+            // Cholesky.
+            Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
+            const SparseMatrix op = NewtonMatrix(q_sol, h2m);
+            cg.compute(op);
+            dq = cg.solve(new_rhs);
+            CheckError(cg.info() == Eigen::Success, "CG solver failed.");
+        }
         if (verbose_level > 0) std::cout << "|dq| = " << dq.norm() << std::endl;
 
         // Line search.
@@ -182,8 +194,8 @@ void Deformable<vertex_dim, element_dim>::Backward(const std::string& method, co
     if (method == "semi_implicit")
         BackwardSemiImplicit(q, v, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
             dl_dq, dl_dv, dl_df_ext);
-    else if (method == "newton")
-        BackwardNewton(q, v, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
+    else if (BeginsWith(method, "newton"))
+        BackwardNewton(method, q, v, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
             dl_dq, dl_dv, dl_df_ext);
     else
         PrintError("Unsupported backward method: " + method);
@@ -198,10 +210,11 @@ void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q
 }
 
 template<int vertex_dim, int element_dim>
-void Deformable<vertex_dim, element_dim>::BackwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
-    const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
-    const std::map<std::string, real>& options,
+void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v,
+    const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next,
+    const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
+    CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
     // q_next = q + h * v_next.
     // v_next = v + h * (f_ext + f_int(q_next)) / m.
     // q_next - q = h * v + h^2 / m * (f_ext + f_int(q_next)).
@@ -222,12 +235,21 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const VectorXr& q, cons
     // dl/d* = (drhs/d*)^T * ((d_op/dq_next)^(-1) * dl_dq_next).
 
     // d_op/dq_next * adjoint = dl_dq_next.
-    MatrixOp op(dofs_, dofs_, [&](const VectorXr& dq){ return NewtonMatrixOp(q_next, h2m, dq); });
     // Solve for the search direction.
-    Eigen::ConjugateGradient<MatrixOp, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
-    cg.compute(op);
-    const VectorXr adjoint = cg.solve(dl_dq_next_agg);
-    CheckError(cg.info() == Eigen::Success, "CG solver failed.");
+    VectorXr adjoint = VectorXr::Zero(dofs_);
+    if (method == "newton_pcg") {
+        Eigen::ConjugateGradient<MatrixOp, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
+        MatrixOp op(dofs_, dofs_, [&](const VectorXr& dq){ return NewtonMatrixOp(q_next, h2m, dq); });
+        cg.compute(op);
+        adjoint = cg.solve(dl_dq_next_agg);
+        CheckError(cg.info() == Eigen::Success, "CG solver failed.");
+    } else {
+        Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
+        const SparseMatrix op = NewtonMatrix(q_next, h2m);
+        cg.compute(op);
+        adjoint = cg.solve(dl_dq_next_agg);
+        CheckError(cg.info() == Eigen::Success, "CG solver failed.");
+    }
 
     VectorXr dl_dq_single = adjoint;
     dl_dv = adjoint * dt;
@@ -424,6 +446,12 @@ const VectorXr Deformable<vertex_dim, element_dim>::NewtonMatrixOp(const VectorX
         ret(dof) = dq(dof);
     }
     return ret;
+}
+
+template<int vertex_dim, int element_dim>
+const SparseMatrix Deformable<vertex_dim, element_dim>::NewtonMatrix(const VectorXr& q_sol, const real h2m) const {
+    // TODO.
+    return SparseMatrix(dofs_, dofs_);
 }
 
 template class Deformable<2, 4>;

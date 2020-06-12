@@ -51,8 +51,9 @@ void RotatingDeformable3d::ForwardSemiImplicit(const VectorXr& q, const VectorXr
     }
 }
 
-void RotatingDeformable3d::ForwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
+void RotatingDeformable3d::ForwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
     const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
+    // TODO: what are the available methods?
     CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
@@ -157,9 +158,10 @@ void RotatingDeformable3d::BackwardSemiImplicit(const VectorXr& q, const VectorX
     // TODO.
 }
 
-void RotatingDeformable3d::BackwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
-    const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
+void RotatingDeformable3d::BackwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
+    const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
     const std::map<std::string, real>& options, VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
+    // TODO: what are the available method?
     // So, the computational graph looks like this:
     // (q, v, f_ext) -> q_next.
     // (q, q_next) -> v_next.

@@ -42,6 +42,7 @@ const std::vector<real> ToStdVector(const VectorXr& v);
 const VectorXr ToEigenVector(const std::vector<real>& v);
 
 // String functions.
+const bool BeginsWith(const std::string& full, const std::string& beginning);
 const bool EndsWith(const std::string& full, const std::string& ending);
 
 #endif

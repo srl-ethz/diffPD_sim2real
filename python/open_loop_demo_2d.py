@@ -26,7 +26,7 @@ if __name__ == '__main__':
     youngs_modulus = 1e5
     poissons_ratio = 0.45
     density = 1e4
-    method = 'newton'
+    method = 'newton_pcg'
     opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'rel_tol': 1e-2, 'verbose': 0 }
     deformable = Deformable2d()
     deformable.Initialize(bin_file_name, density, 'corotated', youngs_modulus, poissons_ratio)

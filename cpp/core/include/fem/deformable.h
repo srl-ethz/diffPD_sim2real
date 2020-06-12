@@ -59,15 +59,15 @@ public:
 protected:
     virtual void ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
         const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
-    virtual void ForwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
+    virtual void ForwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
         const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
 
     virtual void BackwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
         const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const;
-    virtual void BackwardNewton(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
-        const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
+    virtual void BackwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
+        const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const;
 
@@ -76,6 +76,7 @@ private:
         const real youngs_modulus, const real poissons_ratio) const;
     const real InitializeCellSize(const Mesh<vertex_dim, element_dim>& mesh) const;
     const VectorXr NewtonMatrixOp(const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
+    const SparseMatrix NewtonMatrix(const VectorXr& q_sol, const real h2m) const;
 
     Mesh<vertex_dim, element_dim> mesh_;
     real density_;
