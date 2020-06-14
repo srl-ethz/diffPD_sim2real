@@ -441,6 +441,21 @@ const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr&
         }
     }
 
+    std::array<Eigen::Matrix<real, element_dim * vertex_dim, vertex_dim * vertex_dim>, sample_num> dF_dxkd_flattened;
+    for (int j = 0; j < sample_num; ++j) {
+        dF_dxkd_flattened[j].setZero();
+        for (int k = 0; k < element_dim; ++k) {
+            for (int d = 0; d < vertex_dim; ++d) {
+                // Compute dF/dxk(d).
+                const Eigen::Matrix<real, vertex_dim, vertex_dim> dF_dxkd =
+                    Eigen::Matrix<real, vertex_dim, 1>::Unit(d) * grad_undeformed_sample_weights[j].col(k).transpose();
+                dF_dxkd_flattened[j].row(k * vertex_dim + d) =
+                    Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(dF_dxkd.data(), dF_dxkd.size());
+            }
+        }
+        dF_dxkd_flattened[j] *= -cell_volume_ / sample_num;
+    }
+
     for (int i = 0; i < element_num; ++i) {
         const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
         // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
@@ -456,13 +471,11 @@ const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr&
                 F += deformed.col(k) * grad_undeformed_sample_weights[j].col(k).transpose();
             }
             const Eigen::Matrix<real, vertex_dim, vertex_dim> P = material_->StressTensor(F);
+            const Eigen::Matrix<real, element_dim * vertex_dim, 1> f_kd =
+                dF_dxkd_flattened[j] * Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(P.data(), P.size());
             for (int k = 0; k < element_dim; ++k) {
                 for (int d = 0; d < vertex_dim; ++d) {
-                    // Compute dF/dxk(d).
-                    const Eigen::Matrix<real, vertex_dim, vertex_dim> dF_dxkd =
-                        Eigen::Matrix<real, vertex_dim, 1>::Unit(d) * grad_undeformed_sample_weights[j].col(k).transpose();
-                    const real f_kd = -(P.array() * dF_dxkd.array()).sum() * cell_volume_ / sample_num;
-                    f_int(vertex_dim * vi(k) + d) += f_kd;
+                    f_int(vertex_dim * vi(k) + d) += f_kd(k * vertex_dim + d);
                 }
             }
         }
