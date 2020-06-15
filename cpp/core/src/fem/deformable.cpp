@@ -2,6 +2,7 @@
 #include "common/common.h"
 #include "solver/matrix_op.h"
 #include "material/corotated.h"
+#include "material/corotated_pd.h"
 #include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
@@ -37,6 +38,9 @@ const std::shared_ptr<Material<vertex_dim>> Deformable<vertex_dim, element_dim>:
     std::shared_ptr<Material<vertex_dim>> material(nullptr);
     if (material_type == "corotated") {
         material = std::make_shared<CorotatedMaterial<vertex_dim>>();
+        material->Initialize(youngs_modulus, poissons_ratio);
+    } else if (material_type == "corotated_pd") {
+        material = std::make_shared<CorotatedPdMaterial<vertex_dim>>();
         material->Initialize(youngs_modulus, poissons_ratio);
     } else {
         PrintError("Unidentified material: " + material_type);
