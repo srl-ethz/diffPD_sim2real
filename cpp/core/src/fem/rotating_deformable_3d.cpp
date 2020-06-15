@@ -56,7 +56,7 @@ void RotatingDeformable3d::ForwardNewton(const std::string& method, const Vector
     // TODO: what are the available methods?
     CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
-    CheckError(options.find("abs_rol") != options.end(), "Missing option abs_tol.");
+    CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
     CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
     const int max_newton_iter = static_cast<int>(options.at("max_newton_iter"));
