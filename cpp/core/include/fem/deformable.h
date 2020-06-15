@@ -90,6 +90,7 @@ private:
     const std::shared_ptr<Material<vertex_dim>> InitializeMaterial(const std::string& material_type,
         const real youngs_modulus, const real poissons_ratio) const;
     const real InitializeCellSize(const Mesh<vertex_dim, element_dim>& mesh) const;
+    void InitializeShapeFunction();
     const VectorXr NewtonMatrixOp(const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
     const SparseMatrix NewtonMatrix(const VectorXr& q_sol, const real h2m) const;
     const VectorXr QuasiStaticMatrixOp(const VectorXr& q, const VectorXr& dq) const;
@@ -104,6 +105,11 @@ private:
 
     // Boundary conditions.
     std::map<int, real> dirichlet_;
+
+    // Shape-function-related data members.
+    Eigen::Matrix<real, vertex_dim, element_dim> undeformed_samples_;
+    std::array<Eigen::Matrix<real, vertex_dim, element_dim>, element_dim> grad_undeformed_sample_weights_;
+    std::array<Eigen::Matrix<real, element_dim * vertex_dim, vertex_dim * vertex_dim>, element_dim> dF_dxkd_flattened_;
 };
 
 #endif

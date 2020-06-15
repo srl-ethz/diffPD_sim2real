@@ -18,6 +18,7 @@ void Deformable<vertex_dim, element_dim>::Initialize(const std::string& binary_f
     cell_volume_ = ToReal(std::pow(dx_, vertex_dim));
     material_ = InitializeMaterial(material_type, youngs_modulus, poissons_ratio);
     dofs_ = vertex_dim * mesh_.NumOfVertices();
+    InitializeShapeFunction();
 }
 
 template<int vertex_dim, int element_dim>
@@ -30,6 +31,7 @@ void Deformable<vertex_dim, element_dim>::Initialize(const Eigen::Matrix<real, v
     cell_volume_ = ToReal(std::pow(dx_, vertex_dim));
     material_ = InitializeMaterial(material_type, youngs_modulus, poissons_ratio);
     dofs_ = vertex_dim * mesh_.NumOfVertices();
+    InitializeShapeFunction();
 }
 
 template<int vertex_dim, int element_dim>
@@ -53,6 +55,50 @@ const real Deformable<vertex_dim, element_dim>::InitializeCellSize(const Mesh<ve
     const Eigen::Matrix<real, vertex_dim, 1> p0 = mesh.vertex(mesh.element(0)(0));
     const Eigen::Matrix<real, vertex_dim, 1> p1 = mesh.vertex(mesh.element(0)(1));
     return (p1 - p0).norm();
+}
+
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::InitializeShapeFunction() {
+    const real r = 1 / std::sqrt(3);
+    const int sample_num = element_dim;
+    for (int i = 0; i < sample_num; ++i) {
+        for (int j = 0; j < vertex_dim; ++j) {
+            undeformed_samples_(vertex_dim - 1 - j, i) = ((i & (1 << j)) ? 1 : -1) * r;
+        }
+    }
+    undeformed_samples_ = (undeformed_samples_.array() + 1) / 2;
+
+    // 2D:
+    // undeformed_samples = (u, v) \in [0, 1]^2.
+    // phi(X) = (1 - u)(1 - v)x00 + (1 - u)v x01 + u(1 - v) x10 + uv x11.
+    for (int i = 0; i < sample_num; ++i) {
+        const Eigen::Matrix<real, vertex_dim, 1> X = undeformed_samples_.col(i);
+        grad_undeformed_sample_weights_[i].setZero();
+        for (int j = 0; j < element_dim; ++j) {
+            for (int k = 0; k < vertex_dim; ++k) {
+                real factor = 1;
+                for (int s = 0; s < vertex_dim; ++s) {
+                    if (s == k) continue;
+                    factor *= ((j & (1 << s)) ? X(vertex_dim - 1 - s) : (1 - X(vertex_dim - 1 - s)));
+                }
+                grad_undeformed_sample_weights_[i](vertex_dim - 1 - k, j) = ((j & (1 << k)) ? factor : -factor);
+            }
+        }
+    }
+
+    for (int j = 0; j < sample_num; ++j) {
+        dF_dxkd_flattened_[j].setZero();
+        for (int k = 0; k < element_dim; ++k) {
+            for (int d = 0; d < vertex_dim; ++d) {
+                // Compute dF/dxk(d).
+                const Eigen::Matrix<real, vertex_dim, vertex_dim> dF_dxkd =
+                    Eigen::Matrix<real, vertex_dim, 1>::Unit(d) * grad_undeformed_sample_weights_[j].col(k).transpose();
+                dF_dxkd_flattened_[j].row(k * vertex_dim + d) =
+                    Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(dF_dxkd.data(), dF_dxkd.size());
+            }
+        }
+        dF_dxkd_flattened_[j] *= -cell_volume_ / sample_num;
+    }
 }
 
 template<int vertex_dim, int element_dim>
@@ -126,51 +172,7 @@ template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr& q) const {
     const int element_num = mesh_.NumOfElements();
     VectorXr f_int = VectorXr::Zero(dofs_);
-
     const int sample_num = element_dim;
-    MatrixXr undeformed_samples(vertex_dim, element_dim);    // Gaussian quadratures.
-    const real r = 1 / std::sqrt(3);
-    for (int i = 0; i < sample_num; ++i) {
-        for (int j = 0; j < vertex_dim; ++j) {
-            undeformed_samples(vertex_dim - 1 - j, i) = ((i & (1 << j)) ? 1 : -1) * r;
-        }
-    }
-    undeformed_samples = (undeformed_samples.array() + 1) / 2;
-
-    // 2D:
-    // undeformed_samples = (u, v) \in [0, 1]^2.
-    // phi(X) = (1 - u)(1 - v)x00 + (1 - u)v x01 + u(1 - v) x10 + uv x11.
-    std::array<MatrixXr, sample_num> grad_undeformed_sample_weights;   // d/dX.
-    for (int i = 0; i < sample_num; ++i) {
-        const Eigen::Matrix<real, vertex_dim, 1> X = undeformed_samples.col(i);
-        grad_undeformed_sample_weights[i] = MatrixXr::Zero(vertex_dim, element_dim);
-        for (int j = 0; j < element_dim; ++j) {
-            for (int k = 0; k < vertex_dim; ++k) {
-                real factor = 1;
-                for (int s = 0; s < vertex_dim; ++s) {
-                    if (s == k) continue;
-                    factor *= ((j & (1 << s)) ? X(vertex_dim - 1 - s) : (1 - X(vertex_dim - 1 - s)));
-                }
-                grad_undeformed_sample_weights[i](vertex_dim - 1 - k, j) = ((j & (1 << k)) ? factor : -factor);
-            }
-        }
-    }
-
-    std::array<Eigen::Matrix<real, element_dim * vertex_dim, vertex_dim * vertex_dim>, sample_num> dF_dxkd_flattened;
-    for (int j = 0; j < sample_num; ++j) {
-        dF_dxkd_flattened[j].setZero();
-        for (int k = 0; k < element_dim; ++k) {
-            for (int d = 0; d < vertex_dim; ++d) {
-                // Compute dF/dxk(d).
-                const Eigen::Matrix<real, vertex_dim, vertex_dim> dF_dxkd =
-                    Eigen::Matrix<real, vertex_dim, 1>::Unit(d) * grad_undeformed_sample_weights[j].col(k).transpose();
-                dF_dxkd_flattened[j].row(k * vertex_dim + d) =
-                    Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(dF_dxkd.data(), dF_dxkd.size());
-            }
-        }
-        dF_dxkd_flattened[j] *= -cell_volume_ / sample_num;
-    }
-
     for (int i = 0; i < element_num; ++i) {
         const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
         // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
@@ -183,11 +185,11 @@ const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr&
         for (int j = 0; j < sample_num; ++j) {
             Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
             for (int k = 0; k < element_dim; ++k) {
-                F += deformed.col(k) * grad_undeformed_sample_weights[j].col(k).transpose();
+                F += deformed.col(k) * grad_undeformed_sample_weights_[j].col(k).transpose();
             }
             const Eigen::Matrix<real, vertex_dim, vertex_dim> P = material_->StressTensor(F);
             const Eigen::Matrix<real, element_dim * vertex_dim, 1> f_kd =
-                dF_dxkd_flattened[j] * Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(P.data(), P.size());
+                dF_dxkd_flattened_[j] * Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(P.data(), P.size());
             for (int k = 0; k < element_dim; ++k) {
                 for (int d = 0; d < vertex_dim; ++d) {
                     f_int(vertex_dim * vi(k) + d) += f_kd(k * vertex_dim + d);
@@ -202,49 +204,6 @@ template<int vertex_dim, int element_dim>
 const SparseMatrixElements Deformable<vertex_dim, element_dim>::ElasticForceDifferential(const VectorXr& q) const {
     const int element_num = mesh_.NumOfElements();
     const int sample_num = element_dim;
-    MatrixXr undeformed_samples(vertex_dim, element_dim);    // Gaussian quadratures.
-    const real r = 1 / std::sqrt(3);
-    for (int i = 0; i < sample_num; ++i) {
-        for (int j = 0; j < vertex_dim; ++j) {
-            undeformed_samples(vertex_dim - 1 - j, i) = ((i & (1 << j)) ? 1 : -1) * r;
-        }
-    }
-    undeformed_samples = (undeformed_samples.array() + 1) / 2;
-
-    // 2D:
-    // undeformed_samples = (u, v) \in [0, 1]^2.
-    // phi(X) = (1 - u)(1 - v)x00 + (1 - u)v x01 + u(1 - v) x10 + uv x11.
-    std::array<MatrixXr, sample_num> grad_undeformed_sample_weights;   // d/dX.
-    for (int i = 0; i < sample_num; ++i) {
-        const Eigen::Matrix<real, vertex_dim, 1> X = undeformed_samples.col(i);
-        grad_undeformed_sample_weights[i] = MatrixXr::Zero(vertex_dim, element_dim);
-        for (int j = 0; j < element_dim; ++j) {
-            for (int k = 0; k < vertex_dim; ++k) {
-                real factor = 1;
-                for (int s = 0; s < vertex_dim; ++s) {
-                    if (s == k) continue;
-                    factor *= ((j & (1 << s)) ? X(vertex_dim - 1 - s) : (1 - X(vertex_dim - 1 - s)));
-                }
-                grad_undeformed_sample_weights[i](vertex_dim - 1 - k, j) = ((j & (1 << k)) ? factor : -factor);
-            }
-        }
-    }
-
-    std::array<Eigen::Matrix<real, element_dim * vertex_dim, vertex_dim * vertex_dim>, sample_num> dF_dxkd_flattened;
-    for (int j = 0; j < sample_num; ++j) {
-        dF_dxkd_flattened[j].setZero();
-        for (int k = 0; k < element_dim; ++k) {
-            for (int d = 0; d < vertex_dim; ++d) {
-                // Compute dF/dxk(d).
-                const Eigen::Matrix<real, vertex_dim, vertex_dim> dF_dxkd =
-                    Eigen::Matrix<real, vertex_dim, 1>::Unit(d) * grad_undeformed_sample_weights[j].col(k).transpose();
-                dF_dxkd_flattened[j].row(k * vertex_dim + d) =
-                    Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(dF_dxkd.data(), dF_dxkd.size());
-            }
-        }
-        dF_dxkd_flattened[j] *= -cell_volume_ / sample_num;
-    }
-
     SparseMatrixElements nonzeros;
     for (int i = 0; i < element_num; ++i) {
         const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
@@ -258,17 +217,17 @@ const SparseMatrixElements Deformable<vertex_dim, element_dim>::ElasticForceDiff
         for (int j = 0; j < sample_num; ++j) {
             Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
             for (int k = 0; k < element_dim; ++k) {
-                F += deformed.col(k) * grad_undeformed_sample_weights[j].col(k).transpose();
+                F += deformed.col(k) * grad_undeformed_sample_weights_[j].col(k).transpose();
             }
             MatrixXr dF(vertex_dim * vertex_dim, element_dim * vertex_dim); dF.setZero();
             for (int s = 0; s < element_dim; ++s)
                 for (int t = 0; t < vertex_dim; ++t) {
                     const Eigen::Matrix<real, vertex_dim, vertex_dim> dF_single =
-                        Eigen::Matrix<real, vertex_dim, 1>::Unit(t) / dx_ * grad_undeformed_sample_weights[j].col(s).transpose();
+                        Eigen::Matrix<real, vertex_dim, 1>::Unit(t) / dx_ * grad_undeformed_sample_weights_[j].col(s).transpose();
                     dF.col(s * vertex_dim + t) += Eigen::Map<const VectorXr>(dF_single.data(), dF_single.size());
             }
             const auto dP = material_->StressTensorDifferential(F) * dF;
-            const Eigen::Matrix<real, element_dim * vertex_dim, element_dim * vertex_dim> df_kd = dF_dxkd_flattened[j] * dP;
+            const Eigen::Matrix<real, element_dim * vertex_dim, element_dim * vertex_dim> df_kd = dF_dxkd_flattened_[j] * dP;
             for (int k = 0; k < element_dim; ++k) {
                 for (int d = 0; d < vertex_dim; ++d) {
                     for (int s = 0; s < element_dim; ++s)
@@ -286,51 +245,7 @@ template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const {
     const int element_num = mesh_.NumOfElements();
     VectorXr df_int = VectorXr::Zero(dofs_);
-
     const int sample_num = element_dim;
-    MatrixXr undeformed_samples(vertex_dim, element_dim);    // Gaussian quadratures.
-    const real r = 1 / std::sqrt(3);
-    for (int i = 0; i < sample_num; ++i) {
-        for (int j = 0; j < vertex_dim; ++j) {
-            undeformed_samples(vertex_dim - 1 - j, i) = ((i & (1 << j)) ? 1 : -1) * r;
-        }
-    }
-    undeformed_samples = (undeformed_samples.array() + 1) / 2;
-
-    // 2D:
-    // undeformed_samples = (u, v) \in [0, 1]^2.
-    // phi(X) = (1 - u)(1 - v)x00 + (1 - u)v x01 + u(1 - v) x10 + uv x11.
-    std::array<MatrixXr, sample_num> grad_undeformed_sample_weights;   // d/dX.
-    for (int i = 0; i < sample_num; ++i) {
-        const Eigen::Matrix<real, vertex_dim, 1> X = undeformed_samples.col(i);
-        grad_undeformed_sample_weights[i] = MatrixXr::Zero(vertex_dim, element_dim);
-        for (int j = 0; j < element_dim; ++j) {
-            for (int k = 0; k < vertex_dim; ++k) {
-                real factor = 1;
-                for (int s = 0; s < vertex_dim; ++s) {
-                    if (s == k) continue;
-                    factor *= ((j & (1 << s)) ? X(vertex_dim - 1 - s) : (1 - X(vertex_dim - 1 - s)));
-                }
-                grad_undeformed_sample_weights[i](vertex_dim - 1 - k, j) = ((j & (1 << k)) ? factor : -factor);
-            }
-        }
-    }
-
-    std::array<Eigen::Matrix<real, element_dim * vertex_dim, vertex_dim * vertex_dim>, sample_num> dF_dxkd_flattened;
-    for (int j = 0; j < sample_num; ++j) {
-        dF_dxkd_flattened[j].setZero();
-        for (int k = 0; k < element_dim; ++k) {
-            for (int d = 0; d < vertex_dim; ++d) {
-                // Compute dF/dxk(d).
-                const Eigen::Matrix<real, vertex_dim, vertex_dim> dF_dxkd =
-                    Eigen::Matrix<real, vertex_dim, 1>::Unit(d) * grad_undeformed_sample_weights[j].col(k).transpose();
-                dF_dxkd_flattened[j].row(k * vertex_dim + d) =
-                    Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(dF_dxkd.data(), dF_dxkd.size());
-            }
-        }
-        dF_dxkd_flattened[j] *= -cell_volume_ / sample_num;
-    }
-
     for (int i = 0; i < element_num; ++i) {
         const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
         // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
@@ -346,13 +261,13 @@ const VectorXr Deformable<vertex_dim, element_dim>::ElasticForceDifferential(con
             Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
             Eigen::Matrix<real, vertex_dim, vertex_dim> dF = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
             for (int k = 0; k < element_dim; ++k) {
-                F += deformed.col(k) * grad_undeformed_sample_weights[j].col(k).transpose();
-                dF += ddeformed.col(k) * grad_undeformed_sample_weights[j].col(k).transpose();
+                F += deformed.col(k) * grad_undeformed_sample_weights_[j].col(k).transpose();
+                dF += ddeformed.col(k) * grad_undeformed_sample_weights_[j].col(k).transpose();
             }
             const Eigen::Matrix<real, vertex_dim, vertex_dim> dP = material_->StressTensorDifferential(F, dF);
             const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> dP_flattened =
                 Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(dP.data(), dP.size());
-            const Eigen::Matrix<real, element_dim * vertex_dim, 1> df_kd = dF_dxkd_flattened[j] * dP_flattened;
+            const Eigen::Matrix<real, element_dim * vertex_dim, 1> df_kd = dF_dxkd_flattened_[j] * dP_flattened;
             for (int k = 0; k < element_dim; ++k) {
                 for (int d = 0; d < vertex_dim; ++d) {
                     df_int(vertex_dim * vi(k) + d) += df_kd(k * vertex_dim + d);
