@@ -4,6 +4,7 @@
 #include "common/config.h"
 #include "mesh/mesh.h"
 #include "material/material.h"
+#include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
 class Deformable {
@@ -26,10 +27,14 @@ public:
     const std::map<int, real>& dirichlet() const { return dirichlet_; }
 
     void SetDirichletBoundaryCondition(const int dof, const real val) {
+        if (dirichlet_.find(dof) == dirichlet_.end()) pd_solver_ready_ = false;
         dirichlet_[dof] = val;
     }
     void RemoveDirichletBoundaryCondition(const int dof) {
-        if (dirichlet_.find(dof) != dirichlet_.end()) dirichlet_.erase(dof);
+        if (dirichlet_.find(dof) != dirichlet_.end()) {
+            dirichlet_.erase(dof);
+            pd_solver_ready_ = false;
+        }
     }
 
     void Forward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
@@ -41,6 +46,11 @@ public:
     void GetQuasiStaticState(const std::string& method, const VectorXr& f_ext,
         const std::map<std::string, real>& options, VectorXr& q) const;
     void SaveToMeshFile(const VectorXr& q, const std::string& file_name) const;
+
+    const real ElasticEnergy(const VectorXr& q) const;
+    const VectorXr ElasticForce(const VectorXr& q) const;
+    const VectorXr ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const;
+    const SparseMatrixElements ElasticForceDifferential(const VectorXr& q) const;
 
     // For Python binding.
     void PyForward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v,
@@ -54,12 +64,10 @@ public:
     void PyGetQuasiStaticState(const std::string& method, const std::vector<real>& f_ext,
         const std::map<std::string, real>& options, std::vector<real>& q) const;
     void PySaveToMeshFile(const std::vector<real>& q, const std::string& file_name) const;
-
-    const VectorXr Apply(const VectorXr& x) const { return x; }
-
-    const VectorXr ElasticForce(const VectorXr& q) const;
-    const VectorXr ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const;
-    const SparseMatrixElements ElasticForceDifferential(const VectorXr& q) const;
+    const real PyElasticEnergy(const std::vector<real>& q) const;
+    const std::vector<real> PyElasticForce(const std::vector<real>& q) const;
+    const std::vector<real> PyElasticForceDifferential(const std::vector<real>& q, const std::vector<real>& dq) const;
+    const std::vector<std::vector<real>> PyElasticForceDifferential(const std::vector<real>& q) const;
 
 protected:
     virtual void ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
@@ -96,6 +104,9 @@ private:
     const VectorXr QuasiStaticMatrixOp(const VectorXr& q, const VectorXr& dq) const;
     const SparseMatrix QuasiStaticMatrix(const VectorXr& q) const;
 
+    void SetupProjectiveDynamicsSolver(const real dt) const;
+    const VectorXr ProjectiveDynamicsLocalStep(const VectorXr& q_cur) const;
+
     Mesh<vertex_dim, element_dim> mesh_;
     real density_;
     real cell_volume_;
@@ -110,6 +121,11 @@ private:
     Eigen::Matrix<real, vertex_dim, element_dim> undeformed_samples_;
     std::array<Eigen::Matrix<real, vertex_dim, element_dim>, element_dim> grad_undeformed_sample_weights_;
     std::array<Eigen::Matrix<real, element_dim * vertex_dim, vertex_dim * vertex_dim>, element_dim> dF_dxkd_flattened_;
+
+    // Projective-dynamics-related data members.
+    mutable Eigen::SimplicialLDLT<SparseMatrix> pd_solver_;
+    mutable SparseMatrix pd_lhs_;
+    mutable bool pd_solver_ready_;
 };
 
 #endif

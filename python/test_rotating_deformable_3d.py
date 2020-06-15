@@ -4,7 +4,6 @@ import time
 import scipy.optimize
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, RotatingDeformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
-from py_diff_pd.common.common import to_std_map, to_std_real_vector
 from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.display import display_hex_mesh, render_hex_mesh, export_gif
 
@@ -14,7 +13,7 @@ if __name__ == '__main__':
     print_info('Seed: {}'.format(seed))
 
     folder = Path('test_rotating_deformable_3d')
-    # Use youngs_modulus = 1e3 and check_grad = True to verify the gradients are correct.
+    # Use youngs_modulus = 1e2 and check_grad = True to verify the gradients are correct.
     check_grad = False
     display_method = 'pbrt' # 'matplotlib' or 'pbrt'.
     render_samples = 4
@@ -34,7 +33,7 @@ if __name__ == '__main__':
     vertex_num = mesh.NumOfVertices()
 
     # FEM parameters.
-    youngs_modulus = 1e6
+    youngs_modulus = 1e5
     poissons_ratio = 0.45
     density = 1e3
     method = 'newton'
@@ -62,13 +61,12 @@ if __name__ == '__main__':
         v = [v0,]
         for i in range(frame_num):
             q_cur = q[-1]
-            deformable.PySaveToMeshFile(to_std_real_vector(q_cur), str(folder / f_folder / '{:04d}.bin'.format(i)))
+            deformable.PySaveToMeshFile(q_cur, str(folder / f_folder / '{:04d}.bin'.format(i)))
 
             v_cur = v[-1]
             q_next_array = StdRealVector(dofs)
             v_next_array = StdRealVector(dofs)
-            deformable.PyForward(method, to_std_real_vector(q_cur), to_std_real_vector(v_cur),
-                to_std_real_vector(f), dt, to_std_map(opt), q_next_array, v_next_array)
+            deformable.PyForward(method, q_cur, v_cur, f, dt, opt, q_next_array, v_next_array)
 
             q_next = ndarray(q_next_array)
             v_next = ndarray(v_next_array)
@@ -99,19 +97,18 @@ if __name__ == '__main__':
     target_position = ndarray([(cell_nums[0] + 0.5) * dx, (cell_nums[1] + 0.5) * dx, (cell_nums[2] - 0.5) * dx])
     def loss_and_grad(f, verbose):
         t_begin = time.time()
-        q = [to_std_real_vector(q0),]
-        v = [to_std_real_vector(v0),]
-        f_array = to_std_real_vector(f)
+        q = [q0,]
+        v = [v0,]
         for i in range(frame_num):
             q_cur = q[-1]
             v_cur = v[-1]
             q_next_array = StdRealVector(dofs)
             v_next_array = StdRealVector(dofs)
-            deformable.PyForward(method, q_cur, v_cur, f_array, dt, to_std_map(opt), q_next_array, v_next_array)
-            q.append(q_next_array)
-            v.append(v_next_array)
+            deformable.PyForward(method, q_cur, v_cur, f, dt, opt, q_next_array, v_next_array)
+            q.append(ndarray(q_next_array))
+            v.append(ndarray(v_next_array))
         # Compute the loss.
-        target_q = ndarray(q[-1])[-3:]
+        target_q = q[-1][-3:]
         loss = np.sum((target_q - target_position) ** 2)
 
         # Compute the gradients.
@@ -119,15 +116,13 @@ if __name__ == '__main__':
         dl_dq_next = np.zeros(dofs)
         dl_dq_next[-3:] = 2 * (target_q - target_position)
         dl_dv_next = np.zeros(f.size)
-        dl_dq_next = to_std_real_vector(dl_dq_next)
-        dl_dv_next = to_std_real_vector(dl_dv_next)
 
         for i in reversed(range(frame_num)):
             dl_dq = StdRealVector(dofs)
             dl_dv = StdRealVector(dofs)
             dl_df_ext = StdRealVector(dofs)
-            deformable.PyBackward(method, q[i], v[i], f_array, dt, q[i + 1], v[i + 1],
-                dl_dq_next, dl_dv_next, to_std_map(opt), dl_dq, dl_dv, dl_df_ext)
+            deformable.PyBackward(method, q[i], v[i], f, dt, q[i + 1], v[i + 1],
+                dl_dq_next, dl_dv_next, opt, dl_dq, dl_dv, dl_df_ext)
             grad += ndarray(dl_df_ext)
             dl_dq_next = dl_dq
             dl_dv_next = dl_dv

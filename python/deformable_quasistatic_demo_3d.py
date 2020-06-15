@@ -4,7 +4,6 @@ import time
 import scipy.optimize
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
-from py_diff_pd.common.common import to_std_map, to_std_real_vector
 from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.display import display_hex_mesh, render_hex_mesh, export_gif
 
@@ -65,7 +64,7 @@ if __name__ == '__main__':
     dofs = deformable.dofs()
     f_ext = np.zeros(dofs)
     q_array = StdRealVector(dofs)
-    deformable.PyGetQuasiStaticState(method, to_std_real_vector(f_ext), to_std_map(opt), q_array)
+    deformable.PyGetQuasiStaticState(method, f_ext, opt, q_array)
     deformable.PySaveToMeshFile(q_array, str(folder / 'quasistatic.bin'))
     mesh = Mesh3d()
     mesh.Initialize(str(folder / 'quasistatic.bin'))

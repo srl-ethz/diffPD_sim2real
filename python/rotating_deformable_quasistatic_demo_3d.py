@@ -5,7 +5,6 @@ import time
 import scipy.optimize
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, RotatingDeformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
-from py_diff_pd.common.common import to_std_map, to_std_real_vector
 from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.display import display_hex_mesh, render_hex_mesh, export_gif
 
@@ -53,7 +52,7 @@ if __name__ == '__main__':
     dofs = deformable.dofs()
     f = np.zeros(dofs)
     q_array = StdRealVector(dofs)
-    deformable.PyGetQuasiStaticState(method, to_std_real_vector(f), to_std_map(opt), q_array)
+    deformable.PyGetQuasiStaticState(method, f, opt, q_array)
     deformable.PySaveToMeshFile(q_array, str(folder / 'quasistatic.bin'))
     # Display the results.
     frame_fps = 30

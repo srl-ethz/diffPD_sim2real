@@ -1,7 +1,7 @@
 import numpy as np
 from pathlib import Path
 from py_diff_pd.core.py_diff_pd_core import Deformable2d, Mesh2d, StdRealVector
-from py_diff_pd.common.common import ndarray, create_folder, to_std_real_vector, to_std_map
+from py_diff_pd.common.common import ndarray, create_folder
 from py_diff_pd.common.common import print_info
 from py_diff_pd.common.display import display_quad_mesh, export_gif
 from py_diff_pd.common.mesh import generate_rectangle_mesh
@@ -14,7 +14,7 @@ if __name__ == '__main__':
     np.random.seed(seed)
 
     # Hyperparameters.
-    youngs_modulus = 1e6
+    youngs_modulus = 1e4
     poissons_ratio = 0.45
     density = 1e4
     method = 'newton_pcg'
@@ -50,16 +50,15 @@ if __name__ == '__main__':
     v = [v0,]
     f_ext = np.zeros((vertex_num, 2))
     f_ext[:, 1] = np.random.random(vertex_num) * density * deformable.cell_volume()
-    f_ext = ndarray(f_ext)
+    f_ext = ndarray(f_ext).ravel()
     for i in range(num_frames):
         q_cur = np.copy(q[-1])
-        deformable.PySaveToMeshFile(to_std_real_vector(q_cur), str(folder / '{:04d}.bin'.format(i)))
+        deformable.PySaveToMeshFile(q_cur, str(folder / '{:04d}.bin'.format(i)))
 
         v_cur = np.copy(v[-1])
         q_next_array = StdRealVector(dofs)
         v_next_array = StdRealVector(dofs)
-        deformable.PyForward(method, to_std_real_vector(q_cur), to_std_real_vector(v_cur),
-            to_std_real_vector(f_ext), dt, to_std_map(opt), q_next_array, v_next_array)
+        deformable.PyForward(method, q_cur, v_cur, f_ext, dt, opt, q_next_array, v_next_array)
 
         q_next = ndarray(q_next_array)
         v_next = ndarray(v_next_array)
@@ -77,7 +76,7 @@ if __name__ == '__main__':
             file_name=folder / '{:04d}.png'.format(i), show=False)
         frame_cnt += 1
 
-    export_gif(folder, '{}.gif'.format(str(folder)), 50)
+    export_gif(folder, folder / '{}.gif'.format(str(folder)), 50)
 
     # Test backward.
     print_info('Checking gradients...')
@@ -89,8 +88,7 @@ if __name__ == '__main__':
         f_ext = ndarray(qvf[2 * dofs:])
         q_next_array = StdRealVector(dofs)
         v_next_array = StdRealVector(dofs)
-        deformable.PyForward(method, to_std_real_vector(q_cur), to_std_real_vector(v_cur),
-            to_std_real_vector(f_ext), dt, to_std_map(opt), q_next_array, v_next_array)
+        deformable.PyForward(method, q_cur, v_cur, f_ext, dt, opt, q_next_array, v_next_array)
         q_next = ndarray(q_next_array)
         v_next = ndarray(v_next_array)
         loss = q_next.dot(q_next_weight) + v_next.dot(v_next_weight)
@@ -99,9 +97,8 @@ if __name__ == '__main__':
         dl_dq_cur = StdRealVector(dofs)
         dl_dv_cur = StdRealVector(dofs)
         dl_df_ext = StdRealVector(dofs)
-        deformable.PyBackward(method, to_std_real_vector(q_cur), to_std_real_vector(v_cur),
-            to_std_real_vector(f_ext), dt, q_next_array, v_next_array,
-            to_std_real_vector(q_next_weight), to_std_real_vector(v_next_weight), to_std_map(opt),
+        deformable.PyBackward(method, q_cur, v_cur, f_ext, dt, q_next_array, v_next_array,
+            q_next_weight, v_next_weight, opt,
             dl_dq_cur, dl_dv_cur, dl_df_ext
         )
         grad = np.concatenate([dl_dq_cur, dl_dv_cur, dl_df_ext])

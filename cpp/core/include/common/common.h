@@ -45,4 +45,8 @@ const VectorXr ToEigenVector(const std::vector<real>& v);
 const bool BeginsWith(const std::string& full, const std::string& beginning);
 const bool EndsWith(const std::string& full, const std::string& ending);
 
+// SparseMatrix.
+const SparseMatrixElements FromSparseMatrix(const SparseMatrix& A);
+const SparseMatrix ToSparseMatrix(const int row, const int col, const SparseMatrixElements& nonzeros);
+
 #endif

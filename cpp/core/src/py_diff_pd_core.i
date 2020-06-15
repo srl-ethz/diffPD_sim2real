@@ -31,6 +31,7 @@ namespace std {
     %template(StdIntArray4d) array<int, 4>;
     %template(StdIntArray8d) array<int, 8>;
     %template(StdRealVector) vector<real>;
+    %template(StdReayMatrix) vector<vector<real>>;
     %template(StdMap) map<string, real>;
 }
 

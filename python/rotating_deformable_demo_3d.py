@@ -5,7 +5,6 @@ import time
 import scipy.optimize
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, RotatingDeformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
-from py_diff_pd.common.common import to_std_map, to_std_real_vector
 from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.display import display_hex_mesh, render_hex_mesh, export_gif
 
@@ -15,16 +14,14 @@ if __name__ == '__main__':
     print_info('Seed: {}'.format(seed))
 
     folder = Path('rotating_deformable_demo_3d')
-    # Use youngs_modulus = 1e3 and check_grad = True to verify the gradients are correct.
-    check_grad = False
     display_method = 'pbrt' # 'matplotlib' or 'pbrt'.
     render_samples = 4
     create_folder(folder)
 
     # Mesh parameters.
-    cell_nums = (8, 8, 8)
+    cell_nums = (4, 4, 4)
     node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
-    dx = 0.2 / 8
+    dx = 0.05
     origin = (0, 0, 0)
     omega = (0, 0, np.pi)
     bin_file_name = str(folder / 'cube.bin')
@@ -35,7 +32,7 @@ if __name__ == '__main__':
     vertex_num = mesh.NumOfVertices()
 
     # FEM parameters.
-    youngs_modulus = 1e5
+    youngs_modulus = 1e4
     poissons_ratio = 0.45
     density = 1e3
     method = 'newton'
@@ -53,7 +50,7 @@ if __name__ == '__main__':
 
     # Forward simulation.
     dt = 1e-2
-    frame_num = 800
+    frame_num = 60
     dofs = deformable.dofs()
     q0 = ndarray(mesh.py_vertices())
     v0 = np.zeros(dofs)
@@ -63,13 +60,12 @@ if __name__ == '__main__':
         v = [v0,]
         for i in range(frame_num):
             q_cur = q[-1]
-            deformable.PySaveToMeshFile(to_std_real_vector(q_cur), str(folder / f_folder / '{:04d}.bin'.format(i)))
+            deformable.PySaveToMeshFile(q_cur, str(folder / f_folder / '{:04d}.bin'.format(i)))
 
             v_cur = v[-1]
             q_next_array = StdRealVector(dofs)
             v_next_array = StdRealVector(dofs)
-            deformable.PyForward(method, to_std_real_vector(q_cur), to_std_real_vector(v_cur),
-                to_std_real_vector(f), dt, to_std_map(opt), q_next_array, v_next_array)
+            deformable.PyForward(method, q_cur, v_cur, f, dt, opt, q_next_array, v_next_array)
 
             q_next = ndarray(q_next_array)
             v_next = ndarray(v_next_array)
@@ -78,7 +74,7 @@ if __name__ == '__main__':
 
         # Display the results.
         frame_cnt = 0
-        frame_skip = 4
+        frame_skip = 3
         for i in range(0, frame_num, frame_skip):
             mesh = Mesh3d()
             mesh.Initialize(str(folder / f_folder / '{:04d}.bin'.format(frame_cnt)))

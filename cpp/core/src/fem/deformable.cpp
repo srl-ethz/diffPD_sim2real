@@ -7,7 +7,7 @@
 
 template<int vertex_dim, int element_dim>
 Deformable<vertex_dim, element_dim>::Deformable()
-    : mesh_(), density_(0), cell_volume_(0), dx_(0), material_(nullptr), dofs_(0) {}
+    : mesh_(), density_(0), cell_volume_(0), dx_(0), material_(nullptr), dofs_(0), pd_solver_ready_(false) {}
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::Initialize(const std::string& binary_file_name, const real density,
@@ -32,6 +32,7 @@ void Deformable<vertex_dim, element_dim>::Initialize(const Eigen::Matrix<real, v
     material_ = InitializeMaterial(material_type, youngs_modulus, poissons_ratio);
     dofs_ = vertex_dim * mesh_.NumOfVertices();
     InitializeShapeFunction();
+    pd_solver_ready_ = false;
 }
 
 template<int vertex_dim, int element_dim>
@@ -97,7 +98,7 @@ void Deformable<vertex_dim, element_dim>::InitializeShapeFunction() {
                     Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(dF_dxkd.data(), dF_dxkd.size());
             }
         }
-        dF_dxkd_flattened_[j] *= -cell_volume_ / sample_num;
+        dF_dxkd_flattened_[j] *= -cell_volume_ / sample_num / dx_;
     }
 }
 
@@ -166,6 +167,58 @@ void Deformable<vertex_dim, element_dim>::PyBackward(const std::string& method, 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::PySaveToMeshFile(const std::vector<real>& q, const std::string& obj_file_name) const {
     SaveToMeshFile(ToEigenVector(q), obj_file_name);
+}
+
+template<int vertex_dim, int element_dim>
+const real Deformable<vertex_dim, element_dim>::PyElasticEnergy(const std::vector<real>& q) const {
+    return ElasticEnergy(ToEigenVector(q));
+}
+
+template<int vertex_dim, int element_dim>
+const std::vector<real> Deformable<vertex_dim, element_dim>::PyElasticForce(const std::vector<real>& q) const {
+    return ToStdVector(ElasticForce(ToEigenVector(q)));
+}
+
+template<int vertex_dim, int element_dim>
+const std::vector<real> Deformable<vertex_dim, element_dim>::PyElasticForceDifferential(
+    const std::vector<real>& q, const std::vector<real>& dq) const {
+    return ToStdVector(ElasticForceDifferential(ToEigenVector(q), ToEigenVector(dq)));
+}
+
+template<int vertex_dim, int element_dim>
+const std::vector<std::vector<real>> Deformable<vertex_dim, element_dim>::PyElasticForceDifferential(
+    const std::vector<real>& q) const {
+    PrintWarning("PyElasticForceDifferential should only be used for small-scale problems and for testing purposes.");
+    const SparseMatrixElements nonzeros = ElasticForceDifferential(ToEigenVector(q));
+    std::vector<std::vector<real>> K(dofs_, std::vector<real>(dofs_, 0));
+    for (const auto& triplet : nonzeros) {
+        K[triplet.row()][triplet.col()] += triplet.value();
+    }
+    return K;
+}
+
+template<int vertex_dim, int element_dim>
+const real Deformable<vertex_dim, element_dim>::ElasticEnergy(const VectorXr& q) const {
+    const int element_num = mesh_.NumOfElements();
+    const int sample_num = element_dim;
+    real energy = 0;
+    for (int i = 0; i < element_num; ++i) {
+        const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+        // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
+        // when we load the obj file.
+        Eigen::Matrix<real, vertex_dim, element_dim> deformed;
+        for (int j = 0; j < element_dim; ++j) {
+            deformed.col(j) = q.segment(vertex_dim * vi(j), vertex_dim);
+        }
+        deformed /= dx_;
+        for (int j = 0; j < sample_num; ++j) {
+            Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
+            for (int k = 0; k < element_dim; ++k)
+                F += deformed.col(k) * grad_undeformed_sample_weights_[j].col(k).transpose();
+            energy += material_->EnergyDensity(F) * cell_volume_ / sample_num;
+        }
+    }
+    return energy;
 }
 
 template<int vertex_dim, int element_dim>

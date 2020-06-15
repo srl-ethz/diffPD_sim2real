@@ -148,3 +148,17 @@ const bool EndsWith(const std::string& full, const std::string& ending) {
     return full.length() >= ending.length() &&
         full.compare(full.length() - ending.length(), ending.length(), ending) == 0;
 }
+
+const SparseMatrixElements FromSparseMatrix(const SparseMatrix& A) {
+    SparseMatrixElements nonzeros;
+    for (int k = 0; k < A.outerSize(); ++k)
+        for (SparseMatrix::InnerIterator it(A, k); it; ++it)
+            nonzeros.push_back(Eigen::Triplet<real>(it.row(), it.col(), it.value()));
+    return nonzeros;
+}
+
+const SparseMatrix ToSparseMatrix(const int row, const int col, const SparseMatrixElements& nonzeros) {
+    SparseMatrix A(row, col);
+    A.setFromTriplets(nonzeros.begin(), nonzeros.end());
+    return A;
+}
