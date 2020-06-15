@@ -66,6 +66,8 @@ protected:
         const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
     virtual void ForwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
         const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
+    virtual void ForwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
+        const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
 
     virtual void BackwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
         const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
@@ -73,6 +75,10 @@ protected:
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const;
     virtual void BackwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
         const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
+        const std::map<std::string, real>& options,
+        VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const;
+    virtual void BackwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
+        const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const;
     virtual void QuasiStaticStateNewton(const std::string& method, const VectorXr& f_ext,
