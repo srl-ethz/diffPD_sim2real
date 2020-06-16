@@ -203,14 +203,136 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
 }
 
 template<int vertex_dim, int element_dim>
+const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStepTransposeDifferential(
+    const VectorXr& q_cur, const VectorXr& dq_cur) const {
+    const int sample_num = element_dim;
+    std::array<SparseMatrix, sample_num> A, At;
+    for (int j = 0; j < sample_num; ++j) {
+        // Compute A, a mapping from q in a single hex mesh to F.
+        SparseMatrixElements nonzeros_A, nonzeros_At;
+        for (int k = 0; k < element_dim; ++k) {
+            // F += q.col(k) / dx * grad_undeformed_sample_weights_[j].col(k).transpose();
+            const Eigen::Matrix<real, vertex_dim, 1> v = grad_undeformed_sample_weights_[j].col(k) / dx_;
+            // F += np.outer(q.col(k), v);
+            // It only affects columns [vertex_dim * k, vertex_dim * k + vertex_dim).
+            for (int s = 0; s < vertex_dim; ++s)
+                for (int t = 0; t < vertex_dim; ++t) {
+                    nonzeros_A.push_back(Eigen::Triplet<real>(s * vertex_dim + t, k * vertex_dim + t, v(s)));
+                    nonzeros_At.push_back(Eigen::Triplet<real>(k * vertex_dim + t, s * vertex_dim + t, v(s)));
+                }
+        }
+        A[j] = ToSparseMatrix(vertex_dim * vertex_dim, vertex_dim * element_dim, nonzeros_A);
+        At[j] = ToSparseMatrix(vertex_dim * element_dim, vertex_dim * vertex_dim, nonzeros_At);
+    }
+
+    // Implements w * S' * (d(BP, A))^T * (ASx).
+    VectorXr pd_rhs = VectorXr::Zero(dofs_);
+    const real w = 2 * material_->mu() * cell_volume() / sample_num;
+
+    // TODO: create a base material for projective dynamics?
+    const std::shared_ptr<CorotatedPdMaterial<vertex_dim>> pd_material =
+        std::dynamic_pointer_cast<CorotatedPdMaterial<vertex_dim>>(material_);
+    CheckError(pd_material != nullptr, "The material type is not compatible with projective dynamics.");
+
+    // TODO: use OpenMP to parallelize this code?
+    const int element_num = mesh_.NumOfElements();
+    for (int i = 0; i < element_num; ++i) {
+        const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+        Eigen::Matrix<real, vertex_dim * element_dim, 1> deformed, ddeformed;
+        std::array<int, vertex_dim * element_dim> remap_idx;
+        for (int j = 0; j < element_dim; ++j) {
+            deformed.segment(vertex_dim * j, vertex_dim) = q_cur.segment(vertex_dim * vi(j), vertex_dim);
+            ddeformed.segment(vertex_dim * j, vertex_dim) = dq_cur.segment(vertex_dim * vi(j), vertex_dim);
+            for (int k = 0; k < vertex_dim; ++k)
+                remap_idx[j * vertex_dim + k] = vertex_dim * vi[j] + k;
+        }
+        for (int j = 0; j < sample_num; ++j) {
+            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = A[j] * deformed;
+            const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Map<const Eigen::Matrix<real, vertex_dim, vertex_dim>>(
+                F_flattened.data(), vertex_dim, vertex_dim
+            );
+            const Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * vertex_dim> dBp = pd_material->ProjectToManifoldDifferential(F);
+            const Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * element_dim> dBptA = dBp.transpose() * A[j];
+            const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtdBptASx = At[j] * dBptA * ddeformed;
+            for (int k = 0; k < vertex_dim * element_dim; ++k)
+                pd_rhs(remap_idx[k]) += w * AtdBptASx(k);
+        }
+    }
+    return pd_rhs;
+}
+
+template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
     const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
     const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
-    // TODO.
-    dl_dq = VectorXr::Zero(dofs_);
-    dl_dv = VectorXr::Zero(dofs_);
-    dl_df_ext = VectorXr::Zero(dofs_);
+    // q_next = q + h * v + h2m * f_ext + h2m * f_int(q_next).
+    // v_next = (q_next - q) / dt.
+    // (q, v, f_ext) -> q_next.
+    // (q, q_next) -> v_next.
+    const VectorXr dl_dq_next_agg = dl_dq_next + dl_dv_next / dt;
+    dl_dq = -dl_dv_next / dt;
+    // Now the hard part:
+    // q_next = q + h * v + h2m * f_ext + h2m * f_int(q_next).
+    const real mass = density_ * cell_volume_;
+    const real h2m = dt * dt / mass;
+    // AS maps q to F.
+    // Elastic energy = wi / 2 * \|ASq - Bp\|^2
+    // f_int = -wi (S'A'ASq - S'A'Bp).
+    // q_next + h2m wi * S'A'ASq - h2m * wi * S'A'Bp = q + hv + h2m f_ext =: rhs.
+    // (I + h2mw * S'A'AS) * J - h2mw * S'A' d(BP)/dq_next * J = drhs/d*.
+    // J = (I + h2mw * S'A'AS - h2mw * S'A' d(BP)/dq_next)^(-1) * drhs/d* 
+    // (I + h2mw * S'A'AS - h2mw * S'A' d(BP)/dq_next)^T * x = dl_dq_next_agg.
+    // dl_dv = x * h.
+    // dl_dfext = x * h2m.
+    // dl_dq += x.
+    // So the crux is to solve x from the equation below:
+    // (I + h2m * S'A'AS)x = dl_dq_next_agg + h2mw * d(BP)/dq_next^T * AS x.
+    // Recall that d(BP)/dq_next = d(BP)/dF_involved * A * S.
+    // h2mw * d(BP)/dq_next^T * ASx = h2mw * S' * A' * (d(BP)/dF_involved)^T * A * (Sx).
+    // = h2mw * S' * (d(BP, A))^T * (ASx).
+
+    CheckError(options.find("max_pd_iter") != options.end(), "Missing option max_pd_iter.");
+    CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
+    CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
+    CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
+    const int max_pd_iter = static_cast<int>(options.at("max_pd_iter"));
+    const real abs_tol = options.at("abs_tol");
+    const real rel_tol = options.at("rel_tol");
+    const int verbose_level = static_cast<int>(options.at("verbose"));
+    CheckError(max_pd_iter > 0, "Invalid max_pd_iter: " + std::to_string(max_pd_iter));
+
+    // Pre-factorize the matrix -- it will be skipped if the matrix has already been factorized.
+    SetupProjectiveDynamicsSolver(dt);
+
+    VectorXr adjoint = dl_dq_next_agg;  // Initial guess.
+    VectorXr selected = VectorXr::Ones(dofs_);
+    if (verbose_level > 0) PrintInfo("Projective dynamics");
+    for (int i = 0; i < max_pd_iter; ++i) {
+        if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
+        // Local step.
+        VectorXr pd_rhs = dl_dq_next_agg + h2m * ProjectiveDynamicsLocalStepTransposeDifferential(q_next, adjoint);
+
+        // Global step.
+        const VectorXr adjoint_next = pd_solver_.solve(pd_rhs);
+        CheckError(pd_solver_.info() == Eigen::Success, "Cholesky solver failed.");
+
+        // Check for convergence.
+        const VectorXr pd_lhs = pd_lhs_ * adjoint;
+        const real abs_error = VectorXr((pd_lhs - pd_rhs).array() * selected.array()).norm();
+        const real rhs_norm = VectorXr(selected.array() * pd_rhs.array()).norm();
+        if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
+        if (abs_error <= rel_tol * rhs_norm + abs_tol) {
+            dl_dq += adjoint_next;
+            dl_dv = adjoint_next * dt;
+            dl_df_ext = adjoint_next * h2m;
+            return;
+        }
+
+        // Update.
+        adjoint = adjoint_next;
+    }
+    PrintError("Projective dynamics back-propagation fails to converge.");
 }
 
 template class Deformable<2, 4>;

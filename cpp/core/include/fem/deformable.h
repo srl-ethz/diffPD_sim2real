@@ -106,6 +106,7 @@ private:
 
     void SetupProjectiveDynamicsSolver(const real dt) const;
     const VectorXr ProjectiveDynamicsLocalStep(const VectorXr& q_cur) const;
+    const VectorXr ProjectiveDynamicsLocalStepTransposeDifferential(const VectorXr& q_cur, const VectorXr& dq_cur) const;
 
     Mesh<vertex_dim, element_dim> mesh_;
     real density_;
