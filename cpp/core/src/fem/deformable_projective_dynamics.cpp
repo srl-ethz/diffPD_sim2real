@@ -26,24 +26,7 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
     const real h2mw = h2m * w;
     // For each element and for eacn sample, AS maps q to the deformation gradient F.
     std::array<SparseMatrixElements, sample_num> AtA;
-    for (int j = 0; j < sample_num; ++j) {
-        // Compute A, a mapping from q in a single hex mesh to F.
-        SparseMatrixElements nonzeros_A, nonzeros_At;
-        for (int k = 0; k < element_dim; ++k) {
-            // F += q.col(k) / dx * grad_undeformed_sample_weights_[j].col(k).transpose();
-            const Eigen::Matrix<real, vertex_dim, 1> v = grad_undeformed_sample_weights_[j].col(k) / dx_;
-            // F += np.outer(q.col(k), v);
-            // It only affects columns [vertex_dim * k, vertex_dim * k + vertex_dim).
-            for (int s = 0; s < vertex_dim; ++s)
-                for (int t = 0; t < vertex_dim; ++t) {
-                    nonzeros_A.push_back(Eigen::Triplet<real>(s * vertex_dim + t, k * vertex_dim + t, v(s)));
-                    nonzeros_At.push_back(Eigen::Triplet<real>(k * vertex_dim + t, s * vertex_dim + t, v(s)));
-                }
-        }
-        const SparseMatrix A = ToSparseMatrix(vertex_dim * vertex_dim, vertex_dim * element_dim, nonzeros_A);
-        const SparseMatrix At = ToSparseMatrix(vertex_dim * element_dim, vertex_dim * vertex_dim, nonzeros_At);
-        AtA[j] = FromSparseMatrix(At * A);
-    }
+    for (int j = 0; j < sample_num; ++j) AtA[j] = FromSparseMatrix(pd_At_[j] * pd_A_[j]);
     for (int i = 0; i < element_num; ++i) {
         const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
         std::array<int, vertex_dim * element_dim> remap_idx;
@@ -78,25 +61,6 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(const VectorXr& q_cur) const {
     const int sample_num = element_dim;
-    std::array<SparseMatrix, sample_num> A, At;
-    for (int j = 0; j < sample_num; ++j) {
-        // Compute A, a mapping from q in a single hex mesh to F.
-        SparseMatrixElements nonzeros_A, nonzeros_At;
-        for (int k = 0; k < element_dim; ++k) {
-            // F += q.col(k) / dx * grad_undeformed_sample_weights_[j].col(k).transpose();
-            const Eigen::Matrix<real, vertex_dim, 1> v = grad_undeformed_sample_weights_[j].col(k) / dx_;
-            // F += np.outer(q.col(k), v);
-            // It only affects columns [vertex_dim * k, vertex_dim * k + vertex_dim).
-            for (int s = 0; s < vertex_dim; ++s)
-                for (int t = 0; t < vertex_dim; ++t) {
-                    nonzeros_A.push_back(Eigen::Triplet<real>(s * vertex_dim + t, k * vertex_dim + t, v(s)));
-                    nonzeros_At.push_back(Eigen::Triplet<real>(k * vertex_dim + t, s * vertex_dim + t, v(s)));
-                }
-        }
-        A[j] = ToSparseMatrix(vertex_dim * vertex_dim, vertex_dim * element_dim, nonzeros_A);
-        At[j] = ToSparseMatrix(vertex_dim * element_dim, vertex_dim * vertex_dim, nonzeros_At);
-    }
-
     VectorXr pd_rhs = VectorXr::Zero(dofs_);
     const real w = 2 * material_->mu() * cell_volume() / sample_num;
 
@@ -124,15 +88,15 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
                 remap_idx[j * vertex_dim + k] = vertex_dim * vi[j] + k;
         }
         for (int j = 0; j < sample_num; ++j) {
-            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = A[j] * deformed;
-            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_bound = A[j] * deformed_dirichlet;
+            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
+            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_bound = pd_A_[j] * deformed_dirichlet;
             const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Map<const Eigen::Matrix<real, vertex_dim, vertex_dim>>(
                 F_flattened.data(), vertex_dim, vertex_dim
             );
             const Eigen::Matrix<real, vertex_dim, vertex_dim> Bp = pd_material->ProjectToManifold(F);
             const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> Bp_flattened = Eigen::Map<
                 const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(Bp.data(), Bp.size());
-            const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtBp = At[j] * (Bp_flattened - F_bound);
+            const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtBp = pd_At_[j] * (Bp_flattened - F_bound);
             for (int k = 0; k < vertex_dim * element_dim; ++k)
                 pd_rhs(remap_idx[k]) += w * AtBp(k);
         }
@@ -206,25 +170,6 @@ template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStepTransposeDifferential(
     const VectorXr& q_cur, const VectorXr& dq_cur) const {
     const int sample_num = element_dim;
-    std::array<SparseMatrix, sample_num> A, At;
-    for (int j = 0; j < sample_num; ++j) {
-        // Compute A, a mapping from q in a single hex mesh to F.
-        SparseMatrixElements nonzeros_A, nonzeros_At;
-        for (int k = 0; k < element_dim; ++k) {
-            // F += q.col(k) / dx * grad_undeformed_sample_weights_[j].col(k).transpose();
-            const Eigen::Matrix<real, vertex_dim, 1> v = grad_undeformed_sample_weights_[j].col(k) / dx_;
-            // F += np.outer(q.col(k), v);
-            // It only affects columns [vertex_dim * k, vertex_dim * k + vertex_dim).
-            for (int s = 0; s < vertex_dim; ++s)
-                for (int t = 0; t < vertex_dim; ++t) {
-                    nonzeros_A.push_back(Eigen::Triplet<real>(s * vertex_dim + t, k * vertex_dim + t, v(s)));
-                    nonzeros_At.push_back(Eigen::Triplet<real>(k * vertex_dim + t, s * vertex_dim + t, v(s)));
-                }
-        }
-        A[j] = ToSparseMatrix(vertex_dim * vertex_dim, vertex_dim * element_dim, nonzeros_A);
-        At[j] = ToSparseMatrix(vertex_dim * element_dim, vertex_dim * vertex_dim, nonzeros_At);
-    }
-
     // Implements w * S' * (d(BP, A))^T * (ASx).
     VectorXr pd_rhs = VectorXr::Zero(dofs_);
     const real w = 2 * material_->mu() * cell_volume() / sample_num;
@@ -247,13 +192,13 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStepT
                 remap_idx[j * vertex_dim + k] = vertex_dim * vi[j] + k;
         }
         for (int j = 0; j < sample_num; ++j) {
-            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = A[j] * deformed;
+            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
             const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Map<const Eigen::Matrix<real, vertex_dim, vertex_dim>>(
                 F_flattened.data(), vertex_dim, vertex_dim
             );
             const Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * vertex_dim> dBp = pd_material->ProjectToManifoldDifferential(F);
-            const Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * element_dim> dBptA = dBp.transpose() * A[j];
-            const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtdBptASx = At[j] * dBptA * ddeformed;
+            const Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * element_dim> dBptA = dBp.transpose() * pd_A_[j];
+            const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtdBptASx = pd_At_[j] * dBptA * ddeformed;
             for (int k = 0; k < vertex_dim * element_dim; ++k)
                 pd_rhs(remap_idx[k]) += w * AtdBptASx(k);
         }
@@ -276,7 +221,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     // q_next = q + h * v + h2m * f_ext + h2m * f_int(q_next).
     const real mass = density_ * cell_volume_;
     const real h2m = dt * dt / mass;
-    // AS maps q to F.
+    // AS maps q to F. Note that there is no need to handle boundary conditions specifically.
     // Elastic energy = wi / 2 * \|ASq - Bp\|^2
     // f_int = -wi (S'A'ASq - S'A'Bp).
     // q_next + h2m wi * S'A'ASq - h2m * wi * S'A'Bp = q + hv + h2m f_ext =: rhs.
@@ -307,11 +252,16 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
 
     VectorXr adjoint = dl_dq_next_agg;  // Initial guess.
     VectorXr selected = VectorXr::Ones(dofs_);
+    for (const auto& pair : dirichlet_) {
+        adjoint(pair.first) = 0;
+        selected(pair.first) = 0;
+    }
     if (verbose_level > 0) PrintInfo("Projective dynamics");
     for (int i = 0; i < max_pd_iter; ++i) {
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
         // Local step.
         VectorXr pd_rhs = dl_dq_next_agg + h2m * ProjectiveDynamicsLocalStepTransposeDifferential(q_next, adjoint);
+        for (const auto& pair : dirichlet_) pd_rhs(pair.first) = 0;
 
         // Global step.
         const VectorXr adjoint_next = pd_solver_.solve(pd_rhs);

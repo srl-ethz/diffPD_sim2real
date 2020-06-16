@@ -100,6 +100,29 @@ void Deformable<vertex_dim, element_dim>::InitializeShapeFunction() {
         }
         dF_dxkd_flattened_[j] *= -cell_volume_ / sample_num / dx_;
     }
+
+    // Data structures used by projective dynamics.
+    pd_A_.resize(sample_num);
+    pd_At_.resize(sample_num);
+    for (int j = 0; j < sample_num; ++j) {
+        // Compute A, a mapping from q in a single hex mesh to F.
+        SparseMatrixElements nonzeros_A, nonzeros_At;
+        for (int k = 0; k < element_dim; ++k) {
+            // F += q.col(k) / dx * grad_undeformed_sample_weights_[j].col(k).transpose();
+            const Eigen::Matrix<real, vertex_dim, 1> v = grad_undeformed_sample_weights_[j].col(k) / dx_;
+            // F += np.outer(q.col(k), v);
+            // It only affects columns [vertex_dim * k, vertex_dim * k + vertex_dim).
+            for (int s = 0; s < vertex_dim; ++s)
+                for (int t = 0; t < vertex_dim; ++t) {
+                    nonzeros_A.push_back(Eigen::Triplet<real>(s * vertex_dim + t, k * vertex_dim + t, v(s)));
+                    nonzeros_At.push_back(Eigen::Triplet<real>(k * vertex_dim + t, s * vertex_dim + t, v(s)));
+                }
+        }
+        const SparseMatrix A = ToSparseMatrix(vertex_dim * vertex_dim, vertex_dim * element_dim, nonzeros_A);
+        const SparseMatrix At = ToSparseMatrix(vertex_dim * element_dim, vertex_dim * vertex_dim, nonzeros_At);
+        pd_A_[j] = A;
+        pd_At_[j] = At;
+    }
 }
 
 template<int vertex_dim, int element_dim>

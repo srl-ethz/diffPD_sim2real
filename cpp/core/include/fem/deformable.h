@@ -127,6 +127,7 @@ private:
     mutable Eigen::SimplicialLDLT<SparseMatrix> pd_solver_;
     mutable SparseMatrix pd_lhs_;
     mutable bool pd_solver_ready_;
+    mutable std::vector<SparseMatrix> pd_A_, pd_At_;
 };
 
 #endif
