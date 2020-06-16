@@ -17,7 +17,7 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
     // Part I: the identity matrix.
     for (int i = 0; i < dofs_; ++i) {
         // Skip dofs fixed by the dirichlet boundary conditions -- we will add them back later.
-        if (dirichlet().find(i) == dirichlet().end())
+        if (dirichlet_.find(i) == dirichlet_.end())
             nonzeros.push_back(Eigen::Triplet<real>(i, i, 1));
     }
     // Part II: potential energy from the material.
@@ -57,14 +57,14 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
                 const int col = triplet.col();
                 const real val = triplet.value() * h2mw;
                 // Skip dofs that are fixed by dirichlet boundary conditions.
-                if (dirichlet().find(remap_idx[row]) == dirichlet().end() &&
-                    dirichlet().find(remap_idx[col]) == dirichlet().end())
+                if (dirichlet_.find(remap_idx[row]) == dirichlet_.end() &&
+                    dirichlet_.find(remap_idx[col]) == dirichlet_.end())
                     nonzeros.push_back(Eigen::Triplet<real>(remap_idx[row], remap_idx[col], val));
             }
         }
     }
     // Part III: add back dirichlet boundary conditions.
-    for (const auto& pair : dirichlet())
+    for (const auto& pair : dirichlet_)
         nonzeros.push_back(Eigen::Triplet<real>(pair.first, pair.first, 1));
 
     // Assemble and pre-factorize the matrix.
@@ -105,26 +105,34 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
         std::dynamic_pointer_cast<CorotatedPdMaterial<vertex_dim>>(material_);
     CheckError(pd_material != nullptr, "The material type is not compatible with projective dynamics.");
 
+    // Handle dirichlet boundary conditions.
+    VectorXr q_boundary = VectorXr::Zero(dofs_);
+    for (const auto& pair : dirichlet_) q_boundary(pair.first) = pair.second;
+
     // TODO: use OpenMP to parallelize this code?
     const int element_num = mesh_.NumOfElements();
     for (int i = 0; i < element_num; ++i) {
         const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
         Eigen::Matrix<real, vertex_dim * element_dim, 1> deformed;
         std::array<int, vertex_dim * element_dim> remap_idx;
+        Eigen::Matrix<real, vertex_dim * element_dim, 1> deformed_dirichlet;
+        deformed_dirichlet.setZero();
         for (int j = 0; j < element_dim; ++j) {
             deformed.segment(vertex_dim * j, vertex_dim) = q_cur.segment(vertex_dim * vi(j), vertex_dim);
+            deformed_dirichlet.segment(vertex_dim * j, vertex_dim) = q_boundary.segment(vertex_dim * vi(j), vertex_dim);
             for (int k = 0; k < vertex_dim; ++k)
                 remap_idx[j * vertex_dim + k] = vertex_dim * vi[j] + k;
         }
         for (int j = 0; j < sample_num; ++j) {
             const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = A[j] * deformed;
+            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_bound = A[j] * deformed_dirichlet;
             const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Map<const Eigen::Matrix<real, vertex_dim, vertex_dim>>(
                 F_flattened.data(), vertex_dim, vertex_dim
             );
             const Eigen::Matrix<real, vertex_dim, vertex_dim> Bp = pd_material->ProjectToManifold(F);
             const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> Bp_flattened = Eigen::Map<
                 const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(Bp.data(), Bp.size());
-            const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtBp = At[j] * Bp_flattened;
+            const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtBp = At[j] * (Bp_flattened - F_bound);
             for (int k = 0; k < vertex_dim * element_dim; ++k)
                 pd_rhs(remap_idx[k]) += w * AtBp(k);
         }
@@ -169,7 +177,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
         // Local step.
         VectorXr pd_rhs = rhs + h2m * ProjectiveDynamicsLocalStep(q_sol);
-        for (const auto& pair : dirichlet()) pd_rhs(pair.first) = pair.second;
+        for (const auto& pair : dirichlet_) pd_rhs(pair.first) = pair.second;
 
         // Global step.
         const VectorXr q_sol_next = pd_solver_.solve(pd_rhs);
