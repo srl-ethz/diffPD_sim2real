@@ -13,8 +13,8 @@ if __name__ == '__main__':
     create_folder(folder)
 
     # Mesh parameters.
-    cell_nums = (2, 4)
-    dx = 0.1
+    cell_nums = (20, 40)
+    dx = 0.01
     origin = (0, 0)
     bin_file_name = str(folder / 'rectangle.bin')
     generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name)
@@ -27,9 +27,9 @@ if __name__ == '__main__':
     poissons_ratio = 0.45
     density = 1e4
     newton_method = 'newton_cholesky'
-    newton_opt = { 'max_newton_iter': 50, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-6, 'verbose': 0 }
+    newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-3, 'verbose': 0 }
     pd_method = 'pd'
-    pd_opt = { 'max_pd_iter': 50, 'abs_tol': 1e-6, 'rel_tol': 1e-6, 'verbose': 0 }
+    pd_opt = { 'max_pd_iter': 500, 'abs_tol': 1e-6, 'rel_tol': 1e-3, 'verbose': 0 }
     deformable = Deformable2d()
     deformable.Initialize(bin_file_name, density, 'corotated_pd', youngs_modulus, poissons_ratio)
 
@@ -41,12 +41,12 @@ if __name__ == '__main__':
         deformable.SetDirichletBoundaryCondition(2 * node_idx + 1, vy)
 
     # Forward simulation.
-    dt = 0.1
+    dt = 0.03
     frame_num = 25
     dofs = deformable.dofs()
     q0 = ndarray(mesh.py_vertices())
     v0 = np.zeros(dofs)
-    f = np.random.normal(scale=10, size=dofs) * density * dx * dx
+    f = np.random.normal(scale=10, size=(frame_num, dofs)) * density * dx * dx
 
     def step(method, opt):
         q = [q0,]
@@ -54,17 +54,20 @@ if __name__ == '__main__':
         for i in range(frame_num):
             q_next_array = StdRealVector(dofs)
             v_next_array = StdRealVector(dofs)
-            deformable.PyForward(method, q0, v0, f, dt, opt, q_next_array, v_next_array)
+            deformable.PyForward(method, q0, v0, f[i], dt, opt, q_next_array, v_next_array)
             q_next = ndarray(q_next_array)
             v_next = ndarray(v_next_array)
             q.append(q_next)
             v.append(v_next)
         return q, v
 
+    t0 = time.time()
     q_newton, v_newton = step(newton_method, newton_opt)
+    t1 = time.time()
     q_pd, v_pd = step(pd_method, pd_opt)
-    atol = 1e-6
-    rtol = 1e-3
+    t2 = time.time()
+    print_info('Newton: {:3.3f}s; PD: {:3.3f}s'.format(t1 - t0, t2 - t1))
+    atol = 1e-4
+    rtol = 1e-2
     for qn, vn, qp, vp in zip(q_newton, v_newton, q_pd, v_pd):
-        assert np.allclose(qn, qp, atol, rtol)
-        assert np.allclose(vn, vp, atol, rtol)
+        assert np.linalg.norm(qn - qp) < rtol * np.linalg.norm(qn) + atol
