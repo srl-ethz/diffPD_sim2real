@@ -7,7 +7,30 @@ from matplotlib import collections as mc
 from py_diff_pd.core.py_diff_pd_core import Mesh2d
 from py_diff_pd.common.common import ndarray
 
-def display_quad_mesh(quad_mesh, xlim=None, ylim=None, title=None, file_name=None, show=True):
+# transforms is a list of:
+# ('s', s)
+# ('t', (tx, ty))
+# ('r', theta)
+def display_quad_mesh(quad_mesh, xlim=None, ylim=None, title=None, file_name=None, show=True,
+    transforms=None):
+    def apply_transform(p):
+        p = ndarray(p)
+        if transforms is None:
+            return p
+        else:
+            for key, val in transforms:
+                if key == 's':
+                    p *= val
+                elif key == 't':
+                    p += ndarray(val)
+                elif key == 'r':
+                    c, s = np.cos(val), np.sin(val)
+                    R = ndarray([[c, -s], [s, c]])
+                    p = R @ p
+                else:
+                    raise NotImplementedError
+            return p
+
     vertex_num = quad_mesh.NumOfVertices()
     element_num = quad_mesh.NumOfElements()
 
@@ -20,8 +43,8 @@ def display_quad_mesh(quad_mesh, xlim=None, ylim=None, title=None, file_name=Non
         for j0, j1 in j01:
             j0 = int(f[j0])
             j1 = int(f[j1])
-            v0 = ndarray(quad_mesh.py_vertex(j0))
-            v1 = ndarray(quad_mesh.py_vertex(j1))
+            v0 = ndarray(apply_transform(quad_mesh.py_vertex(j0)))
+            v1 = ndarray(apply_transform(quad_mesh.py_vertex(j1)))
             lines.append((v0, v1))
     ax.add_collection(mc.LineCollection(lines, colors='tab:red', alpha=0.5))
 
