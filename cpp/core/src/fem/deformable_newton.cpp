@@ -115,39 +115,40 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
     CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
-    // q_next = q + h * v_next.
-    // v_next = v + h * (f_ext + f_int(q_next)) / m.
-    // q_next - q = h * v + h^2 / m * (f_ext + f_int(q_next)).
-    // q_next - h^2 / m * f_int(q_next) = q + h * v + h^2 / m * f_ext.
+    for (const auto& pair : dirichlet_) CheckError(q_next(pair.first) == pair.second, "Inconsistent q_next.");
+    // q_mid - h^2 / m * f_int(q_mid) = select(q + h * v + h^2 / m * f_ext).
+    // q_next = [q_mid, q_bnd].
     // v_next = (q_next - q) / dt.
     // So, the computational graph looks like this:
-    // (q, v, f_ext) -> q_next.
+    // (q, v, f_ext) -> q_mid -> q_next.
     // (q, q_next) -> v_next.
     // Back-propagate (q, q_next) -> v_next.
     const VectorXr dl_dq_next_agg = dl_dq_next + dl_dv_next / dt;
     dl_dq = -dl_dv_next / dt;
-    // The hard part: (q, v, f_ext) -> q_next.
+    // Back-propagate q_mid -> q_next = [q_mid, q_bnd].
+    VectorXr dl_dq_mid = dl_dq_next_agg;
+    for (const auto& pair : dirichlet_) dl_dq_mid(pair.first) = 0;
+
+    // Back-propagate q_mid - h^2 / m * f_int(q_mid) = select(q + h * v + h^2 / m * f_ext):
+    // dlhs / dq_mid * dq_mid/dq = drhs/dq.
+    // dl/dq_mid * dq_mid/dq = dl/dq_mid * (dlhs / dq_mid)^(-1) * drhs/dq.
+    // The left-hand side is what we want. The right-hand side can be computed as:
+    // (dlhs / dq_mid)^T * adjoint = dl/dq_mid.
+    // rhs = adjoint.as_row_vec() * drhs/dq.
     const real mass = density_ * cell_volume_;
     const real h2m = dt * dt / mass;
-    // op(q_next) = q + h * v + h2m * f_ext.
-    // d_op/dq_next * dq_next/d* = drhs/d*.
-    // dq_next/d* = (d_op/dq_next)^(-1) * drhs/d*.
-    // dl/d* = (drhs/d*)^T * ((d_op/dq_next)^(-1) * dl_dq_next).
-
-    // d_op/dq_next * adjoint = dl_dq_next.
-    // Solve for the search direction.
     VectorXr adjoint = VectorXr::Zero(dofs_);
     if (method == "newton_pcg") {
         Eigen::ConjugateGradient<MatrixOp, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
         MatrixOp op(dofs_, dofs_, [&](const VectorXr& dq){ return NewtonMatrixOp(q_next, h2m, dq); });
         cg.compute(op);
-        adjoint = cg.solve(dl_dq_next_agg);
+        adjoint = cg.solve(dl_dq_mid);
         CheckError(cg.info() == Eigen::Success, "CG solver failed.");
     } else if (method == "newton_cholesky") {
         Eigen::SimplicialLDLT<SparseMatrix> cholesky;
         const SparseMatrix op = NewtonMatrix(q_next, h2m);
         cholesky.compute(op);
-        adjoint = cholesky.solve(dl_dq_next_agg);
+        adjoint = cholesky.solve(dl_dq_mid);
         CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
     } else {
         // Should never happen.

@@ -211,30 +211,36 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
     const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
-    // q_next = q + h * v + h2m * f_ext + h2m * f_int(q_next).
+    // q_mid - h^2 / m * f_int(q_mid) = select(q + h * v + h^2 / m * f_ext).
+    // q_next = [q_mid, q_bnd].
     // v_next = (q_next - q) / dt.
-    // (q, v, f_ext) -> q_next.
+    // So, the computational graph looks like this:
+    // (q, v, f_ext) -> q_mid -> q_next.
     // (q, q_next) -> v_next.
+    // Back-propagate (q, q_next) -> v_next.
     const VectorXr dl_dq_next_agg = dl_dq_next + dl_dv_next / dt;
     dl_dq = -dl_dv_next / dt;
+    // Back-propagate q_mid -> q_next = [q_mid, q_bnd].
+    VectorXr dl_dq_mid = dl_dq_next_agg;
+    for (const auto& pair : dirichlet_) dl_dq_mid(pair.first) = 0;
     // Now the hard part:
-    // q_next = q + h * v + h2m * f_ext + h2m * f_int(q_next).
+    // q_mid - h2m * f_int(q_mid) = select(q + h * v + h2m * f_ext).
     const real mass = density_ * cell_volume_;
     const real h2m = dt * dt / mass;
     // AS maps q to F. Note that there is no need to handle boundary conditions specifically.
     // Elastic energy = wi / 2 * \|ASq - Bp\|^2
     // f_int = -wi (S'A'ASq - S'A'Bp).
-    // q_next + h2m wi * S'A'ASq - h2m * wi * S'A'Bp = q + hv + h2m f_ext =: rhs.
-    // (I + h2mw * S'A'AS) * J - h2mw * S'A' d(BP)/dq_next * J = drhs/d*.
+    // q_mid + h2m wi * S'A'ASq_mid - h2m * wi * S'A'Bp = q + hv + h2m f_ext =: rhs.
+    // (I + h2mw * S'A'AS) * J - h2mw * S'A' d(BP)/dq_mid * J = drhs/d*.
     // J = (I + h2mw * S'A'AS - h2mw * S'A' d(BP)/dq_next)^(-1) * drhs/d* 
-    // (I + h2mw * S'A'AS - h2mw * S'A' d(BP)/dq_next)^T * x = dl_dq_next_agg.
+    // (I + h2mw * S'A'AS - h2mw * S'A' d(BP)/dq_next)^T * x = dl_dq_mid.
     // dl_dv = x * h.
     // dl_dfext = x * h2m.
     // dl_dq += x.
     // So the crux is to solve x from the equation below:
-    // (I + h2m * S'A'AS)x = dl_dq_next_agg + h2mw * d(BP)/dq_next^T * AS x.
-    // Recall that d(BP)/dq_next = d(BP)/dF_involved * A * S.
-    // h2mw * d(BP)/dq_next^T * ASx = h2mw * S' * A' * (d(BP)/dF_involved)^T * A * (Sx).
+    // (I + h2m * S'A'AS)x = dl_dq_mid + h2mw * d(BP)/dq_mid^T * AS x.
+    // Recall that d(BP)/dq_mid = d(BP)/dF_involved * A * S.
+    // h2mw * d(BP)/dq_mid^T * ASx = h2mw * S' * A' * (d(BP)/dF_involved)^T * A * (Sx).
     // = h2mw * S' * (d(BP, A))^T * (ASx).
 
     CheckError(options.find("max_pd_iter") != options.end(), "Missing option max_pd_iter.");
@@ -250,7 +256,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     // Pre-factorize the matrix -- it will be skipped if the matrix has already been factorized.
     SetupProjectiveDynamicsSolver(dt);
 
-    VectorXr adjoint = dl_dq_next_agg;  // Initial guess.
+    VectorXr adjoint = dl_dq_mid;  // Initial guess.
     VectorXr selected = VectorXr::Ones(dofs_);
     for (const auto& pair : dirichlet_) {
         adjoint(pair.first) = 0;
@@ -260,11 +266,11 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     for (int i = 0; i < max_pd_iter; ++i) {
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
         // Local step.
-        VectorXr pd_rhs = dl_dq_next_agg + h2m * ProjectiveDynamicsLocalStepTransposeDifferential(q_next, adjoint);
+        VectorXr pd_rhs = dl_dq_mid + h2m * ProjectiveDynamicsLocalStepTransposeDifferential(q_next, adjoint);
         for (const auto& pair : dirichlet_) pd_rhs(pair.first) = 0;
 
         // Global step.
-        const VectorXr adjoint_next = pd_solver_.solve(pd_rhs);
+        VectorXr adjoint_next = pd_solver_.solve(pd_rhs);
         CheckError(pd_solver_.info() == Eigen::Success, "Cholesky solver failed.");
 
         // Check for convergence.
@@ -273,6 +279,8 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
         const real rhs_norm = VectorXr(selected.array() * pd_rhs.array()).norm();
         if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
         if (abs_error <= rel_tol * rhs_norm + abs_tol) {
+            // Should be unnecessary but for safety:
+            for (const auto& pair : dirichlet_) adjoint_next(pair.first) = 0;
             dl_dq += adjoint_next;
             dl_dv = adjoint_next * dt;
             dl_df_ext = adjoint_next * h2m;

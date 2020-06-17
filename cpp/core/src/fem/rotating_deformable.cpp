@@ -177,42 +177,50 @@ void RotatingDeformable<vertex_dim, element_dim>::BackwardSemiImplicit(const Vec
 }
 
 template<int vertex_dim, int element_dim>
-void RotatingDeformable<vertex_dim, element_dim>::BackwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
-    const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
-    const std::map<std::string, real>& options, VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
+void RotatingDeformable<vertex_dim, element_dim>::BackwardNewton(const std::string& method, const VectorXr& q,
+    const VectorXr& v, const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next,
+    const VectorXr& dl_dq_next, const VectorXr& dl_dv_next, const std::map<std::string, real>& options, VectorXr& dl_dq,
+    VectorXr& dl_dv, VectorXr& dl_df_ext) const {
     // TODO: what are the available method?
+    const auto& dirichlet = Deformable<vertex_dim, element_dim>::dirichlet();
+    for (const auto& pair : dirichlet) CheckError(q_next(pair.first) == pair.second, "Inconsistent q_next.");
+    // B * q_mid - h2m * f_int(q_mid) = select(Aq + h * v + h2m * f_ext).
+    // q_next = [q_mid, q_bnd].
+    // v_next = (q_next - q) / dt.
     // So, the computational graph looks like this:
-    // (q, v, f_ext) -> q_next.
+    // (q, v, f_ext) -> q_mid -> q_next.
     // (q, q_next) -> v_next.
     // Back-propagate (q, q_next) -> v_next.
     const VectorXr dl_dq_next_agg = dl_dq_next + dl_dv_next / dt;
     dl_dq = -dl_dv_next / dt;
-    // The hard part: (q, v, f_ext) -> q_next.
+    // Back-propagate q_mid -> q_next = [q_mid, q_bnd].
+    VectorXr dl_dq_mid = dl_dq_next_agg;
+    for (const auto& pair : dirichlet) dl_dq_mid(pair.first) = 0;
+
+    // Back-propagate B * q_mid - h2m * f_int(q_mid) = select(Aq + h * v + h2 m * f_ext):
+    // dlhs / dq_mid * dq_mid/dq = drhs/dq.
+    // dl/dq_mid * dq_mid/dq = dl/dq_mid * (dlhs / dq_mid)^(-1) * drhs/dq.
+    // The left-hand side is what we want. The right-hand side can be computed as:
+    // (dlhs / dq_mid)^T * adjoint = dl/dq_mid.
+    // rhs = adjoint.as_row_vec() * drhs/dq.
     const real mass = Deformable<vertex_dim, element_dim>::density() * Deformable<vertex_dim, element_dim>::cell_volume();
     const real h2m = dt * dt / mass;
 
     const Eigen::Matrix<real, vertex_dim, vertex_dim> A = Eigen::Matrix<real, vertex_dim, vertex_dim>::Identity() + 2 * dt * skew_omega_;
     // Let B = A + dt^2 [w]^2.
     const Eigen::Matrix<real, vertex_dim, vertex_dim> B = A + (dt * skew_omega_) * (dt * skew_omega_);
-    // B * q_next - h2m * f_int(q_next) = Aq + h * v + h2m * f_ext.
-    // op(q_next) = Aq + h * v + h2m * f_ext.
-    // d_op/dq_next * dq_next/d* = drhs/d*.
-    // dq_next/d* = (d_op/dq_next)^(-1) * drhs/d*.
-    // dl/d* = (drhs/d*)^T * ((d_op/dq_next)^(-T) * dl_dq_next).
 
-    // d_op/dq_next * adjoint = dl_dq_next.
     const int dofs = Deformable<vertex_dim, element_dim>::dofs();
     MatrixOp op(dofs, dofs, [&](const VectorXr& dq){ return NewtonMatrixTransposeOp(B, q_next, h2m, dq); });
     // Solve for the search direction.
     Eigen::BiCGSTAB<MatrixOp, Eigen::IdentityPreconditioner> bicg;
     bicg.compute(op);
-    const VectorXr adjoint = bicg.solve(dl_dq_next_agg);
+    const VectorXr adjoint = bicg.solve(dl_dq_mid);
     CheckError(bicg.info() == Eigen::Success, "BiCGSTAB solver failed.");
 
     VectorXr dl_dq_single = ApplyTransformToVector(A.transpose(), adjoint);
     dl_dv = adjoint * dt;
     dl_df_ext = adjoint * h2m;
-    const auto& dirichlet = Deformable<vertex_dim, element_dim>::dirichlet();
     for (const auto& pair : dirichlet) {
         const int dof = pair.first;
         dl_dq_single(dof) = 0;
