@@ -30,7 +30,21 @@ void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q
     const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
     const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
-    // TODO.
+    // q_mid = q + h * v + h2m * f_ext + h2m * f_int(q).
+    // q_next = enforce_boundary(q_mid).
+    // v_next = (q_next - q) / dt.
+    const real mass = density_ * cell_volume_;
+    const real h2m = dt * dt / mass;
+    // Back-propagation v_next first.
+    const VectorXr dl_dq_next_agg = dl_dq_next + dl_dv_next / dt;
+    dl_dq = -dl_dv_next / dt;
+    // Back-propagate q_next = enforce_boundary(q_mid).
+    VectorXr dl_dq_mid = dl_dq_next_agg;
+    for (const auto& pair : dirichlet_) dl_dq_mid(pair.first) = 0;
+    // Back-propagate q_mid = q + h * v + h2m * f_ext + h2m * f_int(q).
+    dl_dv = dl_dq_mid * dt;
+    dl_df_ext = dl_dq_mid * h2m;
+    dl_dq += dl_dq_mid + h2m * ElasticForceDifferential(q, dl_dq_mid);
 }
 
 template class Deformable<2, 4>;
