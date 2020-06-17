@@ -2,7 +2,7 @@
 %{
 #include "../include/mesh/mesh.h"
 #include "../include/fem/deformable.h"
-#include "../include/fem/rotating_deformable_3d.h"
+#include "../include/fem/rotating_deformable.h"
 %}
 
 %exception {
@@ -24,6 +24,7 @@
 %include "../include/common/config.h"
 %include "../include/mesh/mesh.h"
 %include "../include/fem/deformable.h"
+%include "../include/fem/rotating_deformable.h"
 
 namespace std {
     %template(StdRealArray2d) array<real, 2>;
@@ -39,5 +40,5 @@ namespace std {
 %template(Mesh3d) Mesh<3, 8>;
 %template(Deformable2d) Deformable<2, 4>;
 %template(Deformable3d) Deformable<3, 8>;
-
-%include "../include/fem/rotating_deformable_3d.h"
+%template(RotatingDeformable2d) RotatingDeformable<2, 4>;
+%template(RotatingDeformable3d) RotatingDeformable<3, 8>;

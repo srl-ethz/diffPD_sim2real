@@ -1,19 +1,22 @@
-#ifndef FEM_ROTATING_DEFORMABLE_3D_H
-#define FEM_ROTATING_DEFORMABLE_3D_H
+#ifndef FEM_ROTATING_DEFORMABLE_H
+#define FEM_ROTATING_DEFORMABLE_H
 
 #include "fem/deformable.h"
 
 // See this document for the math behind this class:
 // https://www.overleaf.com/read/dxczvbswhmbq
-class RotatingDeformable3d : public Deformable<3, 8> {
+// For the 2D case, we use omega = (0, 0, omega).
+template<int vertex_dim, int element_dim>
+class RotatingDeformable : public Deformable<vertex_dim, element_dim> {
 public:
-    RotatingDeformable3d();
+    RotatingDeformable();
 
     // Initialize with the undeformed shape.
     void Initialize(const std::string& binary_file_name, const real density,
         const std::string& material_type, const real youngs_modulus, const real poissons_ratio,
         const real omega_x, const real omega_y, const real omega_z);
-    void Initialize(const Matrix3Xr& vertices, const Matrix8Xi& faces, const real density,
+    void Initialize(const Eigen::Matrix<real, vertex_dim, -1>& vertices,
+        const Eigen::Matrix<int, element_dim, -1>& faces, const real density,
         const std::string& material_type, const real youngs_modulus, const real poissons_ratio,
         const real omega_x, const real omega_y, const real omega_z);
 
@@ -43,15 +46,17 @@ protected:
         const std::map<std::string, real>& options, VectorXr& q) const override;
 
 private:
-    const VectorXr NewtonMatrixOp(const Matrix3r& B, const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
-    const VectorXr NewtonMatrixTransposeOp(const Matrix3r& B, const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
-    const VectorXr Apply3dTransformToVector(const Matrix3r& H, const VectorXr& q) const;
+    const VectorXr NewtonMatrixOp(const Eigen::Matrix<real, vertex_dim, vertex_dim>& B,
+        const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
+    const VectorXr NewtonMatrixTransposeOp(const Eigen::Matrix<real, vertex_dim, vertex_dim>& B,
+        const VectorXr& q_sol, const real h2m, const VectorXr& dq) const;
+    const VectorXr ApplyTransformToVector(const Eigen::Matrix<real, vertex_dim, vertex_dim>& H, const VectorXr& q) const;
     const VectorXr QuasiStaticMatrixOp(const VectorXr& q, const VectorXr& dq) const;
     const SparseMatrix QuasiStaticMatrix(const VectorXr& q) const;
 
     // Doesn't matter whether it is in the world or body frame of reference --- they are the same.
     Vector3r omega_;
-    Matrix3r skew_omega_;
+    Eigen::Matrix<real, vertex_dim, vertex_dim> skew_omega_;
 };
 
 #endif
