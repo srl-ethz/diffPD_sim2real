@@ -1,5 +1,8 @@
-import numpy as np
+import sys
+sys.path.append('../')
+
 import os
+import numpy as np
 from py_diff_pd.core.py_diff_pd_core import Mesh2d
 from py_diff_pd.common.display import display_quad_mesh
 from py_diff_pd.common.mesh import generate_rectangle_mesh
@@ -14,8 +17,6 @@ if __name__ == '__main__':
 
     mesh = Mesh2d()
     mesh.Initialize(binary_file_name)
-    for i in range(15):
-        print(ndarray(mesh.py_vertex(i)))
 
     display_quad_mesh(mesh)
 

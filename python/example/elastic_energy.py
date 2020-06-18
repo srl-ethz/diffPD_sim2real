@@ -1,10 +1,16 @@
-import numpy as np
+import sys
+sys.path.append('../')
+
 from pathlib import Path
+import shutil
+import numpy as np
+
 from py_diff_pd.core.py_diff_pd_core import Deformable2d, Mesh2d, StdRealVector
 from py_diff_pd.common.common import ndarray, create_folder
 from py_diff_pd.common.common import print_info
 from py_diff_pd.common.display import display_quad_mesh, export_gif
 from py_diff_pd.common.mesh import generate_rectangle_mesh
+from py_diff_pd.common.grad_check import check_gradients
 
 if __name__ == '__main__':
     # Uncomment the following line to try random seeds.
@@ -21,7 +27,7 @@ if __name__ == '__main__':
     dx = 0.2
 
     # Initialization.
-    folder = Path('test_elastic_energy')
+    folder = Path('elastic_energy')
     create_folder(folder)
     bin_file_name = folder / 'rectangle.bin'
     generate_rectangle_mesh(cell_nums, dx, (0, 0), bin_file_name)
@@ -41,7 +47,6 @@ if __name__ == '__main__':
         grad = -ndarray(deformable.PyElasticForce(q))
         return loss, grad
 
-    from py_diff_pd.common.grad_check import check_gradients
     eps = 1e-8
     atol = 1e-4
     rtol = 1e-2
@@ -56,3 +61,5 @@ if __name__ == '__main__':
     assert np.allclose(df_analytical, df_analytical2)
     df_numerical = ndarray(deformable.PyElasticForce(q0 + dq)) - ndarray(deformable.PyElasticForce(q0))
     assert np.allclose(df_analytical, df_numerical, atol, rtol)
+
+    shutil.rmtree(folder)

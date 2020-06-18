@@ -1,8 +1,12 @@
-import numpy as np
-from pathlib import Path
+import sys
+sys.path.append('../')
+
 import os
+from pathlib import Path
 import time
 import scipy.optimize
+import numpy as np
+
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, RotatingDeformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.mesh import generate_hex_mesh
@@ -13,8 +17,8 @@ if __name__ == '__main__':
     np.random.seed(seed)
     print_info('Seed: {}'.format(seed))
 
-    folder = Path('rotating_deformable_quasistatic_demo_3d')
-    display_method = 'pbrt' # 'matplotlib' or 'pbrt'.
+    folder = Path('rotating_deformable_quasi_static_3d')
+    display_method = 'pbrt'
     render_samples = 4
     create_folder(folder)
 
@@ -23,13 +27,12 @@ if __name__ == '__main__':
     node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
     dx = 0.2 / 8
     origin = (0, 0, 0)
-    omega = (0, 0, np.pi)
+    omega = (0, 0, 4 * np.pi)
     bin_file_name = str(folder / 'cube.bin')
     voxels = np.ones(cell_nums)
     generate_hex_mesh(voxels, dx, origin, bin_file_name)
     mesh = Mesh3d()
     mesh.Initialize(bin_file_name)
-    vertex_num = mesh.NumOfVertices()
 
     # FEM parameters.
     youngs_modulus = 1e5
@@ -53,29 +56,25 @@ if __name__ == '__main__':
     f = np.zeros(dofs)
     q_array = StdRealVector(dofs)
     deformable.PyGetQuasiStaticState(method, f, opt, q_array)
-    deformable.PySaveToMeshFile(q_array, str(folder / 'quasistatic.bin'))
+
     # Display the results.
+    deformable.PySaveToMeshFile(q_array, str(folder / 'quasi_static.bin'))
     frame_fps = 30
-    wallclock_time = 2
+    wallclock_time = 1
     frame_cnt = frame_fps * wallclock_time
-    f_folder = 'quasistatic'
+    f_folder = 'quasi_static'
     dt = 1.0 / frame_fps
     create_folder(folder / f_folder)
     for i in range(frame_cnt):
         mesh = Mesh3d()
-        mesh.Initialize(str(folder / 'quasistatic.bin'))
-    
-        if display_method == 'pbrt':
-            render_hex_mesh(mesh, file_name=folder / f_folder / '{:04d}.exr'.format(i), sample=render_samples,
-                transforms=[
-                    ('s', 2.5),
-                    ('r', (omega[2] * dt * i, 0, 0, 1)),
-                    ('t', (0.5, 0.5, 0)),
-                ])
-            os.system('convert {} {}'.format(folder / f_folder / '{:04d}.exr'.format(i),
-                folder / f_folder / '{:04d}.png'.format(i)))
-        elif display_method == 'matplotlib':
-            display_hex_mesh(mesh, xlim=[-dx, (cell_nums[0] + 1) * dx], ylim=[-dx, (cell_nums[1] + 1) * dx],
-                title='Frame {:04d}'.format(i), file_name=folder / f_folder / '{:04d}.png'.format(i), show=False)
+        mesh.Initialize(str(folder / 'quasi_static.bin'))
+
+        render_hex_mesh(mesh, file_name=folder / f_folder / '{:04d}.png'.format(i), sample=render_samples,
+            transforms=[
+                ('s', 2.5),
+                ('r', (omega[2] * dt * i, 0, 0, 1)),
+                ('t', (0.5, 0.5, 0)),
+            ])
 
     export_gif(folder / f_folder, '{}.gif'.format(str(folder / f_folder)), frame_fps)
+    os.system('eog {}.gif'.format(folder / f_folder))

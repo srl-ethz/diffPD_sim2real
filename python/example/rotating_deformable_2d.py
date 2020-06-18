@@ -1,8 +1,12 @@
-import numpy as np
-from pathlib import Path
+import sys
+sys.path.append('../')
+
 import os
+from pathlib import Path
 import time
 import scipy.optimize
+import numpy as np
+
 from py_diff_pd.core.py_diff_pd_core import Mesh2d, RotatingDeformable2d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.mesh import generate_rectangle_mesh
@@ -13,7 +17,7 @@ if __name__ == '__main__':
     np.random.seed(seed)
     print_info('Seed: {}'.format(seed))
 
-    folder = Path('rotating_deformable_demo_2d')
+    folder = Path('rotating_deformable_2d')
     create_folder(folder)
 
     # Mesh parameters.
@@ -27,13 +31,12 @@ if __name__ == '__main__':
     generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name)
     mesh = Mesh2d()
     mesh.Initialize(bin_file_name)
-    vertex_num = mesh.NumOfVertices()
 
     # FEM parameters.
     youngs_modulus = 1e5
     poissons_ratio = 0.45
     density = 1e3
-    method = 'newton_cholesky'
+    method = 'newton'
     opt = { 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-4, 'verbose': 0 }
     deformable = RotatingDeformable2d()
     deformable.Initialize(bin_file_name, density, 'corotated', youngs_modulus, poissons_ratio, *omega)
@@ -46,50 +49,49 @@ if __name__ == '__main__':
         deformable.SetDirichletBoundaryCondition(2 * node_idx + 1, vy)
 
     dofs = deformable.dofs()
-    f = np.zeros(dofs)
-
-    # Forward simulation.
-    dt = 2e-2
-    frame_num = 200
-    dofs = deformable.dofs()
     q0 = ndarray(mesh.py_vertices())
     v0 = np.zeros(dofs)
+    # Initial velocity.
     for i in range(node_nums[0]):
         for j in range(node_nums[1]):
             node_idx = i * node_nums[1] + j
             r = ndarray([i * dx, j * dx]) + origin
             v0[2 * node_idx] = omega[2] * r[1]
             v0[2 * node_idx + 1] = -omega[2] * r[0]
-    def visualize_results(f, f_folder):
-        create_folder(folder / f_folder)
-        q = [q0,]
-        v = [v0,]
-        for i in range(frame_num):
-            q_cur = q[-1]
-            deformable.PySaveToMeshFile(q_cur, str(folder / f_folder / '{:04d}.bin'.format(i)))
 
-            v_cur = v[-1]
-            q_next_array = StdRealVector(dofs)
-            v_next_array = StdRealVector(dofs)
-            deformable.PyForward(method, q_cur, v_cur, f, dt, opt, q_next_array, v_next_array)
+    # Forward simulation.
+    dt = 2e-2
+    frame_num = 200
+    f = np.zeros(dofs)
+    f_folder = 'animation'
+    create_folder(folder / f_folder)
+    q = [q0,]
+    v = [v0,]
+    for i in range(frame_num):
+        q_cur = q[-1]
+        deformable.PySaveToMeshFile(q_cur, str(folder / f_folder / '{:04d}.bin'.format(i)))
 
-            q_next = ndarray(q_next_array)
-            v_next = ndarray(v_next_array)
-            q.append(q_next)
-            v.append(v_next)
+        v_cur = v[-1]
+        q_next_array = StdRealVector(dofs)
+        v_next_array = StdRealVector(dofs)
+        deformable.PyForward(method, q_cur, v_cur, f, dt, opt, q_next_array, v_next_array)
 
-        # Display the results.
-        frame_cnt = 0
-        frame_skip = 1
-        xy_range = (cell_nums[1] + 2) * dx
-        for i in range(0, frame_num, frame_skip):
-            mesh = Mesh2d()
-            mesh.Initialize(str(folder / f_folder / '{:04d}.bin'.format(frame_cnt)))
-            display_quad_mesh(mesh, xlim=[-xy_range, xy_range], ylim=[-xy_range, xy_range],
-                title='Frame {:04d}'.format(i), file_name=folder / f_folder / '{:04d}.png'.format(i), show=False,
-                transforms=[('r', dt * i * omega[2])])
-            frame_cnt += 1
+        q_next = ndarray(q_next_array)
+        v_next = ndarray(v_next_array)
+        q.append(q_next)
+        v.append(v_next)
 
-        export_gif(folder / f_folder, '{}.gif'.format(str(folder / f_folder)), 25)
+    # Display the results.
+    frame_cnt = 0
+    frame_skip = 1
+    xy_range = (cell_nums[1] + 2) * dx
+    for i in range(0, frame_num, frame_skip):
+        mesh = Mesh2d()
+        mesh.Initialize(str(folder / f_folder / '{:04d}.bin'.format(frame_cnt)))
+        display_quad_mesh(mesh, xlim=[-xy_range, xy_range], ylim=[-xy_range, xy_range],
+            title='Frame {:04d}'.format(i), file_name=folder / f_folder / '{:04d}.png'.format(i), show=False,
+            transforms=[('r', dt * i * omega[2])])
+        frame_cnt += 1
 
-    visualize_results(np.zeros(dofs), 'animation')
+    export_gif(folder / f_folder, '{}.gif'.format(str(folder / f_folder)), 25)
+    os.system('eog {}.gif'.format(folder / f_folder))

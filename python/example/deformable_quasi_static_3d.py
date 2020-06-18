@@ -1,7 +1,11 @@
-import numpy as np
+import sys
+sys.path.append('../')
+
 from pathlib import Path
 import time
 import scipy.optimize
+import numpy as np
+
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.mesh import generate_hex_mesh
@@ -12,8 +16,8 @@ if __name__ == '__main__':
     np.random.seed(seed)
     print_info('Seed: {}'.format(seed))
 
-    folder = Path('deformable_quasistatic_demo_3d')
-    display_method = 'pbrt' # 'matplotlib' or 'pbrt'.
+    folder = Path('deformable_quasi_static_3d')
+    display_method = 'pbrt'
     render_samples = 4
     create_folder(folder)
 
@@ -27,14 +31,13 @@ if __name__ == '__main__':
     generate_hex_mesh(voxels, dx, origin, bin_file_name)
     mesh = Mesh3d()
     mesh.Initialize(bin_file_name)
-    vertex_num = mesh.NumOfVertices()
 
     # FEM parameters.
     youngs_modulus = 1e6
     poissons_ratio = 0.45
     density = 1e3
     method = 'newton_cholesky'
-    opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-2, 'verbose': 2 }
+    opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-2, 'verbose': 0 }
     deformable = Deformable3d()
     deformable.Initialize(bin_file_name, density, 'corotated', youngs_modulus, poissons_ratio)
     # Boundary conditions.
@@ -65,14 +68,16 @@ if __name__ == '__main__':
     f_ext = np.zeros(dofs)
     q_array = StdRealVector(dofs)
     deformable.PyGetQuasiStaticState(method, f_ext, opt, q_array)
-    deformable.PySaveToMeshFile(q_array, str(folder / 'quasistatic.bin'))
+
+    # Display the state.
+    deformable.PySaveToMeshFile(q_array, str(folder / 'quasi_static.bin'))
     mesh = Mesh3d()
-    mesh.Initialize(str(folder / 'quasistatic.bin'))
+    mesh.Initialize(str(folder / 'quasi_static.bin'))
     if display_method == 'pbrt':
-        render_hex_mesh(mesh, file_name=folder / 'quasistatic.png', sample=render_samples,
+        render_hex_mesh(mesh, file_name=folder / 'quasi_static.png', sample=render_samples,
             transforms=[('t', (.1, .1, 0)), ('s', 2.5)])
         import os
-        os.system('eog {}'.format(folder / 'quasistatic.png'))
+        os.system('eog {}'.format(folder / 'quasi_static.png'))
     elif display_method == 'matplotlib':
         display_hex_mesh(mesh, xlim=[-dx, (cell_nums[0] + 1) * dx], ylim=[-dx, (cell_nums[1] + 1) * dx],
-            title='Quasi-static', file_name=folder / 'quasistatic.png', show=True)
+            title='Quasi-static', file_name=folder / 'quasi_static.png', show=True)

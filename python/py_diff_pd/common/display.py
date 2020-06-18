@@ -159,6 +159,10 @@ def render_hex_mesh(hex_mesh, file_name,
     from py_diff_pd.common.project_path import root_path
     from py_diff_pd.common.mesh import hex2obj
 
+    file_name = str(file_name)
+    assert file_name.endswith('.png') or file_name.endswith('.exr')
+    file_name_only = file_name[:-4]
+
     root = Path(root_path)
     # Create a pbrt script.
     pbrt_script = '.tmp.pbrt'
@@ -170,7 +174,7 @@ def render_hex_mesh(hex_mesh, file_name,
     x_res, y_res = resolution
     with open(pbrt_script, 'w') as f:
         f.write('Film "image" "integer xresolution" [{:d}] "integer yresolution" [{:d}]\n'.format(x_res, y_res))
-        f.write('    "string filename" "{}"\n'.format(file_name))
+        f.write('    "string filename" "{:s}.exr"\n'.format(file_name_only))
         
         f.write('\n')
         f.write('Sampler "halton" "integer pixelsamples" [{:d}]\n'.format(sample))
@@ -230,7 +234,9 @@ def render_hex_mesh(hex_mesh, file_name,
         f.write('WorldEnd\n')
 
     os.system('{} {} --quiet'.format(str(root / 'external/pbrt_build/pbrt'), pbrt_script))
+    os.system('convert {}.exr {}.png'.format(file_name_only, file_name_only))
 
+    os.remove('{}.exr'.format(file_name_only))
     os.remove(scene_file_name)
     os.remove(obj_file_name)
     os.remove(pbrt_script)
