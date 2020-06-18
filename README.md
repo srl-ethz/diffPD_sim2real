@@ -36,5 +36,5 @@ Navigate to the `python/example` path and run `python [example_name].py` where t
 - `rotating_deformable_3d` solves the dynamic motion of a 3D cube in a rotational frame.
 
 ### Demos (TODO)
-- `profile_3d`
+- `benchmark_3d` compares and reports the time cost of one forward call and one backward call in Newton-PCG, Newton-Cholesky, and PD.
 - `sticky_finger_3d`
