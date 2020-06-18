@@ -25,7 +25,7 @@ if __name__ == '__main__':
     youngs_modulus = 1e5
     poissons_ratio = 0.45
     density = 1e3
-    cell_nums = (4, 4, 8)
+    cell_nums = (8, 8, 16)
     origin = np.random.normal(size=3)
     node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
     dx = 0.1
@@ -112,7 +112,16 @@ if __name__ == '__main__':
     print('Reporting time cost. DoFs: {:d}, frames: {:d}, dt: {:3.3e}'.format(
         3 * node_nums[0] * node_nums[1] * node_nums[2], frame_num, dt
     ))
-    for rel_tol in [1e-3, 1e-5, 1e-7]:
+    rel_tols = [1e-2, 1e-4, 1e-6, 1e-8]
+    forward_backward_times = {}
+    forward_times = {}
+    backward_times = {}
+    for method in methods:
+        forward_backward_times[method] = []
+        forward_times[method] = []
+        backward_times[method] = []
+
+    for rel_tol in rel_tols:
         print_info('rel_tol: {:3.3e}'.format(rel_tol))
         tabular = PrettyTabular({
             'method': '{:^20s}',
@@ -130,3 +139,25 @@ if __name__ == '__main__':
             loss_and_grad(x0, method, opt, False)
             t2 = time.time()
             print(tabular.row_string({ 'method': method, 'forward and backward (s)': t1 - t0, 'forward only (s)': t2 - t1 }))
+            forward_backward_times[method].append(t1 - t0)
+            forward_times[method].append(t2 - t1)
+            backward_times[method].append((t1 - t0) - (t2 - t1))
+
+    import matplotlib.pyplot as plt
+    fig = plt.figure(figsize=(15, 5))
+    ax_fb = fig.add_subplot(131)
+    ax_f = fig.add_subplot(132)
+    ax_b = fig.add_subplot(133)
+    titles = ['forward + backward', 'forward', 'backward']
+    for title, ax, t in zip(titles, (ax_fb, ax_f, ax_b), (forward_backward_times, forward_times, backward_times)):
+        ax.set_xlabel('time (s)')
+        ax.set_ylabel('relative error')
+        ax.set_yscale('log')
+        for method in methods:
+            ax.plot(t[method], rel_tols, label=method)
+        ax.grid(True)
+        ax.legend()
+        ax.set_title(title)
+
+    fig.savefig(folder / 'benchmark.pdf')
+    plt.show()

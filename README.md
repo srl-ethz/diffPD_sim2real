@@ -35,6 +35,7 @@ Navigate to the `python/example` path and run `python [example_name].py` where t
 - `rotating_deformable_2d` solves the dynamic motion of a 2D rectangle in a rotational frame.
 - `rotating_deformable_3d` solves the dynamic motion of a 3D cube in a rotational frame.
 
-### Demos (TODO)
-- `benchmark_3d` compares and reports the time cost of one forward call and one backward call in Newton-PCG, Newton-Cholesky, and PD.
-- `sticky_finger_3d`
+### Demos
+- `benchmark_3d` compares and reports the time cost of one forward call and one backward call in Newton-PCG, Newton-Cholesky, and PD. Below is the time cost on a benchmark cantilever beam with 4131 DoFs. We simulated the example for 30 frames with dt = `0.03`. `forward` and `backward` indicates the time cost for forward simulation (30 frames in total) and back propagation respectively.
+![benchmark](python/example/benchmark_3d/benchmark.png)
+- `sticky_finger_3d` (TODO)
