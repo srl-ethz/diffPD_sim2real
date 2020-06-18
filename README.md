@@ -6,7 +6,7 @@
 
 ## Installation
 ```
-git clone --recursive git@github.com:mit-gfx/diff_pd.git
+git clone --recursive https://github.com/mit-gfx/diff_pd.git
 cd diff_pd
 conda env create -f environment.yml
 conda activate diff_pd
