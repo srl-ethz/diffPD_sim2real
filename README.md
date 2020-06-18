@@ -22,6 +22,7 @@ Navigate to the `python/example` path and run `python [example_name].py` where t
 
 ### Numerical check
 - `elastic_energy` tests the implementation of `ElasticEnergy`, `ElasticForce`, and `ElasticForceDifferential`.
+- `pd_forward` verifies the forward simulation of projective dynamics by comparing it to the solutions from Newton's method.
 
 ### Quasi-static solvers
 - `deformable_quasi_static_3d` solves the quasi-static state of a 3D hex mesh. The hex mesh's bottom and top faces are fixed but the top face is twisted.
