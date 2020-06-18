@@ -1,6 +1,7 @@
 #include "fem/deformable.h"
 #include "common/common.h"
 #include "solver/matrix_op.h"
+#include "material/linear.h"
 #include "material/corotated.h"
 #include "material/corotated_pd.h"
 #include "Eigen/SparseCholesky"
@@ -39,7 +40,10 @@ template<int vertex_dim, int element_dim>
 const std::shared_ptr<Material<vertex_dim>> Deformable<vertex_dim, element_dim>::InitializeMaterial(const std::string& material_type,
     const real youngs_modulus, const real poissons_ratio) const {
     std::shared_ptr<Material<vertex_dim>> material(nullptr);
-    if (material_type == "corotated") {
+    if (material_type == "linear") {
+        material = std::make_shared<LinearMaterial<vertex_dim>>();
+        material->Initialize(youngs_modulus, poissons_ratio); 
+    } else if (material_type == "corotated") {
         material = std::make_shared<CorotatedMaterial<vertex_dim>>();
         material->Initialize(youngs_modulus, poissons_ratio);
     } else if (material_type == "corotated_pd") {
