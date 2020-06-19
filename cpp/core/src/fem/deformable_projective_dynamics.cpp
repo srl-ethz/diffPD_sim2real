@@ -75,7 +75,6 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(const VectorXr& q_cur) const {
     const int sample_num = element_dim;
-    VectorXr pd_rhs = VectorXr::Zero(dofs_);
     const real w = 2 * material_->mu() * cell_volume() / sample_num;
 
     // TODO: create a base material for projective dynamics?
@@ -87,19 +86,19 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
     VectorXr q_boundary = VectorXr::Zero(dofs_);
     for (const auto& pair : dirichlet_) q_boundary(pair.first) = pair.second;
 
-    // TODO: use OpenMP to parallelize this code?
+    std::array<VectorXr, element_dim> pd_rhss;
+    for (int i = 0; i < element_dim; ++i) pd_rhss[i] = VectorXr::Zero(dofs_);
+
     const int element_num = mesh_.NumOfElements();
+    #pragma omp parallel for
     for (int i = 0; i < element_num; ++i) {
         const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
         Eigen::Matrix<real, vertex_dim * element_dim, 1> deformed;
-        std::array<int, vertex_dim * element_dim> remap_idx;
         Eigen::Matrix<real, vertex_dim * element_dim, 1> deformed_dirichlet;
         deformed_dirichlet.setZero();
         for (int j = 0; j < element_dim; ++j) {
             deformed.segment(vertex_dim * j, vertex_dim) = q_cur.segment(vertex_dim * vi(j), vertex_dim);
             deformed_dirichlet.segment(vertex_dim * j, vertex_dim) = q_boundary.segment(vertex_dim * vi(j), vertex_dim);
-            for (int k = 0; k < vertex_dim; ++k)
-                remap_idx[j * vertex_dim + k] = vertex_dim * vi[j] + k;
         }
         for (int j = 0; j < sample_num; ++j) {
             const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
@@ -111,10 +110,14 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
             const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> Bp_flattened = Eigen::Map<
                 const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(Bp.data(), Bp.size());
             const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtBp = pd_At_[j] * (Bp_flattened - F_bound);
-            for (int k = 0; k < vertex_dim * element_dim; ++k)
-                pd_rhs(remap_idx[k]) += w * AtBp(k);
+            for (int k = 0; k < element_dim; ++k)
+                for (int d = 0; d < vertex_dim; ++d)
+                    pd_rhss[k](vertex_dim * vi[k] + d) += w * AtBp(k * vertex_dim + d);
         }
     }
+
+    VectorXr pd_rhs = VectorXr::Zero(dofs_);
+    for (int i = 0; i < element_dim; ++i) pd_rhs += pd_rhss[i];
     return pd_rhs;
 }
 
