@@ -154,17 +154,23 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
     for (int i = 0; i < max_pd_iter; ++i) {
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
         // Local step.
+        if (verbose_level > 1) Tic();
         VectorXr pd_rhs = rhs + h2m * ProjectiveDynamicsLocalStep(q_sol);
         for (const auto& pair : dirichlet_) pd_rhs(pair.first) = pair.second;
+        if (verbose_level > 1) Toc("Local step");
 
         // Global step.
+        if (verbose_level > 1) Tic();
         const VectorXr q_sol_next = PdLhsSolve(pd_rhs);
-        const VectorXr force_next = ElasticForce(q_sol_next);
+        if (verbose_level > 1) Toc("Global step");
 
         // Check for convergence.
+        if (verbose_level > 1) Tic();
+        const VectorXr force_next = ElasticForce(q_sol_next);
         const VectorXr lhs = q_sol_next - h2m * force_next;
         const real abs_error = VectorXr((lhs - rhs).array() * selected.array()).norm();
         const real rhs_norm = VectorXr(selected.array() * rhs.array()).norm();
+        if (verbose_level > 1) Toc("Convergence");
         if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
         if (abs_error <= rel_tol * rhs_norm + abs_tol) {
             q_next = q_sol_next;
@@ -278,17 +284,23 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     if (verbose_level > 0) PrintInfo("Projective dynamics");
     for (int i = 0; i < max_pd_iter; ++i) {
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
+        if (verbose_level > 1) Tic();
         // Local step.
         VectorXr pd_rhs = dl_dq_mid + h2m * ProjectiveDynamicsLocalStepTransposeDifferential(q_next, adjoint);
         for (const auto& pair : dirichlet_) pd_rhs(pair.first) = 0;
+        if (verbose_level > 1) Toc("Local step");
 
         // Global step.
+        if (verbose_level > 1) Tic();
         VectorXr adjoint_next = PdLhsSolve(pd_rhs);
+        if (verbose_level > 1) Toc("Global step");
 
         // Check for convergence.
+        if (verbose_level > 1) Tic();
         const VectorXr pd_lhs = PdLhsMatrixOp(adjoint);
         const real abs_error = VectorXr((pd_lhs - pd_rhs).array() * selected.array()).norm();
         const real rhs_norm = VectorXr(selected.array() * pd_rhs.array()).norm();
+        if (verbose_level > 1) Toc("Convergence");
         if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
         if (abs_error <= rel_tol * rhs_norm + abs_tol) {
             // Should be unnecessary but for safety:
