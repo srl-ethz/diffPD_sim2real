@@ -193,7 +193,6 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStepT
     const VectorXr& q_cur, const VectorXr& dq_cur) const {
     const int sample_num = element_dim;
     // Implements w * S' * (d(BP, A))^T * (ASx).
-    VectorXr pd_rhs = VectorXr::Zero(dofs_);
     const real w = 2 * material_->mu() * cell_volume() / sample_num;
 
     // TODO: create a base material for projective dynamics?
@@ -201,17 +200,16 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStepT
         std::dynamic_pointer_cast<CorotatedPdMaterial<vertex_dim>>(material_);
     CheckError(pd_material != nullptr, "The material type is not compatible with projective dynamics.");
 
-    // TODO: use OpenMP to parallelize this code?
     const int element_num = mesh_.NumOfElements();
+    std::array<VectorXr, element_dim> pd_rhss;
+    for (int i = 0; i < element_dim; ++i) pd_rhss[i] = VectorXr::Zero(dofs_);
+    #pragma omp parallel for
     for (int i = 0; i < element_num; ++i) {
         const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
         Eigen::Matrix<real, vertex_dim * element_dim, 1> deformed, ddeformed;
-        std::array<int, vertex_dim * element_dim> remap_idx;
         for (int j = 0; j < element_dim; ++j) {
             deformed.segment(vertex_dim * j, vertex_dim) = q_cur.segment(vertex_dim * vi(j), vertex_dim);
             ddeformed.segment(vertex_dim * j, vertex_dim) = dq_cur.segment(vertex_dim * vi(j), vertex_dim);
-            for (int k = 0; k < vertex_dim; ++k)
-                remap_idx[j * vertex_dim + k] = vertex_dim * vi[j] + k;
         }
         for (int j = 0; j < sample_num; ++j) {
             const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
@@ -221,10 +219,14 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStepT
             const Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * vertex_dim> dBp = pd_material->ProjectToManifoldDifferential(F);
             const Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * element_dim> dBptA = dBp.transpose() * pd_A_[j];
             const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtdBptASx = pd_At_[j] * dBptA * ddeformed;
-            for (int k = 0; k < vertex_dim * element_dim; ++k)
-                pd_rhs(remap_idx[k]) += w * AtdBptASx(k);
+            for (int k = 0; k < element_dim; ++k)
+                for (int d = 0; d < vertex_dim; ++d)
+                    pd_rhss[k](vertex_dim * vi[k] + d) += w * AtdBptASx(k * vertex_dim + d);
         }
     }
+
+    VectorXr pd_rhs = VectorXr::Zero(dofs_);
+    for (int i = 0; i < element_dim; ++i) pd_rhs += pd_rhss[i];
     return pd_rhs;
 }
 
