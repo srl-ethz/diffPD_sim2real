@@ -107,6 +107,8 @@ private:
     void SetupProjectiveDynamicsSolver(const real dt) const;
     const VectorXr ProjectiveDynamicsLocalStep(const VectorXr& q_cur) const;
     const VectorXr ProjectiveDynamicsLocalStepTransposeDifferential(const VectorXr& q_cur, const VectorXr& dq_cur) const;
+    const VectorXr PdLhsMatrixOp(const VectorXr& q) const;
+    const VectorXr PdLhsSolve(const VectorXr& rhs) const;
 
     Mesh<vertex_dim, element_dim> mesh_;
     real density_;
@@ -124,8 +126,8 @@ private:
     std::array<Eigen::Matrix<real, element_dim * vertex_dim, vertex_dim * vertex_dim>, element_dim> dF_dxkd_flattened_;
 
     // Projective-dynamics-related data members.
-    mutable Eigen::SimplicialLDLT<SparseMatrix> pd_solver_;
-    mutable SparseMatrix pd_lhs_;
+    mutable std::array<Eigen::SimplicialLDLT<SparseMatrix>, vertex_dim> pd_solver_;
+    mutable std::array<SparseMatrix, vertex_dim> pd_lhs_;
     mutable bool pd_solver_ready_;
     mutable std::vector<SparseMatrix> pd_A_, pd_At_;
 };

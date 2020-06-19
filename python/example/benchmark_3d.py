@@ -160,4 +160,5 @@ if __name__ == '__main__':
         ax.set_title(title)
 
     fig.savefig(folder / 'benchmark.pdf')
+    fig.savefig(folder / 'benchmark.png')
     plt.show()

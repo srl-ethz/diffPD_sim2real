@@ -7,19 +7,23 @@ template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const real dt) const {
     if (pd_solver_ready_) return;
     // Assemble and pre-factorize the left-hand-side matrix.
-    SparseMatrixElements nonzeros;
     const int element_num = mesh_.NumOfElements();
     const int sample_num = element_dim;
+    const int vertex_num = mesh_.NumOfVertices();
     // The left-hand side is (m / h^2 + \sum w_i SAAS)q.
     // Here we assemble I + h^2/m \sum w_i SAAS.
     const real mass = density_ * cell_volume_;
     const real h2m = dt * dt / mass;
-    // Part I: the identity matrix.
+    std::array<SparseMatrixElements, vertex_dim> nonzeros;
     for (int i = 0; i < dofs_; ++i) {
         // Skip dofs fixed by the dirichlet boundary conditions -- we will add them back later.
-        if (dirichlet_.find(i) == dirichlet_.end())
-            nonzeros.push_back(Eigen::Triplet<real>(i, i, 1));
+        if (dirichlet_.find(i) == dirichlet_.end()) {
+            const int node_idx = i / vertex_dim;
+            const int node_offset = i % vertex_dim;
+            nonzeros[node_offset].push_back(Eigen::Triplet<real>(node_idx, node_idx, 1));
+        }
     }
+
     // Part II: potential energy from the material.
     // w_i = 2 * mu * cell_volume / sample_num.
     const real w = 2 * material_->mu() * cell_volume() / sample_num;
@@ -41,19 +45,29 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
                 const real val = triplet.value() * h2mw;
                 // Skip dofs that are fixed by dirichlet boundary conditions.
                 if (dirichlet_.find(remap_idx[row]) == dirichlet_.end() &&
-                    dirichlet_.find(remap_idx[col]) == dirichlet_.end())
-                    nonzeros.push_back(Eigen::Triplet<real>(remap_idx[row], remap_idx[col], val));
+                    dirichlet_.find(remap_idx[col]) == dirichlet_.end()) {
+                    const int r = remap_idx[row];
+                    const int c = remap_idx[col];
+                    CheckError((r - c) % vertex_dim == 0, "AtA violates the assumption that x, y, and z are decoupled.");
+                    nonzeros[r % vertex_dim].push_back(Eigen::Triplet<real>(r / vertex_dim, c / vertex_dim, val));
+                }
             }
         }
     }
+
     // Part III: add back dirichlet boundary conditions.
-    for (const auto& pair : dirichlet_)
-        nonzeros.push_back(Eigen::Triplet<real>(pair.first, pair.first, 1));
+    for (const auto& pair : dirichlet_) {
+        const int node_idx = pair.first / vertex_dim;
+        const int node_offset = pair.first % vertex_dim;
+        nonzeros[node_offset].push_back(Eigen::Triplet<real>(node_idx, node_idx, 1));
+    }
 
     // Assemble and pre-factorize the matrix.
-    pd_lhs_ = ToSparseMatrix(dofs_, dofs_, nonzeros);
-    pd_solver_.compute(pd_lhs_);
-    CheckError(pd_solver_.info() == Eigen::Success, "Cholesky solver failed to factorize the matrix.");
+    for (int i = 0; i < vertex_dim; ++i) {
+        pd_lhs_[i] = ToSparseMatrix(vertex_num, vertex_num, nonzeros[i]);
+        pd_solver_[i].compute(pd_lhs_[i]);
+        CheckError(pd_solver_[i].info() == Eigen::Success, "Cholesky solver failed to factorize the matrix.");
+    }
     pd_solver_ready_ = true;
 }
 
@@ -144,8 +158,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
         for (const auto& pair : dirichlet_) pd_rhs(pair.first) = pair.second;
 
         // Global step.
-        const VectorXr q_sol_next = pd_solver_.solve(pd_rhs);
-        CheckError(pd_solver_.info() == Eigen::Success, "Cholesky solver failed.");
+        const VectorXr q_sol_next = PdLhsSolve(pd_rhs);
         const VectorXr force_next = ElasticForce(q_sol_next);
 
         // Check for convergence.
@@ -270,11 +283,10 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
         for (const auto& pair : dirichlet_) pd_rhs(pair.first) = 0;
 
         // Global step.
-        VectorXr adjoint_next = pd_solver_.solve(pd_rhs);
-        CheckError(pd_solver_.info() == Eigen::Success, "Cholesky solver failed.");
+        VectorXr adjoint_next = PdLhsSolve(pd_rhs);
 
         // Check for convergence.
-        const VectorXr pd_lhs = pd_lhs_ * adjoint;
+        const VectorXr pd_lhs = PdLhsMatrixOp(adjoint);
         const real abs_error = VectorXr((pd_lhs - pd_rhs).array() * selected.array()).norm();
         const real rhs_norm = VectorXr(selected.array() * pd_rhs.array()).norm();
         if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
@@ -291,6 +303,31 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
         adjoint = adjoint_next;
     }
     PrintError("Projective dynamics back-propagation fails to converge.");
+}
+
+template<int vertex_dim, int element_dim>
+const VectorXr Deformable<vertex_dim, element_dim>::PdLhsMatrixOp(const VectorXr& q) const {
+    const int vertex_num = mesh_.NumOfVertices();
+    const Eigen::Matrix<real, vertex_dim, -1> q_reshape = Eigen::Map<
+        const Eigen::Matrix<real, vertex_dim, -1>>(q.data(), vertex_dim, vertex_num);
+    Eigen::Matrix<real, vertex_dim, -1> product = Eigen::Matrix<real, vertex_dim, -1>::Zero(vertex_dim, vertex_num);
+    for (int j = 0; j < vertex_dim; ++j) {
+        product.row(j) = q_reshape.row(j) * pd_lhs_[j];
+    }
+    return Eigen::Map<const VectorXr>(product.data(), product.size());
+}
+
+template<int vertex_dim, int element_dim>
+const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const VectorXr& rhs) const {
+    const int vertex_num = mesh_.NumOfVertices();
+    const Eigen::Matrix<real, vertex_dim, -1> rhs_reshape = Eigen::Map<
+        const Eigen::Matrix<real, vertex_dim, -1>>(rhs.data(), vertex_dim, vertex_num);
+    Eigen::Matrix<real, vertex_dim, -1> sol = Eigen::Matrix<real, vertex_dim, -1>::Zero(vertex_dim, vertex_num);
+    for (int j = 0; j < vertex_dim; ++j) {
+        sol.row(j) = pd_solver_[j].solve(VectorXr(rhs_reshape.row(j)));
+        CheckError(pd_solver_[j].info() == Eigen::Success, "Cholesky solver failed.");
+    }
+    return Eigen::Map<const VectorXr>(sol.data(), sol.size());
 }
 
 template class Deformable<2, 4>;
