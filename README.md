@@ -12,6 +12,11 @@ conda env create -f environment.yml
 conda activate diff_pd
 ./install.sh
 ```
+Optionally, if you want to use OpenMP, run the following before you proceed:
+```
+export OMP_NUM_THREADS=4
+```
+where you can replace 4 with the number of threads you would like to use. Using 1 will enforce the program to execute sequentially.
 
 ## Examples
 Navigate to the `python/example` path and run `python [example_name].py` where the `example_name` could be the following:

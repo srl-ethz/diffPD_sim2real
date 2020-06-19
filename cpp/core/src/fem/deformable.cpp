@@ -251,8 +251,12 @@ const real Deformable<vertex_dim, element_dim>::ElasticEnergy(const VectorXr& q)
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr& q) const {
     const int element_num = mesh_.NumOfElements();
-    VectorXr f_int = VectorXr::Zero(dofs_);
     const int sample_num = element_dim;
+
+    std::array<VectorXr, element_dim> f_ints;
+    for (int i = 0; i < element_dim; ++i) f_ints[i] = VectorXr::Zero(dofs_);
+    // TODO: Use OpenMP to parallelize the code below.
+    #pragma omp parallel for
     for (int i = 0; i < element_num; ++i) {
         const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
         // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
@@ -272,11 +276,15 @@ const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr&
                 dF_dxkd_flattened_[j] * Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(P.data(), P.size());
             for (int k = 0; k < element_dim; ++k) {
                 for (int d = 0; d < vertex_dim; ++d) {
-                    f_int(vertex_dim * vi(k) + d) += f_kd(k * vertex_dim + d);
+                    f_ints[k](vertex_dim * vi(k) + d) += f_kd(k * vertex_dim + d);
                 }
             }
         }
     }
+
+    VectorXr f_int = VectorXr::Zero(dofs_);
+    for (int i = 0; i < element_dim; ++i) f_int += f_ints[i];
+
     return f_int;
 }
 
