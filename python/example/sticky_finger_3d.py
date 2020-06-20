@@ -4,7 +4,6 @@ sys.path.append('../')
 import os
 from pathlib import Path
 import time
-from pathlib import Path
 import scipy.optimize
 import numpy as np
 

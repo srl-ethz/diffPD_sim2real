@@ -57,7 +57,7 @@ if __name__ == '__main__':
 
     # State forces.
     deformable.AddStateForce("gravity", [0.0, 0.0, -9.81])
-    deformable.AddStateForce("planar_collision", [100., 0.01, 0.0, 0.0, 1.0, -dx / 2])
+    deformable.AddStateForce("planar_collision", [100., 0.01, 0.0, 0.0, 1.0, -origin[2] - dx / 2])
 
     dofs = deformable.dofs()
     vertex_num = mesh.NumOfVertices()
