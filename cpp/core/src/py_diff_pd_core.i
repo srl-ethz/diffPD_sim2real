@@ -3,6 +3,9 @@
 #include "../include/mesh/mesh.h"
 #include "../include/fem/deformable.h"
 #include "../include/fem/rotating_deformable.h"
+#include "../include/fem/state_force.h"
+#include "../include/fem/gravitational_state_force.h"
+#include "../include/fem/planar_collision_state_force.h"
 %}
 
 %exception {
@@ -25,6 +28,9 @@
 %include "../include/mesh/mesh.h"
 %include "../include/fem/deformable.h"
 %include "../include/fem/rotating_deformable.h"
+%include "../include/fem/state_force.h"
+%include "../include/fem/gravitational_state_force.h"
+%include "../include/fem/planar_collision_state_force.h"
 
 namespace std {
     %template(StdRealArray2d) array<real, 2>;
@@ -42,3 +48,10 @@ namespace std {
 %template(Deformable3d) Deformable<3, 8>;
 %template(RotatingDeformable2d) RotatingDeformable<2, 4>;
 %template(RotatingDeformable3d) RotatingDeformable<3, 8>;
+
+%template(StateForce2d) StateForce<2>;
+%template(StateForce3d) StateForce<3>;
+%template(GravitationalStateForce2d) GravitationalStateForce<2>;
+%template(GravitationalStateForce3d) GravitationalStateForce<3>;
+%template(PlanarCollisionStateForce2d) PlanarCollisionStateForce<2>;
+%template(PlanarCollisionStateForce3d) PlanarCollisionStateForce<3>;
