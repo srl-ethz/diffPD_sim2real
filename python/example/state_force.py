@@ -27,14 +27,14 @@ if __name__ == '__main__':
     def loss_and_grad(qv, state_force):
         q = qv[:dofs]
         v = qv[dofs:]
-        f = ndarray(state_force.PyForce(q, v))
+        f = ndarray(state_force.PyForwardForce(q, v))
         loss = f.dot(f_weight)
 
         # Compute gradients.
         dl_df = np.copy(f_weight)
         dl_dq = StdRealVector(dofs)
         dl_dv = StdRealVector(dofs)
-        state_force.PyForceDifferential(q, v, f, dl_df, dl_dq, dl_dv)
+        state_force.PyBackwardForce(q, v, f, dl_df, dl_dq, dl_dv)
         grad = np.concatenate([ndarray(dl_dq), ndarray(dl_dv)])
         return loss, grad
 

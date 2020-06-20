@@ -139,8 +139,9 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
 
     const real mass = density_ * cell_volume_;
     const real h2m = dt * dt / mass;
-    const VectorXr rhs = q + dt * v + h2m * f_ext;
-    VectorXr q_sol = q + dt * v + h2m * f_ext;
+    const VectorXr f_state = ForwardStateForce(q, v);
+    const VectorXr rhs = q + dt * v + h2m * (f_ext + f_state);
+    VectorXr q_sol = q + dt * v + h2m * (f_ext + f_state);
     VectorXr selected = VectorXr::Ones(dofs_);
     // Enforce boundary conditions.
     for (const auto& pair : dirichlet_) {
@@ -313,6 +314,11 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
             dl_dq += adjoint_next;
             dl_dv = adjoint_next * dt;
             dl_df_ext = adjoint_next * h2m;
+            // Back-propagation StateForce.
+            VectorXr dl_dq_single, dl_dv_single;
+            BackwardStateForce(q, v, ForwardStateForce(q, v), dl_df_ext, dl_dq_single, dl_dv_single);
+            dl_dq += dl_dq_single;
+            dl_dv += dl_dv_single;
             return;
         }
 

@@ -11,14 +11,15 @@ public:
     StateForce() {}
     virtual ~StateForce() {}
 
-    virtual const VectorXr Force(const VectorXr& q, const VectorXr& v);
-    virtual void ForceDifferential(const VectorXr& q, const VectorXr& v, const VectorXr& f,
-        const VectorXr& dl_df, VectorXr& dl_dq, VectorXr& dl_dv);
+    virtual const VectorXr ForwardForce(const VectorXr& q, const VectorXr& v) const;
+    virtual void BackwardForce(const VectorXr& q, const VectorXr& v, const VectorXr& f,
+        const VectorXr& dl_df, VectorXr& dl_dq, VectorXr& dl_dv) const;
 
     // Python binding --- used for testing purposes only.
-    const std::vector<real> PyForce(const std::vector<real>& q, const std::vector<real>& v);
-    void PyForceDifferential(const std::vector<real>& q, const std::vector<real>& v,
-        const std::vector<real>& f, const std::vector<real>& dl_df, std::vector<real>& dl_dq, std::vector<real>& dl_dv);
+    const std::vector<real> PyForwardForce(const std::vector<real>& q, const std::vector<real>& v) const;
+    void PyBackwardForce(const std::vector<real>& q, const std::vector<real>& v,
+        const std::vector<real>& f, const std::vector<real>& dl_df, std::vector<real>& dl_dq,
+        std::vector<real>& dl_dv) const;
 };
 
 #endif

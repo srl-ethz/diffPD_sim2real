@@ -55,6 +55,10 @@ if __name__ == '__main__':
             deformable.SetDirichletBoundaryCondition(3 * node_idx + 1, vy)
             deformable.SetDirichletBoundaryCondition(3 * node_idx + 2, vz)
 
+    # State forces.
+    deformable.AddStateForce("gravity", [0.0, 0.0, -9.81])
+    deformable.AddStateForce("planar_collision", [100., 0.01, 0.0, 0.0, 1.0, -dx / 2])
+
     dofs = deformable.dofs()
     vertex_num = mesh.NumOfVertices()
     q0 = ndarray(mesh.py_vertices())

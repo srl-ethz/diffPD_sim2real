@@ -19,9 +19,9 @@ public:
     const real mass() const { return mass_; }
     const Eigen::Matrix<real, vertex_dim, 1>& g() const { return g_; }
 
-    const VectorXr Force(const VectorXr& q, const VectorXr& v) override;
-    void ForceDifferential(const VectorXr& q, const VectorXr& v, const VectorXr& f,
-        const VectorXr& dl_df, VectorXr& dl_dq, VectorXr& dl_dv) override;
+    const VectorXr ForwardForce(const VectorXr& q, const VectorXr& v) const override;
+    void BackwardForce(const VectorXr& q, const VectorXr& v, const VectorXr& f,
+        const VectorXr& dl_df, VectorXr& dl_dq, VectorXr& dl_dv) const override;
 
 private:
     real mass_;

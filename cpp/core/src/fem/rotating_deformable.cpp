@@ -37,6 +37,7 @@ void RotatingDeformable<vertex_dim, element_dim>::Initialize(const Eigen::Matrix
 template<int vertex_dim, int element_dim>
 void RotatingDeformable<vertex_dim, element_dim>::ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
     const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
+    CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     // v_next = v + dt * ((f_ext + f_int) / m - [w]^2 q - 2 [w] v)
     // q_next = q + dt * v_next.
     v_next = v;
@@ -65,6 +66,7 @@ void RotatingDeformable<vertex_dim, element_dim>::ForwardSemiImplicit(const Vect
 template<int vertex_dim, int element_dim>
 void RotatingDeformable<vertex_dim, element_dim>::ForwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v,
     const VectorXr& f_ext, const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
+    CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     // TODO: what are the available methods?
     CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
@@ -170,9 +172,11 @@ void RotatingDeformable<vertex_dim, element_dim>::ForwardNewton(const std::strin
 }
 
 template<int vertex_dim, int element_dim>
-void RotatingDeformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
-    const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
-    const std::map<std::string, real>& options, VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
+void RotatingDeformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q, const VectorXr& v,
+    const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next,
+    const VectorXr& dl_dv_next, const std::map<std::string, real>& options, VectorXr& dl_dq, VectorXr& dl_dv,
+    VectorXr& dl_df_ext) const {
+    CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     // TODO.
 }
 
@@ -181,6 +185,7 @@ void RotatingDeformable<vertex_dim, element_dim>::BackwardNewton(const std::stri
     const VectorXr& v, const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next,
     const VectorXr& dl_dq_next, const VectorXr& dl_dv_next, const std::map<std::string, real>& options, VectorXr& dl_dq,
     VectorXr& dl_dv, VectorXr& dl_df_ext) const {
+    CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     // TODO: what are the available method?
     const auto& dirichlet = Deformable<vertex_dim, element_dim>::dirichlet();
     for (const auto& pair : dirichlet) CheckError(q_next(pair.first) == pair.second, "Inconsistent q_next.");
@@ -233,6 +238,7 @@ void RotatingDeformable<vertex_dim, element_dim>::BackwardNewton(const std::stri
 template<int vertex_dim, int element_dim>
 void RotatingDeformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::string& method, const VectorXr& f_ext,
     const std::map<std::string, real>& options, VectorXr& q) const {
+    CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
     CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");

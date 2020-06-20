@@ -27,7 +27,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
     // q_next - h^2 / m * f_int(q_next) = q + h * v + h^2 / m * f_ext.
     const real mass = density_ * cell_volume_;
     const real h2m = dt * dt / mass;
-    const VectorXr rhs = q + dt * v + h2m * f_ext;
+    const VectorXr rhs = q + dt * v + h2m * (f_ext + ForwardStateForce(q, v));
     VectorXr selected = VectorXr::Ones(dofs_);
     // q_next - h2m * f_int(q_next) = rhs.
     VectorXr q_sol = rhs;
@@ -156,14 +156,20 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
 
     VectorXr dl_dq_single = adjoint;
     dl_dv = adjoint * dt;
-    dl_df_ext = adjoint * h2m;
+    VectorXr dl_df_ext_and_state = adjoint * h2m;
     for (const auto& pair : dirichlet_) {
         const int dof = pair.first;
         dl_dq_single(dof) = 0;
         dl_dv(dof) = 0;
-        dl_df_ext(dof) = 0;
+        dl_df_ext_and_state(dof) = 0;
     }
     dl_dq += dl_dq_single;
+    // f_ext = f_ext + StateForce(q, v).
+    dl_df_ext = dl_df_ext_and_state;
+    VectorXr dl_dv_single;
+    BackwardStateForce(q, v, ForwardStateForce(q, v), dl_df_ext_and_state, dl_dq_single, dl_dv_single);
+    dl_dq += dl_dq_single;
+    dl_dv += dl_dv_single;
 }
 
 template<int vertex_dim, int element_dim>

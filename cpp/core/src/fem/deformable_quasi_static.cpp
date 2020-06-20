@@ -13,6 +13,7 @@ void Deformable<vertex_dim, element_dim>::GetQuasiStaticState(const std::string&
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::string& method, const VectorXr& f_ext,
     const std::map<std::string, real>& options, VectorXr& q) const {
+    CheckError(state_forces_.empty(), "State forces are not supported in the quasi-static mode.");
     CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
     CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");

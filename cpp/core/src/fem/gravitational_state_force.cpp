@@ -11,7 +11,7 @@ void GravitationalStateForce<vertex_dim>::Initialize(const real mass, const Eige
 }
 
 template<int vertex_dim>
-const VectorXr GravitationalStateForce<vertex_dim>::Force(const VectorXr& q, const VectorXr& v) {
+const VectorXr GravitationalStateForce<vertex_dim>::ForwardForce(const VectorXr& q, const VectorXr& v) const {
     const int dofs = static_cast<int>(q.size());
     CheckError(dofs % vertex_dim == 0, "Incompatible dofs and vertex_dim.");
     const int vertex_num = dofs / vertex_dim;
@@ -22,8 +22,8 @@ const VectorXr GravitationalStateForce<vertex_dim>::Force(const VectorXr& q, con
 }
 
 template<int vertex_dim>
-void GravitationalStateForce<vertex_dim>::ForceDifferential(const VectorXr& q, const VectorXr& v, const VectorXr& f,
-    const VectorXr& dl_df, VectorXr& dl_dq, VectorXr& dl_dv) {
+void GravitationalStateForce<vertex_dim>::BackwardForce(const VectorXr& q, const VectorXr& v, const VectorXr& f,
+    const VectorXr& dl_df, VectorXr& dl_dq, VectorXr& dl_dv) const {
     dl_dq = VectorXr::Zero(q.size());
     dl_dv = VectorXr::Zero(v.size());
 }

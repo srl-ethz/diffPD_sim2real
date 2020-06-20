@@ -49,9 +49,9 @@ public:
     const Eigen::Matrix<real, vertex_dim, 1>& normal() const { return normal_; }
     const real offset() const { return offset_; }
 
-    const VectorXr Force(const VectorXr& q, const VectorXr& v) override;
-    void ForceDifferential(const VectorXr& q, const VectorXr& v, const VectorXr& f,
-        const VectorXr& dl_df, VectorXr& dl_dq, VectorXr& dl_dv) override;
+    const VectorXr ForwardForce(const VectorXr& q, const VectorXr& v) const override;
+    void BackwardForce(const VectorXr& q, const VectorXr& v, const VectorXr& f,
+        const VectorXr& dl_df, VectorXr& dl_dq, VectorXr& dl_dv) const override;
 
 private:
     real stiffness_;

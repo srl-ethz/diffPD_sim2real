@@ -14,7 +14,7 @@ void PlanarCollisionStateForce<vertex_dim>::Initialize(const real stiffness, con
 }
 
 template<int vertex_dim>
-const VectorXr PlanarCollisionStateForce<vertex_dim>::Force(const VectorXr& q, const VectorXr& v) {
+const VectorXr PlanarCollisionStateForce<vertex_dim>::ForwardForce(const VectorXr& q, const VectorXr& v) const {
     const int dofs = static_cast<int>(q.size());
     CheckError(dofs % vertex_dim == 0, "Incompatible dofs and vertex_dim.");
     const int vertex_num = dofs / vertex_dim;
@@ -35,8 +35,8 @@ const VectorXr PlanarCollisionStateForce<vertex_dim>::Force(const VectorXr& q, c
 }
 
 template<int vertex_dim>
-void PlanarCollisionStateForce<vertex_dim>::ForceDifferential(const VectorXr& q, const VectorXr& v, const VectorXr& f,
-    const VectorXr& dl_df, VectorXr& dl_dq, VectorXr& dl_dv) {
+void PlanarCollisionStateForce<vertex_dim>::BackwardForce(const VectorXr& q, const VectorXr& v, const VectorXr& f,
+    const VectorXr& dl_df, VectorXr& dl_dq, VectorXr& dl_dv) const {
     const int dofs = static_cast<int>(q.size());
     CheckError(dofs % vertex_dim == 0, "Incompatible dofs and vertex_dim.");
     CheckError(q.size() == v.size() && v.size() == f.size() && f.size() == dl_df.size(), "Inconsistent vector size.");

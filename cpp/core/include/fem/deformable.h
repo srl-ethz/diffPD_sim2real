@@ -4,6 +4,7 @@
 #include "common/config.h"
 #include "mesh/mesh.h"
 #include "material/material.h"
+#include "fem/state_force.h"
 #include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
@@ -25,6 +26,7 @@ public:
     const int dofs() const { return dofs_; }
     const Mesh<vertex_dim, element_dim>& mesh() const { return mesh_; }
     const std::map<int, real>& dirichlet() const { return dirichlet_; }
+    const std::vector<std::shared_ptr<StateForce<vertex_dim>>>& state_forces() const { return state_forces_; }
 
     void SetDirichletBoundaryCondition(const int dof, const real val) {
         if (dirichlet_.find(dof) == dirichlet_.end()) pd_solver_ready_ = false;
@@ -36,6 +38,12 @@ public:
             pd_solver_ready_ = false;
         }
     }
+
+    // Add state-based forces.
+    void AddStateForce(const std::string& force_type, const std::vector<real>& params);
+    const VectorXr ForwardStateForce(const VectorXr& q, const VectorXr& v) const;
+    void BackwardStateForce(const VectorXr& q, const VectorXr& v, const VectorXr& f,
+        const VectorXr& dl_df, VectorXr& dl_dq, VectorXr& dl_dv) const;
 
     void Forward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
         const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
@@ -130,6 +138,9 @@ private:
     mutable std::array<SparseMatrix, vertex_dim> pd_lhs_;
     mutable bool pd_solver_ready_;
     mutable std::vector<SparseMatrix> pd_A_, pd_At_;
+
+    // State-based forces.
+    std::vector<std::shared_ptr<StateForce<vertex_dim>>> state_forces_;
 };
 
 #endif
