@@ -17,7 +17,7 @@ if __name__ == '__main__':
     np.random.seed(seed)
     print_info('Seed: {}'.format(seed))
 
-    folder = Path('jumper_3d')
+    folder = Path('collision_3d')
     collision_style = 'backward'    # Choose 'forward' or 'backward'.
     img_resolution = (400, 400)
     render_samples = 16
