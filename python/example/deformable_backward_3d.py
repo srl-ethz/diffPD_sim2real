@@ -32,9 +32,9 @@ if __name__ == '__main__':
     node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
     dx = 0.1
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
-    opts = ({ 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0 },
-        { 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0 },
-        { 'max_pd_iter': 100, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0 })
+    opts = ({ 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0 },
+        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0 },
+        { 'max_pd_iter': 500, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0 })
 
     # Initialization.
     folder = Path('deformable_backward_3d')
@@ -67,7 +67,7 @@ if __name__ == '__main__':
         for j in range(node_nums[1]):
             idx = i * node_nums[1] * node_nums[2] + j * node_nums[2]
             vertex_indices.append(idx)
-    deformable.AddPdEnergy('planar_collision', [5e3, 0.0, 0.0, 1.0, 0.0], vertex_indices)
+    deformable.AddPdEnergy('planar_collision', [5e4, 0.0, 0.0, 1.0, 0.0], vertex_indices)
 
     dofs = deformable.dofs()
     vertex_num = mesh.NumOfVertices()
@@ -131,7 +131,7 @@ if __name__ == '__main__':
 
     eps = 1e-8
     atol = 1e-4
-    rtol = 5e-2
+    rtol = 1e-2
     def skip_var(dof):
         # Skip boundary conditions on q.
         if dof >= dofs: return False
