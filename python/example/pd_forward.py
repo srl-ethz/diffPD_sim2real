@@ -28,28 +28,42 @@ if __name__ == '__main__':
     mesh.Initialize(bin_file_name)
 
     # FEM parameters.
-    youngs_modulus = 1e5
+    youngs_modulus = 4e5
     poissons_ratio = 0.45
     density = 1e4
     newton_method = 'newton_cholesky'
-    newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-3, 'verbose': 0 }
+    newton_opt = { 'max_newton_iter': 1000, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-6, 'verbose': 0 }
     pd_method = 'pd'
-    pd_opt = { 'max_pd_iter': 500, 'abs_tol': 1e-6, 'rel_tol': 1e-3, 'verbose': 0 }
+    pd_opt = { 'max_pd_iter': 1000, 'abs_tol': 1e-6, 'rel_tol': 1e-6, 'verbose': 0 }
     deformable = Deformable2d()
     deformable.Initialize(bin_file_name, density, 'corotated_pd', youngs_modulus, poissons_ratio)
 
     # Boundary conditions.
-    for i in range(node_nums[0]):
-        node_idx = i * node_nums[1]
-        vx, vy = mesh.py_vertex(node_idx)
-        deformable.SetDirichletBoundaryCondition(2 * node_idx, vx)
-        deformable.SetDirichletBoundaryCondition(2 * node_idx + 1, vy)
+    node_idx = cell_nums[1]
+    pivot = ndarray(mesh.py_vertex(node_idx))
+    deformable.SetDirichletBoundaryCondition(2 * node_idx, pivot[0])
+    deformable.SetDirichletBoundaryCondition(2 * node_idx + 1, pivot[1])
+
+    # External force.
+    deformable.AddStateForce('gravity', [0.0, -9.81])
+
+    # Collision.
+    deformable.AddPdEnergy('planar_collision', [1e4, 0.0, 1.0, -dx * cell_nums[1] * 0.2], [
+        i * node_nums[1] for i in range(node_nums[0])
+    ])
 
     # Forward simulation.
-    dt = 0.03
-    frame_num = 25
+    dt = 0.01
+    frame_num = 50
     dofs = deformable.dofs()
+    c, s = np.cos(np.pi / 4), np.sin(np.pi / 4)
+    R = ndarray([[c, -s],
+        [s, c]])
     q0 = ndarray(mesh.py_vertices())
+    vertex_num = mesh.NumOfVertices()
+    for i in range(vertex_num):
+        qi = q0[2 * i:2 * i + 2]
+        q0[2 * i:2 * i + 2] = R @ (qi - pivot) + pivot
     v0 = np.zeros(dofs)
     f = np.random.uniform(low=0, high=5, size=(frame_num, dofs)) * density * dx * dx
 
