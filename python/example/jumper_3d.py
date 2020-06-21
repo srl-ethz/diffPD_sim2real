@@ -18,6 +18,7 @@ if __name__ == '__main__':
     print_info('Seed: {}'.format(seed))
 
     folder = Path('jumper_3d')
+    collision_style = 'backward'    # Choose 'forward' or 'backward'.
     img_resolution = (400, 400)
     render_samples = 16
     create_folder(folder)
@@ -48,7 +49,15 @@ if __name__ == '__main__':
 
     # State forces.
     deformable.AddStateForce('gravity', [0.0, 0.0, -9.81])
-    deformable.AddStateForce('planar_collision', [5e3, 0.01, 0.0, 0.0, 1.0, 0.0])
+    if collision_style == 'forward':
+        deformable.AddStateForce('planar_collision', [5e3, 0.01, 0.0, 0.0, 1.0, 0.0])
+    else:
+        vertex_indices = []
+        for i in range(node_nums[0]):
+            for j in range(node_nums[1]):
+                idx = i * node_nums[1] * node_nums[2] + j * node_nums[2]
+                vertex_indices.append(idx)
+        deformable.AddPdEnergy('planar_collision', [5e3, 0.0, 0.0, 1.0, 0.0], vertex_indices)
 
     # Simulation.
     dt = 0.03

@@ -5,6 +5,7 @@
 #include "mesh/mesh.h"
 #include "material/material.h"
 #include "fem/state_force.h"
+#include "pd_energy/pd_energy.h"
 #include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
@@ -45,6 +46,14 @@ public:
     void BackwardStateForce(const VectorXr& q, const VectorXr& v, const VectorXr& f,
         const VectorXr& dl_df, VectorXr& dl_dq, VectorXr& dl_dv) const;
 
+    // Add PD energies.
+    // Here we assume each PD energy is registered at a small set of vertices.
+    void AddPdEnergy(const std::string& energy_type, const std::vector<real> params, const std::vector<int>& vertex_indices);
+    const real ComputePdEnergy(const VectorXr& q) const;
+    const VectorXr PdEnergyForce(const VectorXr& q) const;
+    const VectorXr PdEnergyForceDifferential(const VectorXr& q, const VectorXr& dq) const;
+    const SparseMatrixElements PdEnergyForceDifferential(const VectorXr& q) const;
+
     void Forward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
         const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
     void Backward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
@@ -76,6 +85,10 @@ public:
     const std::vector<real> PyElasticForce(const std::vector<real>& q) const;
     const std::vector<real> PyElasticForceDifferential(const std::vector<real>& q, const std::vector<real>& dq) const;
     const std::vector<std::vector<real>> PyElasticForceDifferential(const std::vector<real>& q) const;
+    const real PyComputePdEnergy(const std::vector<real>& q) const;
+    const std::vector<real> PyPdEnergyForce(const std::vector<real>& q) const;
+    const std::vector<real> PyPdEnergyForceDifferential(const std::vector<real>& q, const std::vector<real>& dq) const;
+    const std::vector<std::vector<real>> PyPdEnergyForceDifferential(const std::vector<real>& q) const;
 
 protected:
     virtual void ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
@@ -141,6 +154,9 @@ private:
 
     // State-based forces.
     std::vector<std::shared_ptr<StateForce<vertex_dim>>> state_forces_;
+
+    // Projective-dynamics energies.
+    std::vector<std::pair<std::shared_ptr<PdEnergy<vertex_dim>>, std::set<int>>> pd_energies_;
 };
 
 #endif

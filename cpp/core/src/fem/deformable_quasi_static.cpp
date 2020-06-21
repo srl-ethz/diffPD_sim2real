@@ -33,7 +33,7 @@ void Deformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::stri
     VectorXr q_sol = GetUndeformedShape();
     // Enforce boundary conditions.
     for (const auto& pair : dirichlet_) selected(pair.first) = 0;
-    VectorXr force_sol = ElasticForce(q_sol);
+    VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol);
     if (verbose_level > 0) PrintInfo("Newton's method");
     for (int i = 0; i < max_newton_iter; ++i) {
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
@@ -65,12 +65,12 @@ void Deformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::stri
         // Line search.
         real step_size = 1;
         VectorXr q_sol_next = q_sol + step_size * dq;
-        VectorXr force_next = ElasticForce(q_sol_next);
+        VectorXr force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next);
         for (int j = 0; j < max_ls_iter; ++j) {
             if (!force_next.hasNaN()) break;
             step_size /= 2;
             q_sol_next = q_sol + step_size * dq;
-            force_next = ElasticForce(q_sol_next);
+            force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next);
             if (verbose_level > 1) std::cout << "Line search iteration: " << j << ", step size: " << step_size << std::endl;
             PrintWarning("Newton's method is using < 1 step size: " + std::to_string(step_size));
         }
@@ -108,7 +108,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::QuasiStaticMatrixOp(const Ve
         const int dof = pair.first;
         dq_w_bonudary(dof) = 0;
     }
-    VectorXr ret = ElasticForceDifferential(q, dq_w_bonudary);
+    VectorXr ret = ElasticForceDifferential(q, dq_w_bonudary) + PdEnergyForceDifferential(q, dq_w_bonudary);
     for (const auto& pair : dirichlet_) {
         const int dof = pair.first;
         ret(dof) = dq(dof);
@@ -118,7 +118,9 @@ const VectorXr Deformable<vertex_dim, element_dim>::QuasiStaticMatrixOp(const Ve
 
 template<int vertex_dim, int element_dim>
 const SparseMatrix Deformable<vertex_dim, element_dim>::QuasiStaticMatrix(const VectorXr& q) const {
-    const SparseMatrixElements nonzeros = ElasticForceDifferential(q);
+    SparseMatrixElements nonzeros = ElasticForceDifferential(q);
+    SparseMatrixElements nonzeros_pd = PdEnergyForceDifferential(q);
+    nonzeros.insert(nonzeros.end(), nonzeros_pd.begin(), nonzeros_pd.end());
     SparseMatrixElements nonzeros_new;
     for (const auto& element : nonzeros) {
         const int row = element.row();

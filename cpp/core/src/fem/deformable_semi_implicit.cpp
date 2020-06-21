@@ -8,7 +8,7 @@ void Deformable<vertex_dim, element_dim>::ForwardSemiImplicit(const VectorXr& q,
     v_next = v;
     q_next = q;
     const int vertex_num = mesh_.NumOfVertices();
-    const VectorXr f = ElasticForce(q) + f_ext + ForwardStateForce(q, v);
+    const VectorXr f = ElasticForce(q) + PdEnergyForce(q) + f_ext + ForwardStateForce(q, v);
     const real mass = density_ * cell_volume_;
     for (int i = 0; i < vertex_num; ++i) {
         const VectorXr fi = f.segment(vertex_dim * i, vertex_dim);
@@ -43,7 +43,7 @@ void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q
     for (const auto& pair : dirichlet_) dl_dq_mid(pair.first) = 0;
     // Back-propagate q_mid = q + h * v + h2m * f_ext + h2m * f_int(q).
     dl_dv = dl_dq_mid * dt;
-    dl_dq += dl_dq_mid + h2m * ElasticForceDifferential(q, dl_dq_mid);
+    dl_dq += dl_dq_mid + h2m * (ElasticForceDifferential(q, dl_dq_mid) + PdEnergyForceDifferential(q, dl_dq_mid));
     const VectorXr dl_df_ext_and_state = dl_dq_mid * h2m;
     // f_ext_and_state = f_ext + f_state(q, v).
     const VectorXr f_state = ForwardStateForce(q, v);

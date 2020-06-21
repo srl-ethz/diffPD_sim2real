@@ -54,6 +54,15 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
             }
         }
     }
+    // PdEnergy terms.
+    for (const auto& pair : pd_energies_) {
+        const auto& energy = pair.first;
+        const real stiffness = energy->stiffness();
+        const real h2mw = h2m * stiffness;
+        for (const int idx : pair.second)
+            for (int k = 0; k < vertex_dim; ++k)
+                nonzeros[k].push_back(Eigen::Triplet<real>(idx, idx, h2mw));
+    }
 
     // Part III: add back dirichlet boundary conditions.
     for (const auto& pair : dirichlet_) {
@@ -115,9 +124,19 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
                     pd_rhss[k](vertex_dim * vi[k] + d) += w * AtBp(k * vertex_dim + d);
         }
     }
-
     VectorXr pd_rhs = VectorXr::Zero(dofs_);
     for (int i = 0; i < element_dim; ++i) pd_rhs += pd_rhss[i];
+
+    // Project PdEnergy.
+    for (const auto& pair : pd_energies_) {
+        const auto& energy = pair.first;
+        const real wi = energy->stiffness();
+        for (const int idx : pair.second) {
+            const Eigen::Matrix<real, vertex_dim, 1> Bp = energy->ProjectToManifold(q_cur.segment(vertex_dim * idx, vertex_dim));
+            pd_rhs.segment(vertex_dim * idx, vertex_dim) += wi * Bp;
+        }
+    }
+
     return pd_rhs;
 }
 
@@ -153,7 +172,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
         q_sol(dof) = val;
         selected(dof) = 0;
     }
-    VectorXr force_sol = ElasticForce(q_sol);
+    VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol);
     if (verbose_level > 0) PrintInfo("Projective dynamics");
     for (int i = 0; i < max_pd_iter; ++i) {
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
@@ -170,7 +189,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
 
         // Check for convergence.
         if (verbose_level > 1) Tic();
-        const VectorXr force_next = ElasticForce(q_sol_next);
+        const VectorXr force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next);
         const VectorXr lhs = q_sol_next - h2m * force_next;
         const real abs_error = VectorXr((lhs - rhs).array() * selected.array()).norm();
         const real rhs_norm = VectorXr(selected.array() * rhs.array()).norm();
@@ -193,7 +212,7 @@ template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStepTransposeDifferential(
     const VectorXr& q_cur, const VectorXr& dq_cur) const {
     const int sample_num = element_dim;
-    // Implements w * S' * (d(BP, A))^T * (ASx).
+    // Implements w * S' * A' * (d(BP, A))^T * (ASx).
     const real w = 2 * material_->mu() * cell_volume() / sample_num;
 
     // TODO: create a base material for projective dynamics?
@@ -225,9 +244,22 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStepT
                     pd_rhss[k](vertex_dim * vi[k] + d) += w * AtdBptASx(k * vertex_dim + d);
         }
     }
-
     VectorXr pd_rhs = VectorXr::Zero(dofs_);
     for (int i = 0; i < element_dim; ++i) pd_rhs += pd_rhss[i];
+
+    // PdEnergy differential.
+    for (const auto& pair : pd_energies_) {
+        const auto& energy = pair.first;
+        const real wi = energy->stiffness();
+        // Implements w * S' * A' * (d(BP))^T * (dq_cur).
+        for (const int idx : pair.second) {
+            const Eigen::Matrix<real, vertex_dim, 1> dBptAd =
+                energy->ProjectToManifoldDifferential(q_cur.segment(vertex_dim * idx, vertex_dim)).transpose()
+                * dq_cur.segment(vertex_dim * idx, vertex_dim);
+            pd_rhs.segment(vertex_dim * idx, vertex_dim) += wi * dBptAd;
+        }
+    }
+
     return pd_rhs;
 }
 
