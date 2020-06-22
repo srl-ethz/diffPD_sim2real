@@ -115,6 +115,10 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
     CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
+    CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
+    CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
+    const real abs_tol = options.at("abs_tol");
+    const real rel_tol = options.at("rel_tol");
     for (const auto& pair : dirichlet_) CheckError(q_next(pair.first) == pair.second, "Inconsistent q_next.");
     // q_mid - h^2 / m * f_int(q_mid) = select(q + h * v + h^2 / m * f_ext).
     // q_next = [q_mid, q_bnd].
@@ -139,12 +143,21 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     const real h2m = dt * dt / mass;
     VectorXr adjoint = VectorXr::Zero(dofs_);
     if (method == "newton_pcg") {
-        Eigen::ConjugateGradient<MatrixOp, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
-        MatrixOp op(dofs_, dofs_, [&](const VectorXr& dq){ return NewtonMatrixOp(q_next, h2m, dq); });
+        Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper> cg;
+        // Setting up cg termination conditions: here what you set is the upper bound of:
+        // |Ax - b|/|b| <= tolerance.
+        // In our implementation of the projective dynamics, we use the termination condition:
+        // |Ax - b| <= rel_tol * |b| + abs_tol.
+        // or equivalently,
+        // |Ax - b|/|b| <= rel_tol + abs_tol/|b|.
+        const real tol = rel_tol + abs_tol / dl_dq_mid.norm();
+        cg.setTolerance(tol);
+        const SparseMatrix op = NewtonMatrix(q_next, h2m);
         cg.compute(op);
         adjoint = cg.solve(dl_dq_mid);
         CheckError(cg.info() == Eigen::Success, "CG solver failed.");
     } else if (method == "newton_cholesky") {
+        // Note that Cholesky is a direct solver: no tolerance is ever used to terminate the solution.
         Eigen::SimplicialLDLT<SparseMatrix> cholesky;
         const SparseMatrix op = NewtonMatrix(q_next, h2m);
         cholesky.compute(op);
