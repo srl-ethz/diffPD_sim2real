@@ -34,7 +34,7 @@ if __name__ == '__main__':
     newton_method = 'newton_cholesky'
     newton_opt = { 'max_newton_iter': 1000, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-6, 'verbose': 0 }
     pd_method = 'pd'
-    pd_opt = { 'max_pd_iter': 1000, 'abs_tol': 1e-6, 'rel_tol': 1e-6, 'verbose': 0 }
+    pd_opt = { 'max_pd_iter': 500, 'abs_tol': 1e-6, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4}
     deformable = Deformable2d()
     deformable.Initialize(bin_file_name, density, 'corotated_pd', youngs_modulus, poissons_ratio)
 

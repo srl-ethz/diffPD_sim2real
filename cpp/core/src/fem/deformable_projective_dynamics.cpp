@@ -3,6 +3,8 @@
 #include "material/corotated_pd.h"
 #include "Eigen/SparseCholesky"
 
+#include <omp.h>
+
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const real dt) const {
     if (pd_solver_ready_) return;
@@ -147,12 +149,15 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
     CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
+    CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
     const int max_pd_iter = static_cast<int>(options.at("max_pd_iter"));
     const real abs_tol = options.at("abs_tol");
     const real rel_tol = options.at("rel_tol");
     const int verbose_level = static_cast<int>(options.at("verbose"));
+    const int thread_ct = static_cast<int>(options.at("thread_ct"));
     CheckError(max_pd_iter > 0, "Invalid max_pd_iter: " + std::to_string(max_pd_iter));
 
+    omp_set_num_threads(thread_ct);
     // Pre-factorize the matrix -- it will be skipped if the matrix has already been factorized.
     SetupProjectiveDynamicsSolver(dt);
 
@@ -289,7 +294,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     // f_int = -wi (S'A'ASq - S'A'Bp).
     // q_mid + h2m wi * S'A'ASq_mid - h2m * wi * S'A'Bp = q + hv + h2m f_ext =: rhs.
     // (I + h2mw * S'A'AS) * J - h2mw * S'A' d(BP)/dq_mid * J = drhs/d*.
-    // J = (I + h2mw * S'A'AS - h2mw * S'A' d(BP)/dq_next)^(-1) * drhs/d* 
+    // J = (I + h2mw * S'A'AS - h2mw * S'A' d(BP)/dq_next)^(-1) * drhs/d*
     // (I + h2mw * S'A'AS - h2mw * S'A' d(BP)/dq_next)^T * x = dl_dq_mid.
     // dl_dv = x * h.
     // dl_dfext = x * h2m.
@@ -304,12 +309,15 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
     CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
+    CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
     const int max_pd_iter = static_cast<int>(options.at("max_pd_iter"));
     const real abs_tol = options.at("abs_tol");
     const real rel_tol = options.at("rel_tol");
     const int verbose_level = static_cast<int>(options.at("verbose"));
+    const real thread_ct = static_cast<int>(options.at("thread_ct"));
     CheckError(max_pd_iter > 0, "Invalid max_pd_iter: " + std::to_string(max_pd_iter));
 
+    omp_set_num_threads(thread_ct);
     // Pre-factorize the matrix -- it will be skipped if the matrix has already been factorized.
     SetupProjectiveDynamicsSolver(dt);
 

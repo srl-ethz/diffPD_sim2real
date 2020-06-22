@@ -31,7 +31,7 @@ if __name__ == '__main__':
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
     opts = ({ 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-10, 'rel_tol': 1e-10, 'verbose': 0 },
         { 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-10, 'rel_tol': 1e-10, 'verbose': 0 },
-        { 'max_pd_iter': 100, 'abs_tol': 1e-10, 'rel_tol': 1e-10, 'verbose': 0 })
+        { 'max_pd_iter': 100, 'abs_tol': 1e-10, 'rel_tol': 1e-10, 'verbose': 0, 'thread_ct': 4})
 
     # Initialization.
     folder = Path('deformable_backward_2d')

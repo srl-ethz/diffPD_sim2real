@@ -32,9 +32,9 @@ if __name__ == '__main__':
     node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
     dx = 0.1
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
-    opts = ({ 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0 },
-        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0 },
-        { 'max_pd_iter': 500, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0 })
+    opts = ({ 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-7, 'rel_tol': 1e-7, 'verbose': 0 },
+        { 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-7, 'rel_tol': 1e-7, 'verbose': 0 },
+        { 'max_pd_iter': 100, 'abs_tol': 1e-7, 'rel_tol': 1e-7, 'verbose': 0, 'thread_ct': 4 })
 
     # Initialization.
     folder = Path('deformable_backward_3d')
@@ -149,6 +149,7 @@ if __name__ == '__main__':
         check_gradients(l_and_g, np.copy(x0), eps, atol, rtol, verbose=False, skip_var=skip_var, loss_only=l)
         t1 = time.time()
         print_info('Gradient check finished in {:3.3f}s.'.format(t1 - t0))
+<<<<<<< Updated upstream
 
     # Visualize results.
     def visualize(qvf, method, opt):
@@ -170,7 +171,7 @@ if __name__ == '__main__':
 
             q_next_array = StdRealVector(dofs)
             v_next_array = StdRealVector(dofs)
-            deformable.PyForward(method, q_cur, v_cur, f_cur, dt, opt, q_next_array, v_next_array) 
+            deformable.PyForward(method, q_cur, v_cur, f_cur, dt, opt, q_next_array, v_next_array)
             q_cur = ndarray(q_next_array).copy()
             v_cur = ndarray(v_next_array).copy()
 
@@ -179,3 +180,5 @@ if __name__ == '__main__':
     for method, opt in zip(methods, opts):
         visualize(x0, method, opt)
         os.system('eog {}.gif'.format(folder / method))
+=======
+>>>>>>> Stashed changes

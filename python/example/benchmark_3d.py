@@ -2,6 +2,7 @@ import sys
 sys.path.append('../')
 
 import os
+import subprocess
 from pathlib import Path
 import time
 from pathlib import Path
@@ -21,6 +22,10 @@ if __name__ == '__main__':
     print('seed: {}'.format(seed))
     np.random.seed(seed)
 
+    # Setting Thread Number
+    max_threads = int(subprocess.run(["nproc", "--all"], capture_output=True).stdout)
+    thread_cts = [2**i for i in range(max_threads) if 2**i <= max_threads]
+
     # Hyperparameters.
     youngs_modulus = 1e5
     poissons_ratio = 0.45
@@ -32,7 +37,7 @@ if __name__ == '__main__':
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
     opts = ({ 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-7, 'rel_tol': 1e-7, 'verbose': 0 },
         { 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-7, 'rel_tol': 1e-7, 'verbose': 0 },
-        { 'max_pd_iter': 100, 'abs_tol': 1e-7, 'rel_tol': 1e-7, 'verbose': 0 })
+        { 'max_pd_iter': 100, 'abs_tol': 1e-7, 'rel_tol': 1e-7, 'verbose': 0, 'thread_ct': 1})
 
     # Initialization.
     folder = Path('benchmark_3d')
@@ -117,9 +122,16 @@ if __name__ == '__main__':
     forward_times = {}
     backward_times = {}
     for method in methods:
-        forward_backward_times[method] = []
-        forward_times[method] = []
-        backward_times[method] = []
+        if method == 'pd':
+            for thread_ct in thread_cts:
+                pd_thread_num = 'pd_{}threads'.format(thread_ct)
+                forward_backward_times[pd_thread_num] = []
+                forward_times[pd_thread_num] = []
+                backward_times[pd_thread_num] = []
+        else:
+            forward_backward_times[method] = []
+            forward_times[method] = []
+            backward_times[method] = []
 
     for rel_tol in rel_tols:
         print_info('rel_tol: {:3.3e}'.format(rel_tol))
@@ -133,15 +145,29 @@ if __name__ == '__main__':
         x0 = np.concatenate([q0, v0, f_ext])
         for method, opt in zip(methods, opts):
             opt['rel_tol'] = rel_tol
-            t0 = time.time()
-            loss_and_grad(x0, method, opt, True)
-            t1 = time.time()
-            loss_and_grad(x0, method, opt, False)
-            t2 = time.time()
-            print(tabular.row_string({ 'method': method, 'forward and backward (s)': t1 - t0, 'forward only (s)': t2 - t1 }))
-            forward_backward_times[method].append(t1 - t0)
-            forward_times[method].append(t2 - t1)
-            backward_times[method].append((t1 - t0) - (t2 - t1))
+            if method == 'pd':
+                for thread_ct in thread_cts:
+                    opt['thread_ct'] = thread_ct
+                    pd_thread_num = 'pd_{}threads'.format(thread_ct)
+                    t0 = time.time()
+                    loss_and_grad(x0, method, opt, True)
+                    t1 = time.time()
+                    loss_and_grad(x0, method, opt, False)
+                    t2 = time.time()
+                    print(tabular.row_string({ 'method': pd_thread_num, 'forward and backward (s)': t1 - t0, 'forward only (s)': t2 - t1 }))
+                    forward_backward_times[pd_thread_num].append(t1 - t0)
+                    forward_times[pd_thread_num].append(t2 - t1)
+                    backward_times[pd_thread_num].append((t1 - t0) - (t2 - t1))
+            else:
+                t0 = time.time()
+                loss_and_grad(x0, method, opt, True)
+                t1 = time.time()
+                loss_and_grad(x0, method, opt, False)
+                t2 = time.time()
+                print(tabular.row_string({ 'method': method, 'forward and backward (s)': t1 - t0, 'forward only (s)': t2 - t1 }))
+                forward_backward_times[method].append(t1 - t0)
+                forward_times[method].append(t2 - t1)
+                backward_times[method].append((t1 - t0) - (t2 - t1))
 
     import matplotlib.pyplot as plt
     fig = plt.figure(figsize=(15, 5))
@@ -149,16 +175,23 @@ if __name__ == '__main__':
     ax_f = fig.add_subplot(132)
     ax_b = fig.add_subplot(133)
     titles = ['forward + backward', 'forward', 'backward']
+    dash_list =[(5,0), (5,2), (2,5), (4,10), (3,3,2,2), (5,2,20,2), (5,5), (5,2,1,2)]
     for title, ax, t in zip(titles, (ax_fb, ax_f, ax_b), (forward_backward_times, forward_times, backward_times)):
         ax.set_xlabel('time (s)')
         ax.set_ylabel('relative error')
         ax.set_yscale('log')
         for method in methods:
-            ax.plot(t[method], rel_tols, label=method)
+            if method == 'pd':
+                for thread_ct in thread_cts:
+                    idx = thread_cts.index(thread_ct)
+                    pd_thread_num = 'pd_{}threads'.format(thread_ct)
+                    ax.plot(t[pd_thread_num], rel_tols, label=pd_thread_num,
+                     color='g', dashes=dash_list[idx])
+            else:
+                ax.plot(t[method], rel_tols, label=method)
         ax.grid(True)
         ax.legend()
         ax.set_title(title)
 
     fig.savefig(folder / 'benchmark.pdf')
-    fig.savefig(folder / 'benchmark.png')
     plt.show()
