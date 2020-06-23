@@ -46,7 +46,7 @@ const real Deformable<vertex_dim, element_dim>::ComputePdEnergy(const VectorXr& 
     }
     const int element_num = mesh_.NumOfElements();
     const int sample_num = element_dim;
-    std::vector<real> element_energy(element_dim, 0);
+    std::vector<real> element_energy(element_num, 0);
     for (const auto& energy : pd_element_energies_) {
         #pragma omp parallel for
         for (int i = 0; i < element_num; ++i) {

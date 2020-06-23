@@ -56,6 +56,12 @@ public:
     const Mesh<vertex_dim, element_dim>& mesh() const { return mesh_; }
     const std::map<int, real>& dirichlet() const { return dirichlet_; }
     const std::vector<std::shared_ptr<StateForce<vertex_dim>>>& state_forces() const { return state_forces_; }
+    const std::vector<std::pair<std::shared_ptr<PdVertexEnergy<vertex_dim>>, std::set<int>>>& pd_vertex_energies() const {
+        return pd_vertex_energies_;
+    }
+    const std::vector<std::shared_ptr<PdElementEnergy<vertex_dim>>>& pd_element_energies() const {
+        return pd_element_energies_;
+    }
 
     void SetDirichletBoundaryCondition(const int dof, const real val) {
         if (dirichlet_.find(dof) == dirichlet_.end()) pd_solver_ready_ = false;
