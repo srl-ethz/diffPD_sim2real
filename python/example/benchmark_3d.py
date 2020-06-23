@@ -35,8 +35,8 @@ if __name__ == '__main__':
     node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
     dx = 0.1
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
-    opts = ({ 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-7, 'rel_tol': 1e-7, 'verbose': 0 },
-        { 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-7, 'rel_tol': 1e-7, 'verbose': 0 },
+    opts = ({ 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-7, 'rel_tol': 1e-7, 'verbose': 0, 'thread_ct': 1 },
+        { 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-7, 'rel_tol': 1e-7, 'verbose': 0, 'thread_ct': 1 },
         { 'max_pd_iter': 100, 'abs_tol': 1e-7, 'rel_tol': 1e-7, 'verbose': 0, 'thread_ct': 1})
 
     # Initialization.
@@ -124,12 +124,12 @@ if __name__ == '__main__':
     forward_times = {}
     backward_times = {}
     for method in methods:
-        if method == 'pd':
+        if method == 'pd' or method == 'newton_pcg':
             for thread_ct in thread_cts:
-                pd_thread_num = 'pd_{}threads'.format(thread_ct)
-                forward_backward_times[pd_thread_num] = []
-                forward_times[pd_thread_num] = []
-                backward_times[pd_thread_num] = []
+                meth_thread_num = '{}_{}threads'.format(method, thread_ct)
+                forward_backward_times[meth_thread_num] = []
+                forward_times[meth_thread_num] = []
+                backward_times[meth_thread_num] = []
         else:
             forward_backward_times[method] = []
             forward_times[method] = []
@@ -147,19 +147,19 @@ if __name__ == '__main__':
         x0 = np.concatenate([q0, v0, f_ext])
         for method, opt in zip(methods, opts):
             opt['rel_tol'] = rel_tol
-            if method == 'pd':
+            if method == 'pd' or method == 'newton_pcg':
                 for thread_ct in thread_cts:
                     opt['thread_ct'] = thread_ct
-                    pd_thread_num = 'pd_{}threads'.format(thread_ct)
+                    meth_thread_num = '{}_{}threads'.format(method, thread_ct)
                     t0 = time.time()
                     loss_and_grad(x0, method, opt, True)
                     t1 = time.time()
                     loss_and_grad(x0, method, opt, False)
                     t2 = time.time()
-                    print(tabular.row_string({ 'method': pd_thread_num, 'forward and backward (s)': t1 - t0, 'forward only (s)': t2 - t1 }))
-                    forward_backward_times[pd_thread_num].append(t1 - t0)
-                    forward_times[pd_thread_num].append(t2 - t1)
-                    backward_times[pd_thread_num].append((t1 - t0) - (t2 - t1))
+                    print(tabular.row_string({ 'method': meth_thread_num, 'forward and backward (s)': t1 - t0, 'forward only (s)': t2 - t1 }))
+                    forward_backward_times[meth_thread_num].append(t1 - t0)
+                    forward_times[meth_thread_num].append(t2 - t1)
+                    backward_times[meth_thread_num].append((t1 - t0) - (t2 - t1))
             else:
                 t0 = time.time()
                 loss_and_grad(x0, method, opt, True)
@@ -183,14 +183,15 @@ if __name__ == '__main__':
         ax.set_ylabel('relative error')
         ax.set_yscale('log')
         for method in methods:
-            if method == 'pd':
+            if method == 'pd' or method == 'newton_pcg':
+                color = 'green' if method == 'pd' else 'blue'
                 for thread_ct in thread_cts:
                     idx = thread_cts.index(thread_ct)
-                    pd_thread_num = 'pd_{}threads'.format(thread_ct)
-                    ax.plot(t[pd_thread_num], rel_tols, label=pd_thread_num,
-                     color='g', dashes=dash_list[idx])
+                    meth_thread_num = '{}_{}threads'.format(method, thread_ct)
+                    ax.plot(t[meth_thread_num], rel_tols, label=meth_thread_num,
+                     color=color, dashes=dash_list[idx])
             else:
-                ax.plot(t[method], rel_tols, label=method)
+                ax.plot(t[method], rel_tols, label=method, color='red')
         ax.grid(True)
         ax.legend()
         ax.set_title(title)

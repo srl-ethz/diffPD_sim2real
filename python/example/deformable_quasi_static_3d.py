@@ -37,7 +37,7 @@ if __name__ == '__main__':
     poissons_ratio = 0.45
     density = 1e3
     method = 'newton_cholesky'
-    opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-2, 'verbose': 0 }
+    opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-2, 'verbose': 0, 'thread_ct': 4 }
     deformable = Deformable3d()
     deformable.Initialize(bin_file_name, density, 'corotated', youngs_modulus, poissons_ratio)
     # Boundary conditions.

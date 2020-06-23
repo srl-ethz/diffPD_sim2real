@@ -3,6 +3,8 @@
 #include "solver/matrix_op.h"
 #include "Eigen/SparseCholesky"
 
+#include <omp.h>
+
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& method,
     const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
@@ -13,14 +15,17 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
     CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
+    CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
     const int max_newton_iter = static_cast<int>(options.at("max_newton_iter"));
     const int max_ls_iter = static_cast<int>(options.at("max_ls_iter"));
     const real abs_tol = options.at("abs_tol");
     const real rel_tol = options.at("rel_tol");
     const int verbose_level = static_cast<int>(options.at("verbose"));
+    const int thread_ct = static_cast<int>(options.at("thread_ct"));
     CheckError(max_newton_iter > 0, "Invalid max_newton_iter: " + std::to_string(max_newton_iter));
     CheckError(max_ls_iter > 0, "Invalid max_ls_iter: " + std::to_string(max_ls_iter));
 
+    omp_set_num_threads(thread_ct);
     // q_next = q + h * v_next.
     // q_next - q = h * v + h2m * f_ext + h2m * (f_ela + f_pd) + h2m * f_state(q, v).
     // q_next - h2m * (f_ela + f_pd) = q + h * v + h2m * f_ext + h2m * f_state(q, v).
