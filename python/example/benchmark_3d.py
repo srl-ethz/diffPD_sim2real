@@ -50,7 +50,7 @@ if __name__ == '__main__':
     mesh.Initialize(str(bin_file_name))
 
     deformable = Deformable3d()
-    deformable.Initialize(str(bin_file_name), density, 'corotated_pd', youngs_modulus, poissons_ratio)
+    deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
     # Boundary conditions.
     for i in range(node_nums[0]):
         for j in range(node_nums[1]):
@@ -59,6 +59,8 @@ if __name__ == '__main__':
             deformable.SetDirichletBoundaryCondition(3 * node_idx, vx)
             deformable.SetDirichletBoundaryCondition(3 * node_idx + 1, vy)
             deformable.SetDirichletBoundaryCondition(3 * node_idx + 2, vz)
+    # Elasticity.
+    deformable.AddPdEnergy('corotated', [youngs_modulus / (1 + poissons_ratio),], [])
 
     dofs = deformable.dofs()
     vertex_num = mesh.NumOfVertices()

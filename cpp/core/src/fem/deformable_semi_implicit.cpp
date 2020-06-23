@@ -30,7 +30,7 @@ void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q
     const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
     const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
-    // q_mid = q + h * v + h2m * f_ext + h2m * f_int(q).
+    // q_mid = q + h * v + h2m * f_ext + h2m * elastic(q) + h2m * pd(q) + h2m * state(q, v).
     // q_next = enforce_boundary(q_mid).
     // v_next = (q_next - q) / dt.
     const real mass = density_ * cell_volume_;
@@ -41,17 +41,13 @@ void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q
     // Back-propagate q_next = enforce_boundary(q_mid).
     VectorXr dl_dq_mid = dl_dq_next_agg;
     for (const auto& pair : dirichlet_) dl_dq_mid(pair.first) = 0;
-    // Back-propagate q_mid = q + h * v + h2m * f_ext + h2m * f_int(q).
-    dl_dv = dl_dq_mid * dt;
-    dl_dq += dl_dq_mid + h2m * (ElasticForceDifferential(q, dl_dq_mid) + PdEnergyForceDifferential(q, dl_dq_mid));
-    const VectorXr dl_df_ext_and_state = dl_dq_mid * h2m;
-    // f_ext_and_state = f_ext + f_state(q, v).
+    // Back-propagate q_mid = q + h * v + h2m * f_ext + h2m * elastic(q) + h2m * pd(q) + h2m * state(q, v).
     const VectorXr f_state = ForwardStateForce(q, v);
-    dl_df_ext = dl_df_ext_and_state;
     VectorXr dl_dq_single, dl_dv_single;
-    BackwardStateForce(q, v, f_state, dl_df_ext_and_state, dl_dq_single, dl_dv_single);
-    dl_dq += dl_dq_single;
-    dl_dv += dl_dv_single;
+    BackwardStateForce(q, v, f_state, dl_dq_mid * h2m, dl_dq_single, dl_dv_single);
+    dl_df_ext = dl_dq_mid * h2m;
+    dl_dv = dl_dq_mid * dt + dl_dv_single;
+    dl_dq = dl_dq_mid + h2m * (ElasticForceDifferential(q, dl_dq_mid) + PdEnergyForceDifferential(q, dl_dq_mid)) + dl_dq_single;
 }
 
 template class Deformable<2, 4>;

@@ -45,7 +45,7 @@ if __name__ == '__main__':
         { 'max_pd_iter': 1000, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4})
 
     deformable = Deformable3d()
-    deformable.Initialize(bin_file_name, density, 'corotated_pd', youngs_modulus, poissons_ratio)
+    deformable.Initialize(bin_file_name, density, 'none', youngs_modulus, poissons_ratio)
 
     # State forces.
     deformable.AddStateForce('gravity', [0.0, 0.0, -9.81])
@@ -58,6 +58,9 @@ if __name__ == '__main__':
                 idx = i * node_nums[1] * node_nums[2] + j * node_nums[2]
                 vertex_indices.append(idx)
         deformable.AddPdEnergy('planar_collision', [5e3, 0.0, 0.0, 1.0, 0.0], vertex_indices)
+
+    # Elasticity.
+    deformable.AddPdEnergy('corotated', [youngs_modulus,], [])
 
     # Simulation.
     dt = 0.03

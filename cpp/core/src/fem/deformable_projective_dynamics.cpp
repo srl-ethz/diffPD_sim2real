@@ -1,12 +1,13 @@
 #include "fem/deformable.h"
 #include "common/common.h"
-#include "material/corotated_pd.h"
 #include "Eigen/SparseCholesky"
 
 #include <omp.h>
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const real dt) const {
+    CheckError(!material_, "PD does not support material models.");
+
     if (pd_solver_ready_) return;
     // Assemble and pre-factorize the left-hand-side matrix.
     const int element_num = mesh_.NumOfElements();
@@ -26,9 +27,10 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
         }
     }
 
-    // Part II: potential energy from the material.
-    // w_i = 2 * mu * cell_volume / sample_num.
-    const real w = 2 * material_->mu() * cell_volume() / sample_num;
+    // Part II: PD element energy.
+    real w = 0;
+    for (const auto& energy : pd_element_energies_) w += energy->stiffness();
+    w *= cell_volume_ / sample_num;
     const real h2mw = h2m * w;
     // For each element and for eacn sample, AS maps q to the deformation gradient F.
     std::array<SparseMatrixElements, sample_num> AtA;
@@ -56,8 +58,9 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
             }
         }
     }
-    // PdEnergy terms.
-    for (const auto& pair : pd_energies_) {
+
+    // PdVertexEnergy terms.
+    for (const auto& pair : pd_vertex_energies_) {
         const auto& energy = pair.first;
         const real stiffness = energy->stiffness();
         const real h2mw = h2m * stiffness;
@@ -85,14 +88,22 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
 // Returns \sum w_i (SA)'Bp.
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(const VectorXr& q_cur) const {
+    CheckError(!material_, "PD does not support material models.");
+    for (const auto& pair : dirichlet_) CheckError(q_cur(pair.first) == pair.second, "Boundary conditions violated.");
+
+    // We minimize:
+    // ... + w_i / 2 * \|ASq_i + Asq_0 - Bp(q)\|^2
+    // where q_i = q_cur but with all dirichlet boundaries set to zero, and q_0 is all zero but all dirichlet
+    // boundary conditions are set.
+    // Taking the gradients:
+    // ... + w_i S'A'(ASq_i + ASq_0 - Bp(q)) and the rows corresponding to dirichlet should be cleared.
+    // The lhs becomes:
+    // (M + w_i S'A'AS)q_i with dirichlet enetries properly set as 0 or 1.
+    // The rhs becomes:
+    // w_i S'A'(Bp(q) - ASq_0). Do not worry about the rows corresponding to dirichlet --- it will be set in
+    // the forward and backward functions. 
+
     const int sample_num = element_dim;
-    const real w = 2 * material_->mu() * cell_volume() / sample_num;
-
-    // TODO: create a base material for projective dynamics?
-    const std::shared_ptr<CorotatedPdMaterial<vertex_dim>> pd_material =
-        std::dynamic_pointer_cast<CorotatedPdMaterial<vertex_dim>>(material_);
-    CheckError(pd_material != nullptr, "The material type is not compatible with projective dynamics.");
-
     // Handle dirichlet boundary conditions.
     VectorXr q_boundary = VectorXr::Zero(dofs_);
     for (const auto& pair : dirichlet_) q_boundary(pair.first) = pair.second;
@@ -100,42 +111,44 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
     std::array<VectorXr, element_dim> pd_rhss;
     for (int i = 0; i < element_dim; ++i) pd_rhss[i] = VectorXr::Zero(dofs_);
 
+    // Project PdElementEnergy.
     const int element_num = mesh_.NumOfElements();
-    #pragma omp parallel for
-    for (int i = 0; i < element_num; ++i) {
-        const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
-        Eigen::Matrix<real, vertex_dim * element_dim, 1> deformed;
-        Eigen::Matrix<real, vertex_dim * element_dim, 1> deformed_dirichlet;
-        deformed_dirichlet.setZero();
-        for (int j = 0; j < element_dim; ++j) {
-            deformed.segment(vertex_dim * j, vertex_dim) = q_cur.segment(vertex_dim * vi(j), vertex_dim);
-            deformed_dirichlet.segment(vertex_dim * j, vertex_dim) = q_boundary.segment(vertex_dim * vi(j), vertex_dim);
-        }
-        for (int j = 0; j < sample_num; ++j) {
-            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
-            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_bound = pd_A_[j] * deformed_dirichlet;
-            const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Map<const Eigen::Matrix<real, vertex_dim, vertex_dim>>(
-                F_flattened.data(), vertex_dim, vertex_dim
-            );
-            const Eigen::Matrix<real, vertex_dim, vertex_dim> Bp = pd_material->ProjectToManifold(F);
-            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> Bp_flattened = Eigen::Map<
-                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(Bp.data(), Bp.size());
-            const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtBp = pd_At_[j] * (Bp_flattened - F_bound);
-            for (int k = 0; k < element_dim; ++k)
-                for (int d = 0; d < vertex_dim; ++d)
-                    pd_rhss[k](vertex_dim * vi[k] + d) += w * AtBp(k * vertex_dim + d);
+    for (const auto& energy : pd_element_energies_) {
+        const real w = energy->stiffness() * cell_volume_ / sample_num;
+        #pragma omp parallel for
+        for (int i = 0; i < element_num; ++i) {
+            const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+            const auto deformed = ScatterToElementFlattened(q_cur, i);
+            const auto deformed_dirichlet = ScatterToElementFlattened(q_boundary, i);
+            for (int j = 0; j < sample_num; ++j) {
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_bound = pd_A_[j] * deformed_dirichlet;
+                const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Map<const Eigen::Matrix<real, vertex_dim, vertex_dim>>(
+                    F_flattened.data(), vertex_dim, vertex_dim
+                );
+                const Eigen::Matrix<real, vertex_dim, vertex_dim> Bp = energy->ProjectToManifold(F);
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> Bp_flattened = Eigen::Map<
+                    const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(Bp.data(), Bp.size());
+                const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtBp = pd_At_[j] * (Bp_flattened - F_bound);
+                for (int k = 0; k < element_dim; ++k)
+                    for (int d = 0; d < vertex_dim; ++d)
+                        pd_rhss[k](vertex_dim * vi[k] + d) += w * AtBp(k * vertex_dim + d);
+            }
         }
     }
     VectorXr pd_rhs = VectorXr::Zero(dofs_);
     for (int i = 0; i < element_dim; ++i) pd_rhs += pd_rhss[i];
 
-    // Project PdEnergy.
-    for (const auto& pair : pd_energies_) {
+    // Project PdVertexEnergy.
+    for (const auto& pair : pd_vertex_energies_) {
         const auto& energy = pair.first;
         const real wi = energy->stiffness();
         for (const int idx : pair.second) {
+            // rhs = w_i S'A'(Bp(q) - ASq_0).
             const Eigen::Matrix<real, vertex_dim, 1> Bp = energy->ProjectToManifold(q_cur.segment(vertex_dim * idx, vertex_dim));
-            pd_rhs.segment(vertex_dim * idx, vertex_dim) += wi * Bp;
+            const Eigen::Matrix<real, vertex_dim, 1> ASq0 = q_boundary.segment(vertex_dim * idx, vertex_dim);
+
+            pd_rhs.segment(vertex_dim * idx, vertex_dim) += wi * (Bp - ASq0);
         }
     }
 
@@ -145,6 +158,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
     const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
+    CheckError(!material_, "PD does not support material models.");
+
     CheckError(options.find("max_pd_iter") != options.end(), "Missing option max_pd_iter.");
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
@@ -165,7 +180,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
     const real h2m = dt * dt / mass;
     const VectorXr f_state = ForwardStateForce(q, v);
     const VectorXr rhs = q + dt * v + h2m * (f_ext + f_state);
-    VectorXr q_sol = q + dt * v + h2m * (f_ext + f_state);
+    VectorXr q_sol = rhs;   // Initial guess.
     VectorXr selected = VectorXr::Ones(dofs_);
     // Enforce boundary conditions.
     for (const auto& pair : dirichlet_) {
@@ -177,7 +192,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
         q_sol(dof) = val;
         selected(dof) = 0;
     }
-    VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol);
+    VectorXr force_sol = PdEnergyForce(q_sol);
     if (verbose_level > 0) PrintInfo("Projective dynamics");
     for (int i = 0; i < max_pd_iter; ++i) {
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
@@ -194,7 +209,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
 
         // Check for convergence.
         if (verbose_level > 1) Tic();
-        const VectorXr force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next);
+        const VectorXr force_next = PdEnergyForce(q_sol_next);
         const VectorXr lhs = q_sol_next - h2m * force_next;
         const real abs_error = VectorXr((lhs - rhs).array() * selected.array()).norm();
         const real rhs_norm = VectorXr(selected.array() * rhs.array()).norm();
@@ -216,47 +231,44 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStepTransposeDifferential(
     const VectorXr& q_cur, const VectorXr& dq_cur) const {
-    const int sample_num = element_dim;
-    // Implements w * S' * A' * (d(BP, A))^T * (ASx).
-    const real w = 2 * material_->mu() * cell_volume() / sample_num;
+    CheckError(!material_, "PD does not support material models.");
+    for (const auto& pair : dirichlet_) CheckError(q_cur(pair.first) == pair.second, "Boundary conditions violated.");
 
-    // TODO: create a base material for projective dynamics?
-    const std::shared_ptr<CorotatedPdMaterial<vertex_dim>> pd_material =
-        std::dynamic_pointer_cast<CorotatedPdMaterial<vertex_dim>>(material_);
-    CheckError(pd_material != nullptr, "The material type is not compatible with projective dynamics.");
+    const int sample_num = element_dim;
+    // Implements w * S' * A' * (d(BP)/dF)^T * A * (Sx).
 
     const int element_num = mesh_.NumOfElements();
     std::array<VectorXr, element_dim> pd_rhss;
     for (int i = 0; i < element_dim; ++i) pd_rhss[i] = VectorXr::Zero(dofs_);
-    #pragma omp parallel for
-    for (int i = 0; i < element_num; ++i) {
-        const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
-        Eigen::Matrix<real, vertex_dim * element_dim, 1> deformed, ddeformed;
-        for (int j = 0; j < element_dim; ++j) {
-            deformed.segment(vertex_dim * j, vertex_dim) = q_cur.segment(vertex_dim * vi(j), vertex_dim);
-            ddeformed.segment(vertex_dim * j, vertex_dim) = dq_cur.segment(vertex_dim * vi(j), vertex_dim);
-        }
-        for (int j = 0; j < sample_num; ++j) {
-            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
-            const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Map<const Eigen::Matrix<real, vertex_dim, vertex_dim>>(
-                F_flattened.data(), vertex_dim, vertex_dim
-            );
-            const Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * vertex_dim> dBp = pd_material->ProjectToManifoldDifferential(F);
-            const Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * element_dim> dBptA = dBp.transpose() * pd_A_[j];
-            const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtdBptASx = pd_At_[j] * dBptA * ddeformed;
-            for (int k = 0; k < element_dim; ++k)
-                for (int d = 0; d < vertex_dim; ++d)
-                    pd_rhss[k](vertex_dim * vi[k] + d) += w * AtdBptASx(k * vertex_dim + d);
+    // Project PdElementEnergy.
+    for (const auto& energy : pd_element_energies_) {
+        const real w = energy->stiffness() * cell_volume_ / sample_num;
+        #pragma omp parallel for
+        for (int i = 0; i < element_num; ++i) {
+            const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+            const auto deformed = ScatterToElementFlattened(q_cur, i);
+            const auto ddeformed = ScatterToElementFlattened(dq_cur, i);
+            for (int j = 0; j < sample_num; ++j) {
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
+                const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Map<const Eigen::Matrix<real, vertex_dim, vertex_dim>>(
+                    F_flattened.data(), vertex_dim, vertex_dim
+                );
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * vertex_dim> dBp = energy->ProjectToManifoldDifferential(F);
+                const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtdBptASx = pd_At_[j] * dBp.transpose() * pd_A_[j] * ddeformed;
+                for (int k = 0; k < element_dim; ++k)
+                    for (int d = 0; d < vertex_dim; ++d)
+                        pd_rhss[k](vertex_dim * vi[k] + d) += w * AtdBptASx(k * vertex_dim + d);
+            }
         }
     }
     VectorXr pd_rhs = VectorXr::Zero(dofs_);
     for (int i = 0; i < element_dim; ++i) pd_rhs += pd_rhss[i];
 
-    // PdEnergy differential.
-    for (const auto& pair : pd_energies_) {
+    // Project PdVertexEnergy.
+    // w * S' * A' * (d(BP)/dF)^T * A * (Sx).
+    for (const auto& pair : pd_vertex_energies_) {
         const auto& energy = pair.first;
         const real wi = energy->stiffness();
-        // Implements w * S' * A' * (d(BP))^T * (dq_cur).
         for (const int idx : pair.second) {
             const Eigen::Matrix<real, vertex_dim, 1> dBptAd =
                 energy->ProjectToManifoldDifferential(q_cur.segment(vertex_dim * idx, vertex_dim)).transpose()
@@ -271,9 +283,11 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStepT
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
     const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
-    const std::map<std::string, real>& options,
-    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
-    // q_mid - h^2 / m * f_int(q_mid) = select(q + h * v + h^2 / m * f_ext).
+    const std::map<std::string, real>& options, VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
+    CheckError(!material_, "PD does not support material models.");
+    for (const auto& pair : dirichlet_) CheckError(q_next(pair.first) == pair.second, "Dirichlet boundary conditions violated.");
+
+    // q_mid - h2m * f_pd(q_mid) = select(q + h * v + h2m * f_ext + h2m * f_state(q, v)).
     // q_next = [q_mid, q_bnd].
     // v_next = (q_next - q) / dt.
     // So, the computational graph looks like this:
@@ -286,24 +300,27 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     VectorXr dl_dq_mid = dl_dq_next_agg;
     for (const auto& pair : dirichlet_) dl_dq_mid(pair.first) = 0;
     // Now the hard part:
-    // q_mid - h2m * f_int(q_mid) = select(q + h * v + h2m * f_ext).
+    // q_mid - h2m * f_pd(q_mid) = select(q + h * v + h2m * f_ext + h2m * f_state(q, v)).
     const real mass = density_ * cell_volume_;
     const real h2m = dt * dt / mass;
-    // AS maps q to F. Note that there is no need to handle boundary conditions specifically.
-    // Elastic energy = wi / 2 * \|ASq - Bp\|^2
-    // f_int = -wi (S'A'ASq - S'A'Bp).
-    // q_mid + h2m wi * S'A'ASq_mid - h2m * wi * S'A'Bp = q + hv + h2m f_ext =: rhs.
+    // Note that there is no need to handle boundary conditions specifically.
+    // Elastic energy = w_i / 2 * \|ASq_i + Asq_0 - Bp(q)\|^2
+    // where q_i = q_cur but with all dirichlet boundaries set to zero, and q_0 is all zero but all dirichlet
+    // boundary conditions are set.
+    // Taking the gradients:
+    // ... + w_i S'A'(ASq_i + ASq_0 - Bp(q)) and the rows corresponding to dirichlet should be cleared.
+    // The lhs becomes:
+    // (M + w_i S'A'AS)q_i with dirichlet enetries properly set as 0 or 1.
+    // The force becomes:
+    // f = w_i S'A'(Bp(q) - ASq_0 - ASq_i).
+    // q_mid + h2m wi * S'A'ASq_mid - h2m * wi * S'A'Bp = q + hv + h2m f_ext + h2m f_state(q, v) =: rhs.
     // (I + h2mw * S'A'AS) * J - h2mw * S'A' d(BP)/dq_mid * J = drhs/d*.
     // J = (I + h2mw * S'A'AS - h2mw * S'A' d(BP)/dq_next)^(-1) * drhs/d*
     // (I + h2mw * S'A'AS - h2mw * S'A' d(BP)/dq_next)^T * x = dl_dq_mid.
-    // dl_dv = x * h.
-    // dl_dfext = x * h2m.
-    // dl_dq += x.
     // So the crux is to solve x from the equation below:
     // (I + h2m * S'A'AS)x = dl_dq_mid + h2mw * d(BP)/dq_mid^T * AS x.
-    // Recall that d(BP)/dq_mid = d(BP)/dF_involved * A * S.
-    // h2mw * d(BP)/dq_mid^T * ASx = h2mw * S' * A' * (d(BP)/dF_involved)^T * A * (Sx).
-    // = h2mw * S' * (d(BP, A))^T * (ASx).
+    // Let F = ASq_mid.
+    // h2mw * d(BP)/dq_mid^T * ASx = h2mw * S' * A' * (d(BP)/dF)^T * A * (Sx).
 
     CheckError(options.find("max_pd_iter") != options.end(), "Missing option max_pd_iter.");
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
@@ -350,15 +367,12 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
         if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
         if (abs_error <= rel_tol * rhs_norm + abs_tol) {
             // Should be unnecessary but for safety:
-            for (const auto& pair : dirichlet_) adjoint_next(pair.first) = 0;
-            dl_dq += adjoint_next;
-            dl_dv = adjoint_next * dt;
-            dl_df_ext = adjoint_next * h2m;
-            // Back-propagation StateForce.
+            for (const auto& pair : dirichlet_) CheckError(adjoint_next(pair.first) == 0, "Dirichlet boundary conditions violated.");
             VectorXr dl_dq_single, dl_dv_single;
-            BackwardStateForce(q, v, ForwardStateForce(q, v), dl_df_ext, dl_dq_single, dl_dv_single);
-            dl_dq += dl_dq_single;
-            dl_dv += dl_dv_single;
+            BackwardStateForce(q, v, ForwardStateForce(q, v), h2m * adjoint_next, dl_dq_single, dl_dv_single);
+            dl_dq += adjoint_next + dl_dq_single;
+            dl_dv = adjoint_next * dt + dl_dv_single;
+            dl_df_ext = adjoint_next * h2m;
             return;
         }
 

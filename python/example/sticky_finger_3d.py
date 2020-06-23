@@ -43,7 +43,9 @@ if __name__ == '__main__':
         { 'max_pd_iter': 1000, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4})
 
     deformable = Deformable3d()
-    deformable.Initialize(bin_file_name, density, 'corotated_pd', youngs_modulus, poissons_ratio)
+    deformable.Initialize(bin_file_name, density, 'none', youngs_modulus, poissons_ratio)
+    # Elasticity.
+    deformable.AddPdEnergy('corotated', [youngs_modulus / (1 + poissons_ratio),], [])
     # Boundary conditions.
     for i in range(node_nums[0]):
         for j in range(node_nums[1]):

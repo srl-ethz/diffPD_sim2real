@@ -36,7 +36,7 @@ if __name__ == '__main__':
     pd_method = 'pd'
     pd_opt = { 'max_pd_iter': 500, 'abs_tol': 1e-6, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4}
     deformable = Deformable2d()
-    deformable.Initialize(bin_file_name, density, 'corotated_pd', youngs_modulus, poissons_ratio)
+    deformable.Initialize(bin_file_name, density, 'none', youngs_modulus, poissons_ratio)
 
     # Boundary conditions.
     node_idx = cell_nums[1]
@@ -51,6 +51,9 @@ if __name__ == '__main__':
     deformable.AddPdEnergy('planar_collision', [1e4, 0.0, 1.0, -dx * cell_nums[1] * 0.2], [
         i * node_nums[1] for i in range(node_nums[0])
     ])
+
+    # Elasticity.
+    deformable.AddPdEnergy('corotated', [youngs_modulus,], [])
 
     # Forward simulation.
     dt = 0.01

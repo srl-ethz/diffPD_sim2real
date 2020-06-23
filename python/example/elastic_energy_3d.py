@@ -5,11 +5,10 @@ from pathlib import Path
 import shutil
 import numpy as np
 
-from py_diff_pd.core.py_diff_pd_core import Deformable2d, Mesh2d, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import Deformable3d, Mesh3d
 from py_diff_pd.common.common import ndarray, create_folder
 from py_diff_pd.common.common import print_info
-from py_diff_pd.common.display import display_quad_mesh, export_gif
-from py_diff_pd.common.mesh import generate_rectangle_mesh
+from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.grad_check import check_gradients
 
 if __name__ == '__main__':
@@ -23,23 +22,23 @@ if __name__ == '__main__':
     youngs_modulus = 1e6
     poissons_ratio = 0.45
     density = 1e4
-    cell_nums = (20, 10)
+    cell_nums = (6, 6, 12)
     dx = 0.2
 
     # Initialization.
-    folder = Path('elastic_energy')
+    folder = Path('elastic_energy_3d')
     create_folder(folder)
-    bin_file_name = folder / 'rectangle.bin'
-    generate_rectangle_mesh(cell_nums, dx, (0, 0), bin_file_name)
+    bin_file_name = folder / 'cuboid.bin'
+    generate_hex_mesh(np.ones(cell_nums), dx, (0, 0, 0), bin_file_name)
 
-    mesh = Mesh2d()
+    mesh = Mesh3d()
     mesh.Initialize(str(bin_file_name))
 
-    deformable = Deformable2d()
+    deformable = Deformable3d()
     deformable.Initialize(str(bin_file_name), density, 'corotated', youngs_modulus, poissons_ratio)
 
     dofs = deformable.dofs()
-    vertex_num = int(dofs / 2)
+    vertex_num = int(dofs / 3)
     q0 = ndarray(mesh.py_vertices())
 
     def loss_and_grad(q):
