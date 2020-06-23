@@ -1,11 +1,39 @@
 #ifndef FEM_DEFORMABLE_H
 #define FEM_DEFORMABLE_H
 
+// This deformable class simulates a hex mesh with dirichlet boundary conditions.
+// Time integration methods:
+// - Semi-implicit;
+// - Newton-PCG;
+// - Newton-Cholesky;
+// - Projective dynamics.
+//
+// Boundary conditions:
+// - Currently, we support dirichlet boundary conditions on positions.
+//
+// Governing equations:
+// Let q and v be the position and velocity at the beginning of the time step.
+// For DoFs not in the dirichlet boundary conditions:
+// q_next = q + h * v + h * h / m * (f_ext + StateForce(q, v) + ElasticForce(q_next) + PdEnergyForce(q_next))
+// where h is the time step and m is the mass of a node. We assume all nodes have the same mass.
+// For DoFs in the dirichlet boundary conditions
+// q_next = Dirichlet boundary conditions.
+//
+// Here, f_ext is the external force supplied by the user.
+// StateForce is a force defined on current state and velocity, e.g., hydrodynamic forces. Note that this force
+// is integrated explicitly.
+// ElasticForce is defined by the material model, e.g., Neohookean.
+// PdEnergyForce is derived from quadratic energies in projective dynamics, e.g., \|F - R\|.
+//
+// When projective dynamics is selected as the integration method, ElasticForce is ignored as it typically cannot
+// be represented as a quadratic energy.
+
 #include "common/config.h"
 #include "mesh/mesh.h"
 #include "material/material.h"
 #include "fem/state_force.h"
-#include "pd_energy/pd_energy.h"
+#include "pd_energy/pd_vertex_energy.h"
+#include "pd_energy/pd_element_energy.h"
 #include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
@@ -47,12 +75,17 @@ public:
         const VectorXr& dl_df, VectorXr& dl_dq, VectorXr& dl_dv) const;
 
     // Add PD energies.
-    // Here we assume each PD energy is registered at a small set of vertices.
-    void AddPdEnergy(const std::string& energy_type, const std::vector<real> params, const std::vector<int>& vertex_indices);
+    void AddPdEnergy(const std::string& energy_type, const std::vector<real> params, const std::vector<int>& indices);
     const real ComputePdEnergy(const VectorXr& q) const;
     const VectorXr PdEnergyForce(const VectorXr& q) const;
     const VectorXr PdEnergyForceDifferential(const VectorXr& q, const VectorXr& dq) const;
     const SparseMatrixElements PdEnergyForceDifferential(const VectorXr& q) const;
+
+    // Elastic force from the material model.
+    const real ElasticEnergy(const VectorXr& q) const;
+    const VectorXr ElasticForce(const VectorXr& q) const;
+    const VectorXr ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const;
+    const SparseMatrixElements ElasticForceDifferential(const VectorXr& q) const;
 
     void Forward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
         const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
@@ -63,11 +96,6 @@ public:
     void GetQuasiStaticState(const std::string& method, const VectorXr& f_ext,
         const std::map<std::string, real>& options, VectorXr& q) const;
     void SaveToMeshFile(const VectorXr& q, const std::string& file_name) const;
-
-    const real ElasticEnergy(const VectorXr& q) const;
-    const VectorXr ElasticForce(const VectorXr& q) const;
-    const VectorXr ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const;
-    const SparseMatrixElements ElasticForceDifferential(const VectorXr& q) const;
 
     // For Python binding.
     void PyForward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v,
@@ -131,6 +159,12 @@ private:
     const VectorXr PdLhsMatrixOp(const VectorXr& q) const;
     const VectorXr PdLhsSolve(const VectorXr& rhs) const;
 
+    // Compute deformation gradient.
+    const Eigen::Matrix<real, vertex_dim, element_dim> ScatterToElement(const VectorXr& q, const int element_idx) const;
+    const Eigen::Matrix<real, vertex_dim * element_dim, 1> ScatterToElementFlattened(const VectorXr& q, const int element_idx) const;
+    const Eigen::Matrix<real, vertex_dim, vertex_dim> DeformationGradient(const Eigen::Matrix<real, vertex_dim, element_dim>& q,
+        const int sample_idx) const;
+
     Mesh<vertex_dim, element_dim> mesh_;
     real density_;
     real cell_volume_;
@@ -156,7 +190,8 @@ private:
     std::vector<std::shared_ptr<StateForce<vertex_dim>>> state_forces_;
 
     // Projective-dynamics energies.
-    std::vector<std::pair<std::shared_ptr<PdEnergy<vertex_dim>>, std::set<int>>> pd_energies_;
+    std::vector<std::pair<std::shared_ptr<PdVertexEnergy<vertex_dim>>, std::set<int>>> pd_vertex_energies_;
+    std::vector<std::shared_ptr<PdElementEnergy<vertex_dim>>> pd_element_energies_;
 };
 
 #endif

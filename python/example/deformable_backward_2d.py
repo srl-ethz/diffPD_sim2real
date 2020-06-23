@@ -43,7 +43,7 @@ if __name__ == '__main__':
     mesh.Initialize(str(bin_file_name))
 
     deformable = Deformable2d()
-    deformable.Initialize(str(bin_file_name), density, 'corotated_pd', youngs_modulus, poissons_ratio)
+    deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
     # Boundary conditions.
     for i in range(node_nums[0]):
         node_idx = i * node_nums[1]
@@ -54,6 +54,9 @@ if __name__ == '__main__':
     # State forces.
     deformable.AddStateForce("gravity", [0.0, -9.81])
     deformable.AddStateForce("planar_collision", [100., 0.01, 0.0, 1.0, -dx / 2])
+
+    # Elasticity.
+    deformable.AddPdEnergy('corotated', [youngs_modulus,], [])
 
     dofs = deformable.dofs()
     vertex_num = mesh.NumOfVertices()

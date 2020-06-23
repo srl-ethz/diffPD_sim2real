@@ -49,7 +49,7 @@ if __name__ == '__main__':
     mesh.Initialize(str(bin_file_name))
 
     deformable = Deformable3d()
-    deformable.Initialize(str(bin_file_name), density, 'corotated_pd', youngs_modulus, poissons_ratio)
+    deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
     # Boundary conditions.
     pivot_idx = cell_nums[2]
     pivot = ndarray(mesh.py_vertex(pivot_idx))
@@ -68,6 +68,9 @@ if __name__ == '__main__':
             idx = i * node_nums[1] * node_nums[2] + j * node_nums[2]
             vertex_indices.append(idx)
     deformable.AddPdEnergy('planar_collision', [5e4, 0.0, 0.0, 1.0, 0.0], vertex_indices)
+
+    # Elasticity.
+    deformable.AddPdEnergy('corotated', [youngs_modulus,], [])
 
     dofs = deformable.dofs()
     vertex_num = mesh.NumOfVertices()

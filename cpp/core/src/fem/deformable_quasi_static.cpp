@@ -27,7 +27,8 @@ void Deformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::stri
     const int verbose_level = static_cast<int>(options.at("verbose"));
     CheckError(max_newton_iter > 0, "Invalid max_newton_iter: " + std::to_string(max_newton_iter));
     CheckError(max_ls_iter > 0, "Invalid max_ls_iter: " + std::to_string(max_ls_iter));
-    // f_int(q) = -f_ext.
+    // f_ext + f_elastic(q) + f_pd(q) = 0.
+    // f_elastic(q) + f_pd(q) = -f_ext.
     const VectorXr rhs = -f_ext;
     VectorXr selected = VectorXr::Ones(dofs_);
     VectorXr q_sol = GetUndeformedShape();

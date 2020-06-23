@@ -3,7 +3,6 @@
 #include "solver/matrix_op.h"
 #include "material/linear.h"
 #include "material/corotated.h"
-#include "material/corotated_pd.h"
 #include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
@@ -46,9 +45,8 @@ const std::shared_ptr<Material<vertex_dim>> Deformable<vertex_dim, element_dim>:
     } else if (material_type == "corotated") {
         material = std::make_shared<CorotatedMaterial<vertex_dim>>();
         material->Initialize(youngs_modulus, poissons_ratio);
-    } else if (material_type == "corotated_pd") {
-        material = std::make_shared<CorotatedPdMaterial<vertex_dim>>();
-        material->Initialize(youngs_modulus, poissons_ratio);
+    } else if (material_type == "none") {
+        material = nullptr;
     } else {
         PrintError("Unidentified material: " + material_type);
     }
@@ -226,59 +224,46 @@ const std::vector<std::vector<real>> Deformable<vertex_dim, element_dim>::PyElas
 
 template<int vertex_dim, int element_dim>
 const real Deformable<vertex_dim, element_dim>::ElasticEnergy(const VectorXr& q) const {
+    if (!material_) return 0;
+
     const int element_num = mesh_.NumOfElements();
     const int sample_num = element_dim;
-    real energy = 0;
+
+    std::vector<real> element_energy(element_num, 0);
+    #pragma omp parallel for
     for (int i = 0; i < element_num; ++i) {
-        const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
-        // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
-        // when we load the obj file.
-        Eigen::Matrix<real, vertex_dim, element_dim> deformed;
-        for (int j = 0; j < element_dim; ++j) {
-            deformed.col(j) = q.segment(vertex_dim * vi(j), vertex_dim);
-        }
-        deformed /= dx_;
+        const auto deformed = ScatterToElement(q, i);
         for (int j = 0; j < sample_num; ++j) {
-            Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
-            for (int k = 0; k < element_dim; ++k)
-                F += deformed.col(k) * grad_undeformed_sample_weights_[j].col(k).transpose();
-            energy += material_->EnergyDensity(F) * cell_volume_ / sample_num;
+            const auto F = DeformationGradient(deformed, j);
+            element_energy[i] += material_->EnergyDensity(F) * cell_volume_ / sample_num;
         }
     }
+    real energy = 0;
+    for (const real e : element_energy) energy += e;
     return energy;
 }
 
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr& q) const {
+    if (!material_) return VectorXr::Zero(dofs_);
+
     const int element_num = mesh_.NumOfElements();
     const int sample_num = element_dim;
 
     std::array<VectorXr, element_dim> f_ints;
     for (int i = 0; i < element_dim; ++i) f_ints[i] = VectorXr::Zero(dofs_);
-    // TODO: Use OpenMP to parallelize the code below.
     #pragma omp parallel for
     for (int i = 0; i < element_num; ++i) {
         const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
-        // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
-        // when we load the obj file.
-        Eigen::Matrix<real, vertex_dim, element_dim> deformed;
-        for (int j = 0; j < element_dim; ++j) {
-            deformed.col(j) = q.segment(vertex_dim * vi(j), vertex_dim);
-        }
-        deformed /= dx_;
+        const auto deformed = ScatterToElement(q, i);
         for (int j = 0; j < sample_num; ++j) {
-            Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
-            for (int k = 0; k < element_dim; ++k) {
-                F += deformed.col(k) * grad_undeformed_sample_weights_[j].col(k).transpose();
-            }
-            const Eigen::Matrix<real, vertex_dim, vertex_dim> P = material_->StressTensor(F);
+            const auto F = DeformationGradient(deformed, j);
+            const auto P = material_->StressTensor(F);
             const Eigen::Matrix<real, element_dim * vertex_dim, 1> f_kd =
                 dF_dxkd_flattened_[j] * Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(P.data(), P.size());
-            for (int k = 0; k < element_dim; ++k) {
-                for (int d = 0; d < vertex_dim; ++d) {
+            for (int k = 0; k < element_dim; ++k)
+                for (int d = 0; d < vertex_dim; ++d)
                     f_ints[k](vertex_dim * vi(k) + d) += f_kd(k * vertex_dim + d);
-                }
-            }
         }
     }
 
@@ -290,23 +275,17 @@ const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr&
 
 template<int vertex_dim, int element_dim>
 const SparseMatrixElements Deformable<vertex_dim, element_dim>::ElasticForceDifferential(const VectorXr& q) const {
+    if (!material_) return SparseMatrixElements();
+
     const int element_num = mesh_.NumOfElements();
     const int sample_num = element_dim;
     SparseMatrixElements nonzeros;
+    // TODO: should this be parallelized with OpenMP?
     for (int i = 0; i < element_num; ++i) {
         const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
-        // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
-        // when we load the obj file.
-        Eigen::Matrix<real, vertex_dim, element_dim> deformed;
-        for (int j = 0; j < element_dim; ++j) {
-            deformed.col(j) = q.segment(vertex_dim * vi(j), vertex_dim);
-        }
-        deformed /= dx_;
+        const auto deformed = ScatterToElement(q, i);
         for (int j = 0; j < sample_num; ++j) {
-            Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
-            for (int k = 0; k < element_dim; ++k) {
-                F += deformed.col(k) * grad_undeformed_sample_weights_[j].col(k).transpose();
-            }
+            const auto F = DeformationGradient(deformed, j);
             MatrixXr dF(vertex_dim * vertex_dim, element_dim * vertex_dim); dF.setZero();
             for (int s = 0; s < element_dim; ++s)
                 for (int t = 0; t < vertex_dim; ++t) {
@@ -316,14 +295,12 @@ const SparseMatrixElements Deformable<vertex_dim, element_dim>::ElasticForceDiff
             }
             const auto dP = material_->StressTensorDifferential(F) * dF;
             const Eigen::Matrix<real, element_dim * vertex_dim, element_dim * vertex_dim> df_kd = dF_dxkd_flattened_[j] * dP;
-            for (int k = 0; k < element_dim; ++k) {
-                for (int d = 0; d < vertex_dim; ++d) {
+            for (int k = 0; k < element_dim; ++k)
+                for (int d = 0; d < vertex_dim; ++d)
                     for (int s = 0; s < element_dim; ++s)
                         for (int t = 0; t < vertex_dim; ++t)
                             nonzeros.push_back(Eigen::Triplet<real>(vertex_dim * vi(k) + d,
                                 vertex_dim * vi(s) + t, df_kd(k * vertex_dim + d, s * vertex_dim + t)));
-                }
-            }
         }
     }
     return nonzeros;
@@ -331,38 +308,33 @@ const SparseMatrixElements Deformable<vertex_dim, element_dim>::ElasticForceDiff
 
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const {
+    if (!material_) return VectorXr::Zero(dofs_);
+
     const int element_num = mesh_.NumOfElements();
-    VectorXr df_int = VectorXr::Zero(dofs_);
+    std::array<VectorXr, element_dim> df_ints;
+    for (int i = 0; i < element_dim; ++i) df_ints[i] = VectorXr::Zero(dofs_);
     const int sample_num = element_dim;
+    #pragma omp parallel for
     for (int i = 0; i < element_num; ++i) {
         const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
-        // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
-        // when we load the obj file.
-        Eigen::Matrix<real, vertex_dim, element_dim> deformed, ddeformed;
-        for (int j = 0; j < element_dim; ++j) {
-            deformed.col(j) = q.segment(vertex_dim * vi(j), vertex_dim);
-            ddeformed.col(j) = dq.segment(vertex_dim * vi(j), vertex_dim);
-        }
-        deformed /= dx_;
-        ddeformed /= dx_;
+        const auto deformed = ScatterToElement(q, i);
+        const auto ddeformed = ScatterToElement(dq, i);
         for (int j = 0; j < sample_num; ++j) {
-            Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
-            Eigen::Matrix<real, vertex_dim, vertex_dim> dF = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
-            for (int k = 0; k < element_dim; ++k) {
-                F += deformed.col(k) * grad_undeformed_sample_weights_[j].col(k).transpose();
-                dF += ddeformed.col(k) * grad_undeformed_sample_weights_[j].col(k).transpose();
-            }
+            const auto F = DeformationGradient(deformed, j);
+            const auto dF = DeformationGradient(ddeformed, j);
             const Eigen::Matrix<real, vertex_dim, vertex_dim> dP = material_->StressTensorDifferential(F, dF);
             const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> dP_flattened =
                 Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(dP.data(), dP.size());
             const Eigen::Matrix<real, element_dim * vertex_dim, 1> df_kd = dF_dxkd_flattened_[j] * dP_flattened;
-            for (int k = 0; k < element_dim; ++k) {
-                for (int d = 0; d < vertex_dim; ++d) {
-                    df_int(vertex_dim * vi(k) + d) += df_kd(k * vertex_dim + d);
-                }
-            }
+            for (int k = 0; k < element_dim; ++k)
+                for (int d = 0; d < vertex_dim; ++d)
+                    df_ints[k](vertex_dim * vi(k) + d) += df_kd(k * vertex_dim + d);
         }
     }
+
+    VectorXr df_int = VectorXr::Zero(dofs_);
+    for (int i = 0; i < element_dim; ++i) df_int += df_ints[i];
+
     return df_int;
 }
 
@@ -375,6 +347,39 @@ const VectorXr Deformable<vertex_dim, element_dim>::GetUndeformedShape() const {
         q(pair.first) = pair.second;
     }
     return q;
+}
+
+template<int vertex_dim, int element_dim>
+const Eigen::Matrix<real, vertex_dim, element_dim> Deformable<vertex_dim, element_dim>::ScatterToElement(
+    const VectorXr& q, const int element_idx) const {
+    const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(element_idx);
+    // The undeformed shape is always a [0, dx] x [0, dx] square, which has already been checked
+    // when we load the obj file.
+    Eigen::Matrix<real, vertex_dim, element_dim> deformed;
+    for (int j = 0; j < element_dim; ++j) {
+        deformed.col(j) = q.segment(vertex_dim * vi(j), vertex_dim);
+    }
+    return deformed;
+}
+
+template<int vertex_dim, int element_dim>
+const Eigen::Matrix<real, vertex_dim * element_dim, 1> Deformable<vertex_dim, element_dim>::ScatterToElementFlattened(
+    const VectorXr& q, const int element_idx) const {
+    const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(element_idx);
+    Eigen::Matrix<real, vertex_dim * element_dim, 1> deformed;
+    for (int j = 0; j < element_dim; ++j) {
+        deformed.segment(j * vertex_dim, vertex_dim) = q.segment(vertex_dim * vi(j), vertex_dim);
+    }
+    return deformed;
+}
+
+template<int vertex_dim, int element_dim>
+const Eigen::Matrix<real, vertex_dim, vertex_dim> Deformable<vertex_dim, element_dim>::DeformationGradient(
+    const Eigen::Matrix<real, vertex_dim, element_dim>& q, const int sample_idx) const {
+    const auto normal_q = q / dx_;
+    Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
+    for (int k = 0; k < element_dim; ++k) F += normal_q.col(k) * grad_undeformed_sample_weights_[sample_idx].col(k).transpose();
+    return F;
 }
 
 template class Deformable<2, 4>;

@@ -22,9 +22,8 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
     CheckError(max_ls_iter > 0, "Invalid max_ls_iter: " + std::to_string(max_ls_iter));
 
     // q_next = q + h * v_next.
-    // v_next = v + h * (f_ext + f_int(q_next)) / m.
-    // q_next - q = h * v + h^2 / m * (f_ext + f_int(q_next)).
-    // q_next - h^2 / m * f_int(q_next) = q + h * v + h^2 / m * f_ext.
+    // q_next - q = h * v + h2m * f_ext + h2m * (f_ela + f_pd) + h2m * f_state(q, v).
+    // q_next - h2m * (f_ela + f_pd) = q + h * v + h2m * f_ext + h2m * f_state(q, v).
     const real mass = density_ * cell_volume_;
     const real h2m = dt * dt / mass;
     const VectorXr rhs = q + dt * v + h2m * (f_ext + ForwardStateForce(q, v));
@@ -45,12 +44,12 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
     if (verbose_level > 0) PrintInfo("Newton's method");
     for (int i = 0; i < max_newton_iter; ++i) {
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
-        // q_sol + dq - h2m * f_int(q_sol + dq) = rhs.
-        // q_sol + dq - h2m * (f_int(q_sol) + J * dq) = rhs.
-        // dq - h2m * J * dq + q_sol - h2m * f_int(q_sol) = rhs.
-        // (I - h2m * J) * dq = rhs - q_sol + h2m * f_int(q_sol).
+        // q_sol + dq - h2m * (f_ela + f_pd)(q_sol + dq) = rhs.
+        // q_sol + dq - h2m * ((f_ela + f_pd)(q_sol) + J * dq) = rhs.
+        // dq - h2m * J * dq + q_sol - h2m * (f_ela + f_pd)(q_sol) = rhs.
+        // (I - h2m * J) * dq = rhs - q_sol + h2m * (f_ela + f_pd)(q_sol).
         // Assemble the matrix-free operator:
-        // M(dq) = dq - h2m * ElasticForceDifferential(q_sol, dq).
+        // M(dq) = dq - h2m * (ElasticForceDifferential + PdEnergyForceDifferential)(q_sol, dq).
         VectorXr new_rhs = rhs - q_sol + h2m * force_sol;
         // Enforce boundary conditions.
         for (const auto& pair : dirichlet_) {
@@ -120,7 +119,8 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     const real abs_tol = options.at("abs_tol");
     const real rel_tol = options.at("rel_tol");
     for (const auto& pair : dirichlet_) CheckError(q_next(pair.first) == pair.second, "Inconsistent q_next.");
-    // q_mid - h^2 / m * f_int(q_mid) = select(q + h * v + h^2 / m * f_ext).
+    // f_int = f_ela + f_pd.
+    // q_mid - h^2 / m * f_int(q_mid) = select(q + h * v + h2m * f_ext + h2m * f_state(q, v)).
     // q_next = [q_mid, q_bnd].
     // v_next = (q_next - q) / dt.
     // So, the computational graph looks like this:
@@ -133,7 +133,7 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     VectorXr dl_dq_mid = dl_dq_next_agg;
     for (const auto& pair : dirichlet_) dl_dq_mid(pair.first) = 0;
 
-    // Back-propagate q_mid - h^2 / m * f_int(q_mid) = select(q + h * v + h^2 / m * f_ext):
+    // Back-propagate q_mid - h^2 / m * f_int(q_mid) = select(q + h * v + h2m * f_ext + h2m * f_state(q, v)):
     // dlhs / dq_mid * dq_mid/dq = drhs/dq.
     // dl/dq_mid * dq_mid/dq = dl/dq_mid * (dlhs / dq_mid)^(-1) * drhs/dq.
     // The left-hand side is what we want. The right-hand side can be computed as:
@@ -167,22 +167,13 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
         // Should never happen.
     }
 
-    VectorXr dl_dq_single = adjoint;
-    dl_dv = adjoint * dt;
-    VectorXr dl_df_ext_and_state = adjoint * h2m;
-    for (const auto& pair : dirichlet_) {
-        const int dof = pair.first;
-        dl_dq_single(dof) = 0;
-        dl_dv(dof) = 0;
-        dl_df_ext_and_state(dof) = 0;
-    }
-    dl_dq += dl_dq_single;
-    // f_ext = f_ext + StateForce(q, v).
-    dl_df_ext = dl_df_ext_and_state;
-    VectorXr dl_dv_single;
-    BackwardStateForce(q, v, ForwardStateForce(q, v), dl_df_ext_and_state, dl_dq_single, dl_dv_single);
-    dl_dq += dl_dq_single;
-    dl_dv += dl_dv_single;
+    // select(q + h * v + h2m * f_ext + h2m * f_state(q, v)):
+    for (const auto& pair : dirichlet_) CheckError(adjoint(pair.first) == 0, "Dirichlet boundary conditions violated.");
+    VectorXr dl_dq_single, dl_dv_single;
+    BackwardStateForce(q, v, ForwardStateForce(q, v), h2m * adjoint, dl_dq_single, dl_dv_single);
+    dl_dq += adjoint + dl_dq_single;
+    dl_dv = adjoint * dt + dl_dv_single;
+    dl_df_ext = adjoint * h2m;
 }
 
 template<int vertex_dim, int element_dim>
