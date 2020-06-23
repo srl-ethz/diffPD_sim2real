@@ -152,7 +152,6 @@ if __name__ == '__main__':
         check_gradients(l_and_g, np.copy(x0), eps, atol, rtol, verbose=False, skip_var=skip_var, loss_only=l)
         t1 = time.time()
         print_info('Gradient check finished in {:3.3f}s.'.format(t1 - t0))
-<<<<<<< Updated upstream
 
     # Visualize results.
     def visualize(qvf, method, opt):
@@ -183,5 +182,3 @@ if __name__ == '__main__':
     for method, opt in zip(methods, opts):
         visualize(x0, method, opt)
         os.system('eog {}.gif'.format(folder / method))
-=======
->>>>>>> Stashed changes
