@@ -236,25 +236,102 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStepT
     std::array<VectorXr, element_dim> pd_rhss;
     for (int i = 0; i < element_dim; ++i) pd_rhss[i] = VectorXr::Zero(dofs_);
     // Project PdElementEnergy.
-    for (const auto& energy : pd_element_energies_) {
-        const real w = energy->stiffness() * cell_volume_ / sample_num;
-        #pragma omp parallel for
-        for (int i = 0; i < element_num; ++i) {
-            const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
-            const auto deformed = ScatterToElementFlattened(q_cur, i);
-            const auto ddeformed = ScatterToElementFlattened(dq_cur, i);
-            for (int j = 0; j < sample_num; ++j) {
-                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
-                const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Map<const Eigen::Matrix<real, vertex_dim, vertex_dim>>(
-                    F_flattened.data(), vertex_dim, vertex_dim
-                );
+    #pragma omp parallel for
+    for (int i = 0; i < element_num; ++i) {
+        const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+        const auto deformed = ScatterToElementFlattened(q_cur, i);
+        const auto ddeformed = ScatterToElementFlattened(dq_cur, i);
+        Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim> wAtdBptAS; wAtdBptAS.setZero();
+        for (int j = 0; j < sample_num; ++j) {    
+            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
+            const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Map<const Eigen::Matrix<real, vertex_dim, vertex_dim>>(
+                F_flattened.data(), vertex_dim, vertex_dim
+            );
+            Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * vertex_dim> wdBpT; wdBpT.setZero();
+            for (const auto& energy : pd_element_energies_) {
+                const real w = energy->stiffness() * cell_volume_ / sample_num;
                 const Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * vertex_dim> dBp = energy->ProjectToManifoldDifferential(F);
-                const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtdBptASx = pd_At_[j] * dBp.transpose() * pd_A_[j] * ddeformed;
-                for (int k = 0; k < element_dim; ++k)
-                    for (int d = 0; d < vertex_dim; ++d)
-                        pd_rhss[k](vertex_dim * vi[k] + d) += w * AtdBptASx(k * vertex_dim + d);
+                wdBpT += w * dBp.transpose();
             }
+            wAtdBptAS += pd_At_[j] * wdBpT * pd_A_[j];
         }
+        const Eigen::Matrix<real, vertex_dim * element_dim, 1> wAtdBptASx = wAtdBptAS * ddeformed;
+        for (int k = 0; k < element_dim; ++k)
+            for (int d = 0; d < vertex_dim; ++d)
+                pd_rhss[k](vertex_dim * vi[k] + d) += wAtdBptASx(k * vertex_dim + d);
+    }
+    VectorXr pd_rhs = VectorXr::Zero(dofs_);
+    for (int i = 0; i < element_dim; ++i) pd_rhs += pd_rhss[i];
+
+    // Project PdVertexEnergy.
+    // w * S' * A' * (d(BP)/dF)^T * A * (Sx).
+    for (const auto& pair : pd_vertex_energies_) {
+        const auto& energy = pair.first;
+        const real wi = energy->stiffness();
+        for (const int idx : pair.second) {
+            const Eigen::Matrix<real, vertex_dim, 1> dBptAd =
+                energy->ProjectToManifoldDifferential(q_cur.segment(vertex_dim * idx, vertex_dim)).transpose()
+                * dq_cur.segment(vertex_dim * idx, vertex_dim);
+            pd_rhs.segment(vertex_dim * idx, vertex_dim) += wi * dBptAd;
+        }
+    }
+
+    return pd_rhs;
+}
+
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsLocalStepTransposeDifferential(const VectorXr& q_cur,
+    std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>& pd_backward_local_matrices) const {
+    CheckError(!material_, "PD does not support material models.");
+    for (const auto& pair : dirichlet_) CheckError(q_cur(pair.first) == pair.second, "Boundary conditions violated.");
+
+    const int sample_num = element_dim;
+    // Implements w * S' * A' * (d(BP)/dF)^T * A * (Sx).
+
+    const int element_num = mesh_.NumOfElements();
+    // Project PdElementEnergy.
+    pd_backward_local_matrices.resize(element_num);
+    #pragma omp parallel for
+    for (int i = 0; i < element_num; ++i) {
+        const auto deformed = ScatterToElementFlattened(q_cur, i);
+        Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim> wAtdBptAS; wAtdBptAS.setZero();
+        for (int j = 0; j < sample_num; ++j) {    
+            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
+            const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Map<const Eigen::Matrix<real, vertex_dim, vertex_dim>>(
+                F_flattened.data(), vertex_dim, vertex_dim
+            );
+            Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * vertex_dim> wdBpT; wdBpT.setZero();
+            for (const auto& energy : pd_element_energies_) {
+                const real w = energy->stiffness() * cell_volume_ / sample_num;
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * vertex_dim> dBp = energy->ProjectToManifoldDifferential(F);
+                wdBpT += w * dBp.transpose();
+            }
+            wAtdBptAS += pd_At_[j] * wdBpT * pd_A_[j];
+        }
+        pd_backward_local_matrices[i] = wAtdBptAS;
+    }
+}
+
+template<int vertex_dim, int element_dim>
+const VectorXr Deformable<vertex_dim, element_dim>::ApplyProjectiveDynamicsLocalStepTransposeDifferential(const VectorXr& q_cur,
+    const std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>& pd_backward_local_matrices,
+    const VectorXr& dq_cur) const {
+    CheckError(!material_, "PD does not support material models.");
+    for (const auto& pair : dirichlet_) CheckError(q_cur(pair.first) == pair.second, "Boundary conditions violated.");
+
+    // Implements w * S' * A' * (d(BP)/dF)^T * A * (Sx).
+    const int element_num = mesh_.NumOfElements();
+    std::array<VectorXr, element_dim> pd_rhss;
+    for (int i = 0; i < element_dim; ++i) pd_rhss[i] = VectorXr::Zero(dofs_);
+    // Project PdElementEnergy.
+    #pragma omp parallel for
+    for (int i = 0; i < element_num; ++i) {
+        const auto ddeformed = ScatterToElementFlattened(dq_cur, i);
+        const Eigen::Matrix<real, vertex_dim * element_dim, 1> wAtdBptASx = pd_backward_local_matrices[i] * ddeformed;
+        const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+        for (int k = 0; k < element_dim; ++k)
+            for (int d = 0; d < vertex_dim; ++d)
+                pd_rhss[k](vertex_dim * vi(k) + d) += wAtdBptASx(k * vertex_dim + d);
     }
     VectorXr pd_rhs = VectorXr::Zero(dofs_);
     for (int i = 0; i < element_dim; ++i) pd_rhs += pd_rhss[i];
@@ -310,7 +387,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     // f = w_i S'A'(Bp(q) - ASq_0 - ASq_i).
     // q_mid + h2m wi * S'A'ASq_mid - h2m * wi * S'A'Bp = q + hv + h2m f_ext + h2m f_state(q, v) =: rhs.
     // (I + h2mw * S'A'AS) * J - h2mw * S'A' d(BP)/dq_mid * J = drhs/d*.
-    // J = (I + h2mw * S'A'AS - h2mw * S'A' d(BP)/dq_next)^(-1) * drhs/d* 
+    // J = (I + h2mw * S'A'AS - h2mw * S'A' d(BP)/dq_next)^(-1) * drhs/d*.
     // (I + h2mw * S'A'AS - h2mw * S'A' d(BP)/dq_next)^T * x = dl_dq_mid.
     // So the crux is to solve x from the equation below:
     // (I + h2m * S'A'AS)x = dl_dq_mid + h2mw * d(BP)/dq_mid^T * AS x.
@@ -337,11 +414,14 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
         selected(pair.first) = 0;
     }
     if (verbose_level > 0) PrintInfo("Projective dynamics");
+    // Setup the right-hand side.
+    std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>> pd_backward_local_matrices;
+    SetupProjectiveDynamicsLocalStepTransposeDifferential(q_next, pd_backward_local_matrices);
     for (int i = 0; i < max_pd_iter; ++i) {
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
         if (verbose_level > 1) Tic();
         // Local step.
-        VectorXr pd_rhs = dl_dq_mid + h2m * ProjectiveDynamicsLocalStepTransposeDifferential(q_next, adjoint);
+        VectorXr pd_rhs = dl_dq_mid + h2m * ApplyProjectiveDynamicsLocalStepTransposeDifferential(q_next, pd_backward_local_matrices, adjoint);
         for (const auto& pair : dirichlet_) pd_rhs(pair.first) = 0;
         if (verbose_level > 1) Toc("Local step");
 
