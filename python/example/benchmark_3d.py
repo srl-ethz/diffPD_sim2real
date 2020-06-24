@@ -35,9 +35,9 @@ if __name__ == '__main__':
     node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
     dx = 0.01
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
-    opts = ({ 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 1 },
-        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 1 },
-        { 'max_pd_iter': 500, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 1 })
+    opts = ({ 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
+        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
+        { 'max_pd_iter': 500, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 })
 
     # Initialization.
     folder = Path('benchmark_3d')
@@ -132,6 +132,7 @@ if __name__ == '__main__':
     q_next_weight = np.random.normal(size=dofs)
     v_next_weight = np.random.normal(size=dofs)
     def loss_and_grad(qvf, method, opt, compute_grad):
+        t0 = time.time()
         q_init = ndarray(qvf[:dofs])
         v_init = ndarray(qvf[dofs:2 * dofs])
         f_ext = ndarray(qvf[2 * dofs:])
@@ -154,6 +155,8 @@ if __name__ == '__main__':
         dl_dv_next = np.copy(v_next_weight)
         dl_df_ext = np.zeros(dofs)
 
+        t1 = time.time()
+
         # Compute gradients.
         if compute_grad:
             for i in reversed(range(frame_num)):
@@ -167,9 +170,10 @@ if __name__ == '__main__':
                 dl_df_ext += ndarray(dl_df)
 
             grad = np.concatenate([dl_dq_next, dl_dv_next, dl_df_ext])
-            return loss, grad
+            t2 = time.time()
+            return loss, grad, t1 - t0, t2 - t1
         else:
-            return loss
+            return loss, t1 - t0
 
     # Benchmark time.
     print('Reporting time cost. DoFs: {:d}, frames: {:d}, dt: {:3.3e}'.format(
@@ -209,35 +213,27 @@ if __name__ == '__main__':
                 for thread_ct in thread_cts:
                     opt['thread_ct'] = thread_ct
                     meth_thread_num = '{}_{}threads'.format(method, thread_ct)
-                    t0 = time.time()
-                    loss, grad = loss_and_grad(x0, method, opt, True)
-                    t1 = time.time()
-                    loss_and_grad(x0, method, opt, False)
-                    t2 = time.time()
+                    loss, grad, forward_time, backward_time = loss_and_grad(x0, method, opt, True)
                     print(tabular.row_string({
                         'method': meth_thread_num,
-                        'forward and backward (s)': t1 - t0,
-                        'forward only (s)': t2 - t1,
+                        'forward and backward (s)': forward_time + backward_time,
+                        'forward only (s)': forward_time,
                         'loss': loss,
                         '|grad|': np.linalg.norm(grad) }))
-                    forward_backward_times[meth_thread_num].append(t1 - t0)
-                    forward_times[meth_thread_num].append(t2 - t1)
-                    backward_times[meth_thread_num].append((t1 - t0) - (t2 - t1))
+                    forward_backward_times[meth_thread_num].append(forward_time + backward_time)
+                    forward_times[meth_thread_num].append(forward_time)
+                    backward_times[meth_thread_num].append(backward_time)
             else:
-                t0 = time.time()
-                loss, grad = loss_and_grad(x0, method, opt, True)
-                t1 = time.time()
-                loss_and_grad(x0, method, opt, False)
-                t2 = time.time()
+                loss, grad, forward_time, backward_time = loss_and_grad(x0, method, opt, True)
                 print(tabular.row_string({
                     'method': method,
-                    'forward and backward (s)': t1 - t0,
-                    'forward only (s)': t2 - t1,
+                    'forward and backward (s)': forward_time + backward_time,
+                    'forward only (s)': forward_time,
                     'loss': loss,
                     '|grad|': np.linalg.norm(grad) }))
-                forward_backward_times[method].append(t1 - t0)
-                forward_times[method].append(t2 - t1)
-                backward_times[method].append((t1 - t0) - (t2 - t1))
+                forward_backward_times[method].append(forward_time + backward_time)
+                forward_times[method].append(forward_time)
+                backward_times[method].append(backward_time)
 
     import matplotlib.pyplot as plt
     fig = plt.figure(figsize=(15, 5))

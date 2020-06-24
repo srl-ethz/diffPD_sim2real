@@ -18,6 +18,9 @@
 #include <vector>
 // Flags for timing.
 #include <sys/time.h>
+// OpenMP
+#include <omp.h>
+
 #include "Eigen/Dense"
 #include "Eigen/Sparse"
 

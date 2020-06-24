@@ -3,8 +3,6 @@
 #include "solver/matrix_op.h"
 #include "Eigen/SparseCholesky"
 
-#include <omp.h>
-
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& method,
     const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
@@ -121,9 +119,14 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
+    CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
     const real abs_tol = options.at("abs_tol");
     const real rel_tol = options.at("rel_tol");
+    const int thread_ct = static_cast<int>(options.at("thread_ct"));
     for (const auto& pair : dirichlet_) CheckError(q_next(pair.first) == pair.second, "Inconsistent q_next.");
+
+    omp_set_num_threads(thread_ct);
+
     // f_int = f_ela + f_pd.
     // q_mid - h^2 / m * f_int(q_mid) = select(q + h * v + h2m * f_ext + h2m * f_state(q, v)).
     // q_next = [q_mid, q_bnd].

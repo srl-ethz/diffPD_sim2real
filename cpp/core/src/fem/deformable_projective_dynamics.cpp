@@ -2,8 +2,6 @@
 #include "common/common.h"
 #include "Eigen/SparseCholesky"
 
-#include <omp.h>
-
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const real dt) const {
     CheckError(!material_, "PD does not support material models.");

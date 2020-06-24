@@ -8,7 +8,6 @@ import numpy as np
 from py_diff_pd.core.py_diff_pd_core import Deformable2d, Mesh2d
 from py_diff_pd.common.common import ndarray, create_folder
 from py_diff_pd.common.common import print_info
-from py_diff_pd.common.display import display_quad_mesh, export_gif
 from py_diff_pd.common.mesh import generate_rectangle_mesh
 from py_diff_pd.common.grad_check import check_gradients
 

@@ -4,6 +4,10 @@
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
     const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
+    CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
+    const int thread_ct = static_cast<int>(options.at("thread_ct"));
+    omp_set_num_threads(thread_ct);
+
     // Semi-implicit Euler.
     v_next = v;
     q_next = q;
@@ -30,6 +34,10 @@ void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q
     const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
     const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
+    CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
+    const int thread_ct = static_cast<int>(options.at("thread_ct"));
+    omp_set_num_threads(thread_ct);
+
     // q_mid = q + h * v + h2m * f_ext + h2m * elastic(q) + h2m * pd(q) + h2m * state(q, v).
     // q_next = enforce_boundary(q_mid).
     // v_next = (q_next - q) / dt.

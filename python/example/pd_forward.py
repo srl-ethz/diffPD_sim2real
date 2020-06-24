@@ -31,10 +31,10 @@ if __name__ == '__main__':
     youngs_modulus = 4e5
     poissons_ratio = 0.45
     density = 1e4
-    newton_method = 'newton_cholesky'
-    newton_opt = { 'max_newton_iter': 1000, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': 4 }
+    newton_method = 'newton_pcg'
+    newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4 }
     pd_method = 'pd'
-    pd_opt = { 'max_pd_iter': 500, 'abs_tol': 1e-6, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4}
+    pd_opt = { 'max_pd_iter': 500, 'abs_tol': 1e-6, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4 }
     deformable = Deformable2d()
     deformable.Initialize(bin_file_name, density, 'none', youngs_modulus, poissons_ratio)
 

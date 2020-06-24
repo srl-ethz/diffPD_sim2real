@@ -19,14 +19,18 @@ void Deformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::stri
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
+    CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
     CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
     const int max_newton_iter = static_cast<int>(options.at("max_newton_iter"));
     const int max_ls_iter = static_cast<int>(options.at("max_ls_iter"));
     const real abs_tol = options.at("abs_tol");
     const real rel_tol = options.at("rel_tol");
     const int verbose_level = static_cast<int>(options.at("verbose"));
+    const int thread_ct = static_cast<int>(options.at("thread_ct"));
     CheckError(max_newton_iter > 0, "Invalid max_newton_iter: " + std::to_string(max_newton_iter));
     CheckError(max_ls_iter > 0, "Invalid max_ls_iter: " + std::to_string(max_ls_iter));
+
+    omp_set_num_threads(thread_ct);
     // f_ext + f_elastic(q) + f_pd(q) = 0.
     // f_elastic(q) + f_pd(q) = -f_ext.
     const VectorXr rhs = -f_ext;
