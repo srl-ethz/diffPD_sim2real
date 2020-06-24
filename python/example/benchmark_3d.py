@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 import time
 from pathlib import Path
+import pickle
 import scipy.optimize
 import numpy as np
 
@@ -183,6 +184,8 @@ if __name__ == '__main__':
     forward_backward_times = {}
     forward_times = {}
     backward_times = {}
+    losses = {}
+    grads = {}
     for method in methods:
         if method == 'pd' or method == 'newton_pcg':
             for thread_ct in thread_cts:
@@ -190,10 +193,14 @@ if __name__ == '__main__':
                 forward_backward_times[meth_thread_num] = []
                 forward_times[meth_thread_num] = []
                 backward_times[meth_thread_num] = []
+                losses[meth_thread_num] = []
+                grads[meth_thread_num] = []
         else:
             forward_backward_times[method] = []
             forward_times[method] = []
             backward_times[method] = []
+            losses[method] = []
+            grads[method] = []
 
     for rel_tol in rel_tols:
         print_info('rel_tol: {:3.3e}'.format(rel_tol))
@@ -213,27 +220,32 @@ if __name__ == '__main__':
                 for thread_ct in thread_cts:
                     opt['thread_ct'] = thread_ct
                     meth_thread_num = '{}_{}threads'.format(method, thread_ct)
-                    loss, grad, forward_time, backward_time = loss_and_grad(x0, method, opt, True)
+                    l, g, forward_time, backward_time = loss_and_grad(x0, method, opt, True)
                     print(tabular.row_string({
                         'method': meth_thread_num,
                         'forward and backward (s)': forward_time + backward_time,
                         'forward only (s)': forward_time,
-                        'loss': loss,
-                        '|grad|': np.linalg.norm(grad) }))
+                        'loss': l,
+                        '|grad|': np.linalg.norm(g) }))
                     forward_backward_times[meth_thread_num].append(forward_time + backward_time)
                     forward_times[meth_thread_num].append(forward_time)
                     backward_times[meth_thread_num].append(backward_time)
+                    losses[meth_thread_num].append(l)
+                    grads[meth_thread_num].append(g)
             else:
-                loss, grad, forward_time, backward_time = loss_and_grad(x0, method, opt, True)
+                l, g, forward_time, backward_time = loss_and_grad(x0, method, opt, True)
                 print(tabular.row_string({
                     'method': method,
                     'forward and backward (s)': forward_time + backward_time,
                     'forward only (s)': forward_time,
-                    'loss': loss,
-                    '|grad|': np.linalg.norm(grad) }))
+                    'loss': l,
+                    '|grad|': np.linalg.norm(g) }))
                 forward_backward_times[method].append(forward_time + backward_time)
                 forward_times[method].append(forward_time)
                 backward_times[method].append(backward_time)
+                losses[method].append(l)
+                grads[method].append(g)
+    pickle.dump((rel_tols, forward_times, backward_times, losses, grads), open(folder / 'table.bin', 'wb'))
 
     import matplotlib.pyplot as plt
     fig = plt.figure(figsize=(15, 5))
