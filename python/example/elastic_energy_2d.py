@@ -62,3 +62,4 @@ if __name__ == '__main__':
     assert np.allclose(df_analytical, df_numerical, atol, rtol)
 
     shutil.rmtree(folder)
+    sys.exit(-1)
