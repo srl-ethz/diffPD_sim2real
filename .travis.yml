@@ -1,6 +1,7 @@
 # Reference:
 # https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/use-conda-with-travis-ci.html
 
+dist: bionic
 language: python
 python:
   # We don't actually use the Travis Python, but this keeps it organized.
