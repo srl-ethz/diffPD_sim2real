@@ -10,15 +10,16 @@ import numpy as np
 
 from py_diff_pd.core.py_diff_pd_core import Deformable2d, Mesh2d, StdRealVector
 from py_diff_pd.common.common import ndarray, create_folder
-from py_diff_pd.common.common import print_info
+from py_diff_pd.common.common import print_info, print_ok, print_error
 from py_diff_pd.common.mesh import generate_rectangle_mesh
 from py_diff_pd.common.grad_check import check_gradients
 
-if __name__ == '__main__':
+def test_deformable_backward_2d(verbose):
     # Uncomment the following line to try random seeds.
     #seed = np.random.randint(1e5)
     seed = 42
-    print_info('seed: {}'.format(seed))
+    if verbose:
+        print_info('seed: {}'.format(seed))
     np.random.seed(seed)
 
     # Hyperparameters.
@@ -122,14 +123,34 @@ if __name__ == '__main__':
         j = node_idx % node_nums[1]
         return j == 0
 
+    grads_equal = True
     for method, opt in zip(methods, opts):
-        print_info('Checking gradients in {} method. Wrong gradients will be shown in red.'.format(method))
+        if verbose:
+            print_info('Checking gradients in {} method.'.format(method))
         t0 = time.time()
         x0 = np.concatenate([q0, v0, f_ext])
         def l_and_g(x):
             return loss_and_grad(x, method, opt, True)
         def l(x):
             return loss_and_grad(x, method, opt, False)
-        check_gradients(l_and_g, x0, eps, atol, rtol, verbose=False, skip_var=skip_var, loss_only=l)
+        grads_check = check_gradients(l_and_g, x0, eps, atol, rtol, verbose, skip_var=skip_var, loss_only=l)
         t1 = time.time()
-        print_info('Gradient check finished in {:3.3f}s.'.format(t1 - t0))
+        if not grads_equal:
+            grads_equal = False
+            if not verbose:
+                return False
+        if verbose:
+            print_info('Gradient check finished in {:3.3f}s.'.format(t1 - t0))
+
+    return grads_equal
+
+if __name__ == '__main__':
+    verbose = True
+    if not verbose:
+        print_info("Testing deformable backward 2D...")
+        if test_deformable_backward_2d(verbose):
+            print_ok("Test completed with no errors")
+        else:
+            print_error("Errors found in deformable backward 2D")
+    else:
+        test_deformable_backward_2d(verbose)

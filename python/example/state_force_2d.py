@@ -8,14 +8,15 @@ import numpy as np
 from py_diff_pd.core.py_diff_pd_core import StdRealVector, StdRealArray2d
 from py_diff_pd.core.py_diff_pd_core import GravitationalStateForce2d, PlanarCollisionStateForce2d
 from py_diff_pd.common.common import ndarray
-from py_diff_pd.common.common import print_info
+from py_diff_pd.common.common import print_info, print_error, print_ok
 from py_diff_pd.common.grad_check import check_gradients
 
-if __name__ == '__main__':
+def test_state_force_2d(verbose):
     # Uncomment the following line to try random seeds.
     #seed = np.random.randint(1e5)
     seed = 42
-    print_info('seed: {}'.format(seed))
+    if verbose:
+        print_info('seed: {}'.format(seed))
     np.random.seed(seed)
 
     vertex_num = 10
@@ -51,8 +52,26 @@ if __name__ == '__main__':
     eps = 1e-8
     atol = 1e-4
     rtol = 1e-2
-    print_info('Wrong gradients will be displayed in red.')
+    #print_info('Wrong gradients will be displayed in red.')
+    forces_equal = True
     for state_force in [gravity, collision]:
         def l_and_g(x):
             return loss_and_grad(x, state_force)
-        check_gradients(l_and_g, np.concatenate([q0, v0]), eps, atol, rtol, True)
+        grads_equal = check_gradients(l_and_g, np.concatenate([q0, v0]), eps, atol, rtol, verbose)
+        if not grads_equal:
+            forces_equal = False
+            if not verbose:
+                return forces_equal
+
+    return forces_equal
+
+if __name__ == '__main__':
+    verbose = True
+    if not verbose:
+        print_info("Testing state force 2D...")
+        if test_state_force_2d(verbose):
+            print_ok("Test completed with no errors")
+        else:
+            print_error("Errors found in state force 2D")
+    else:
+        test_state_force_2d(verbose)

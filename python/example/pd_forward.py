@@ -8,11 +8,11 @@ import scipy.optimize
 import numpy as np
 
 from py_diff_pd.core.py_diff_pd_core import Mesh2d, Deformable2d, StdRealVector
-from py_diff_pd.common.common import create_folder, ndarray, print_info, print_error
+from py_diff_pd.common.common import create_folder, ndarray, print_info, print_error, print_ok
 from py_diff_pd.common.mesh import generate_rectangle_mesh
 from py_diff_pd.common.display import display_quad_mesh, export_gif
 
-if __name__ == '__main__':
+def test_pd_forward(verbose):
     np.random.seed(42)
     folder = Path('pd_forward')
     create_folder(folder)
@@ -99,17 +99,38 @@ if __name__ == '__main__':
     create_folder(folder / 'pd')
     q_pd, v_pd = step(pd_method, pd_opt, 'pd')
     t2 = time.time()
-    print_info('Newton: {:3.3f}s; PD: {:3.3f}s'.format(t1 - t0, t2 - t1))
+    if verbose:
+        print_info('Newton: {:3.3f}s; PD: {:3.3f}s'.format(t1 - t0, t2 - t1))
     atol = 0
     rtol = 5e-3
+    states_equal = True
     for qn, vn, qp, vp in zip(q_newton, v_newton, q_pd, v_pd):
-        assert np.linalg.norm(qn - qp) < rtol * np.linalg.norm(qn) + atol, \
-            print_error(np.linalg.norm(qn - qp), np.linalg.norm(qn))
+        state_equal = np.linalg.norm(qn - qp) < rtol * np.linalg.norm(qn) + atol
+        if not state_equal:
+            states_equal = False
+            if verbose:
+                print_error(np.linalg.norm(qn - qp), np.linalg.norm(qn))
+            else:
+                return False
 
-    print_info('PD and Newton solutions are the same.')
-    visualize('newton')
-    visualize('pd')
-    print_info('Showing Newton gif...')
-    os.system('eog {}'.format(folder / 'newton.gif'))
-    print_info('Showing PD gif...')
-    os.system('eog {}'.format(folder / 'pd.gif'))
+    if verbose:
+        print_info('PD and Newton solutions are the same.')
+        visualize('newton')
+        visualize('pd')
+        print_info('Showing Newton gif...')
+        os.system('eog {}'.format(folder / 'newton.gif'))
+        print_info('Showing PD gif...')
+        os.system('eog {}'.format(folder / 'pd.gif'))
+
+    return states_equal
+
+if __name__ == '__main__':
+    verbose = True
+    if not verbose:
+        print_info("Testing pd energy...")
+        if test_pd_forward(verbose):
+            print_ok("Test completed with no errors")
+        else:
+            print_error("Errors found in pd forward")
+    else:
+        test_pd_forward(verbose)

@@ -11,16 +11,17 @@ import pickle
 
 from py_diff_pd.core.py_diff_pd_core import Deformable3d, Mesh3d, StdRealVector
 from py_diff_pd.common.common import ndarray, create_folder
-from py_diff_pd.common.common import print_info, PrettyTabular
+from py_diff_pd.common.common import print_info, print_ok, print_error, PrettyTabular
 from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.grad_check import check_gradients
 from py_diff_pd.common.display import render_hex_mesh, export_gif
 
-if __name__ == '__main__':
+def test_deformable_backward_3d(verbose):
     # Uncomment the following line to try random seeds.
     #seed = np.random.randint(1e5)
     seed = 42
-    print_info('seed: {}'.format(seed))
+    if verbose:
+        print_info('seed: {}'.format(seed))
     np.random.seed(seed)
 
     # Hyperparameters.
@@ -150,56 +151,72 @@ if __name__ == '__main__':
         node_idx = int(dof // 3)
         return node_idx == pivot_idx
 
+    grads_equal = True
+
     x0 = np.concatenate([q0, v0, f_ext])
     for method, opt in zip(methods, opts):
-        print_info('method: {}'.format(method))
-        tabular = PrettyTabular({
-            'rel_tol': '{:3.3e}',
-            'loss': '{:3.3f}',
-            '|grad|': '{:3.3f}'
-        })
-        print_info(tabular.head_string())
+        if verbose:
+            print_info('method: {}'.format(method))
+            tabular = PrettyTabular({
+                'rel_tol': '{:3.3e}',
+                'loss': '{:3.3f}',
+                '|grad|': '{:3.3f}'
+            })
+            print_info(tabular.head_string())
 
-        for rtol in rtols:
-            opt['rel_tol'] = rtol
-            loss, grad = loss_and_grad(np.copy(x0), method, opt, True)
-            grad_norm = np.linalg.norm(grad)
-            print(tabular.row_string({
-                'rel_tol': rtol,
-                'loss': loss,
-                '|grad|': grad_norm }))
-            losses[method].append(loss)
-            grads[method].append(grad_norm)
-        print_info('Checking gradients in {} method. Wrong gradients will be shown in red.'.format(method))
+            for rtol in rtols:
+                opt['rel_tol'] = rtol
+                loss, grad = loss_and_grad(np.copy(x0), method, opt, True)
+                grad_norm = np.linalg.norm(grad)
+                print(tabular.row_string({
+                    'rel_tol': rtol,
+                    'loss': loss,
+                    '|grad|': grad_norm }))
+                losses[method].append(loss)
+                grads[method].append(grad_norm)
+
+            print_info('Checking gradients in {} method. Wrong gradients will be shown in red.'.format(method))
+
+        else:
+            opt['rel_tol'] = rtols[-1]
+
         t0 = time.time()
         def l_and_g(x):
             return loss_and_grad(x, method, opt, True)
         def l(x):
             return loss_and_grad(x, method, opt, False)
-        check_gradients(l_and_g, np.copy(x0), eps, atol, check_rtol, verbose=False, skip_var=skip_var, loss_only=l)
+        grad_equal = check_gradients(l_and_g, np.copy(x0), eps, atol, check_rtol, verbose, skip_var=skip_var, loss_only=l)
+        if not grad_equal:
+            grads_equal = False
+            if not verbose:
+                return False
+
         t1 = time.time()
-        print_info('Gradient check finished in {:3.3f}s.'.format(t1 - t0))
-    pickle.dump((rtols, losses, grads), open(folder / 'table.bin', 'wb'))
+        if verbose:
+            print_info('Gradient check finished in {:3.3f}s.'.format(t1 - t0))
 
-    # Plot loss and grad vs rtol
-    import matplotlib.pyplot as plt
-    fig = plt.figure(figsize=(10, 5))
-    ax_fb = fig.add_subplot(121)
-    ax_f = fig.add_subplot(122)
-    titles = ['loss', '|grad|']
-    for title, ax, y in zip(titles, (ax_fb, ax_f), (losses, grads)):
-        ax.set_xlabel('relative error')
-        ax.set_ylabel('magnitude (/)')
-        ax.set_xscale('log')
-        for method in methods:
-            ax.plot(rtols, y[method], label=method)
-        ax.grid(True)
-        ax.legend()
-        ax.set_title(title)
+    if verbose:
+        pickle.dump((rtols, losses, grads), open(folder / 'table.bin', 'wb'))
 
-    fig.savefig(folder / 'deformable_backward_3d_rtol.pdf')
-    fig.savefig(folder / 'deformable_backward_3d_rtol.png')
-    plt.show()
+        # Plot loss and grad vs rtol
+        import matplotlib.pyplot as plt
+        fig = plt.figure(figsize=(10, 5))
+        ax_fb = fig.add_subplot(121)
+        ax_f = fig.add_subplot(122)
+        titles = ['loss', '|grad|']
+        for title, ax, y in zip(titles, (ax_fb, ax_f), (losses, grads)):
+            ax.set_xlabel('relative error')
+            ax.set_ylabel('magnitude (/)')
+            ax.set_xscale('log')
+            for method in methods:
+                ax.plot(rtols, y[method], label=method)
+            ax.grid(True)
+            ax.legend()
+            ax.set_title(title)
+
+        fig.savefig(folder / 'deformable_backward_3d_rtol.pdf')
+        fig.savefig(folder / 'deformable_backward_3d_rtol.png')
+        plt.show()
 
     # Visualize results.
     def visualize(qvf, method, opt):
@@ -227,6 +244,20 @@ if __name__ == '__main__':
 
         export_gif(folder / method, '{}.gif'.format(folder / method), 10)
 
-    for method, opt in zip(methods, opts):
-        visualize(x0, method, opt)
-        os.system('eog {}.gif'.format(folder / method))
+    if verbose:
+        for method, opt in zip(methods, opts):
+            visualize(x0, method, opt)
+            os.system('eog {}.gif'.format(folder / method))
+
+    return grads_equal
+
+if __name__ == '__main__':
+    verbose = False
+    if not verbose:
+        print_info("Testing deformable backward 3D...")
+        if test_deformable_backward_3d(verbose):
+            print_ok("Test completed with no errors")
+        else:
+            print_error("Errors found in deformable backward 3D")
+    else:
+        test_deformable_backward_3d(verbose)

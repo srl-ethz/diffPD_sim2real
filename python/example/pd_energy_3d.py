@@ -7,15 +7,16 @@ import numpy as np
 
 from py_diff_pd.core.py_diff_pd_core import Deformable3d, Mesh3d
 from py_diff_pd.common.common import ndarray, create_folder
-from py_diff_pd.common.common import print_info
+from py_diff_pd.common.common import print_info, print_ok, print_error
 from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.grad_check import check_gradients
 
-if __name__ == '__main__':
+def test_pd_energy_3d(verbose):
     # Uncomment the following line to try random seeds.
     #seed = np.random.randint(1e5)
     seed = 42
-    print_info('seed: {}'.format(seed))
+    if verbose:
+        print_info('seed: {}'.format(seed))
     np.random.seed(seed)
 
     # Hyperparameters.
@@ -52,15 +53,41 @@ if __name__ == '__main__':
     atol = 1e-4
     rtol = 1e-2
     x0 = q0 + np.random.normal(scale=0.1 * dx, size=dofs)
-    check_gradients(loss_and_grad, x0, eps, atol, rtol, True)
+    grads_equal = check_gradients(loss_and_grad, x0, eps, atol, rtol, verbose)
+    if not grads_equal:
+        if not verbose:
+            return False
 
     # Check PdEnergyForceDifferential.
     dq = np.random.normal(scale=1e-5, size=dofs)
     df_analytical = ndarray(deformable.PyPdEnergyForceDifferential(q0, dq))
     K = ndarray(deformable.PyPdEnergyForceDifferential(q0))
     df_analytical2 = K @ dq
-    assert np.allclose(df_analytical, df_analytical2)
+    if not np.allclose(df_analytical, df_analytical2):
+        if verbose:
+            grads_equal = False
+            print_error("Analytical elastic force differential values do not match")
+        else:
+            return False
     df_numerical = ndarray(deformable.PyPdEnergyForce(q0 + dq)) - ndarray(deformable.PyPdEnergyForce(q0))
-    assert np.allclose(df_analytical, df_numerical, atol, rtol)
+    if not np.allclose(df_analytical, df_numerical, atol, rtol):
+        if verbose:
+            grads_equal = False
+            print_error("Analytical elastic force differential values do not match numerical ones")
+        else:
+            return False
 
     shutil.rmtree(folder)
+
+    return grads_equal
+
+if __name__ == '__main__':
+    verbose = False
+    if not verbose:
+        print_info("Testing pd energy 3D...")
+        if test_pd_energy_3d(verbose):
+            print_ok("Test completed with no errors")
+        else:
+            print_error("Errors found in pd energy 3D")
+    else:
+        test_pd_energy_3d(verbose)
