@@ -1,6 +1,7 @@
 #include "fem/deformable.h"
 #include "pd_energy/planar_collision_pd_vertex_energy.h"
 #include "pd_energy/corotated_pd_element_energy.h"
+#include "pd_energy/volume_pd_element_energy.h"
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::AddPdEnergy(const std::string& energy_type, const std::vector<real> params,
@@ -28,6 +29,13 @@ void Deformable<vertex_dim, element_dim>::AddPdEnergy(const std::string& energy_
         const real stiffness = params[0];
         energy->Initialize(stiffness);
         CheckError(indices.empty(), "Corotated PD material is assumed to be applied to all elements.");
+        pd_element_energies_.push_back(energy);
+    } else if (energy_type == "volume") {
+        CheckError(param_size == 1, "Inconsistent param size.");
+        auto energy = std::make_shared<VolumePdElementEnergy<vertex_dim>>();
+        const real stiffness = params[0];
+        energy->Initialize(stiffness);
+        CheckError(indices.empty(), "Volume PD material is assumed to be applied to all elements.");
         pd_element_energies_.push_back(energy);
     } else {
         PrintError("Unsupported PD energy: " + energy_type);
