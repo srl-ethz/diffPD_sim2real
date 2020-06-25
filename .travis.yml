@@ -19,8 +19,7 @@ install:
   - conda info -a
 
   # Installation.
-  - git submodule update --init --recursive
-  - conda create -f environment.yml
+  - conda env create -f environment.yml
   - conda activate diff_pd
   - bash install.sh
 
