@@ -74,6 +74,7 @@ def test_elastic_energy_2d(verbose):
             print_error("Analytical elastic force differential values do not match numerical ones")
         else:
             return False
+
     shutil.rmtree(folder)
 
     return grads_equal

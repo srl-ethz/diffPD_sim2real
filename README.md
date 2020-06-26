@@ -1,5 +1,7 @@
 # Differentiable Projective Dynamics
 
+[![Travis CI Status](https://travis-ci.com/mit-gfx/diff_pd.svg?token=2N8A1xT9VhnH3M7Rxu74&branch=master)](https://travis-ci.com/mit-gfx/diff_pd)
+
 ## Recommended systems
 - Ubuntu 18.04
 - (Mini)conda 4.7.12 or higher

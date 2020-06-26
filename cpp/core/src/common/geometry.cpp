@@ -111,3 +111,76 @@ const Matrix9r dRFromdF(const Matrix3r& F, const Matrix3r& R, const Matrix3r& S)
     // R20 * y + R21 * z
     return lhs01 * x.transpose() + lhs02 * y.transpose() + lhs12 * z.transpose();
 }
+
+void Svd(const Matrix2r& F, Matrix2r& U, Vector2r& sig, Matrix2r& V) {
+    const Eigen::JacobiSVD<Matrix2r> svd(F, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    sig = svd.singularValues();
+    U = svd.matrixU();
+    V = svd.matrixV();
+}
+
+void Svd(const Matrix3r& F, Matrix3r& U, Vector3r& sig, Matrix3r& V) {
+    const Eigen::JacobiSVD<Matrix3r> svd(F, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    sig = svd.singularValues();
+    U = svd.matrixU();
+    V = svd.matrixV();
+}
+
+void dSvd(const Matrix2r& F, const Matrix2r& U, const Vector2r& sig, const Matrix2r& V, const Matrix2r& dF,
+    Matrix2r& dU, Vector2r& dsig, Matrix2r& dV) {
+    // https://j-towns.github.io/papers/svd-derivative.pdf.
+    dsig = (U.transpose() * dF * V).diagonal();
+    const real eps = 10 * std::numeric_limits<real>::epsilon();
+    // Ensure that sig is sorted.
+    CheckError(sig(0) >= sig(1), "SVD singular values should be sorted.");
+    const Matrix2r S = sig.asDiagonal();
+    const Matrix2r Ut = U.transpose();
+    const Matrix2r dP = Ut * dF * V;
+    const Matrix2r dPt = dP.transpose();
+    Matrix2r Sij = Matrix2r::Zero();
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j) {
+            if (i >= j) continue;
+            // i < j now.
+            // sig(i) >= sig(j).
+            if (sig(i) - sig(j) > eps) {
+                Sij(i, j) = ToReal(1) / (sig(j) * sig(j) - sig(i) * sig(i));
+                Sij(j, i) = -Sij(i, j);
+            } else {
+                PrintWarning("Singular values are too similar. SVD derivatives are undefined.");
+            }
+        }
+    const Matrix2r domega_U = Sij.cwiseProduct(dP * S + S * dPt);
+    const Matrix2r domega_V = Sij.cwiseProduct(S * dP + dPt * S);
+    dU = U * domega_U;
+    dV = V * domega_V;
+}
+
+void dSvd(const Matrix3r& F, const Matrix3r& U, const Vector3r& sig, const Matrix3r& V, const Matrix3r& dF,
+    Matrix3r& dU, Vector3r& dsig, Matrix3r& dV) {
+    dsig = (U.transpose() * dF * V).diagonal();
+    const real eps = 10 * std::numeric_limits<real>::epsilon();
+    // Ensure that sig is sorted.
+    CheckError(sig(0) >= sig(1) && sig(1) >= sig(2), "SVD singular values should be sorted.");
+    const Matrix3r S = sig.asDiagonal();
+    const Matrix3r Ut = U.transpose();
+    const Matrix3r dP = Ut * dF * V;
+    const Matrix3r dPt = dP.transpose();
+    Matrix3r Sij = Matrix3r::Zero();
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) {
+            if (i >= j) continue;
+            // i < j now.
+            // sig(i) >= sig(j).
+            if (sig(i) - sig(j) > eps) {
+                Sij(i, j) = ToReal(1) / (sig(j) * sig(j) - sig(i) * sig(i));
+                Sij(j, i) = -Sij(i, j);
+            } else {
+                PrintWarning("Singular values are too similar. SVD derivatives are undefined.");
+            }
+        }
+    const Matrix3r domega_U = Sij.cwiseProduct(dP * S + S * dPt);
+    const Matrix3r domega_V = Sij.cwiseProduct(S * dP + dPt * S);
+    dU = U * domega_U;
+    dV = V * domega_V;
+}
