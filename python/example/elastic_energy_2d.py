@@ -85,7 +85,9 @@ if __name__ == '__main__':
         print_info("Testing elastic energy 2D...")
         if test_elastic_energy_2d(verbose):
             print_ok("Test completed with no errors")
+            sys.exit(0)
         else:
             print_error("Errors found in elastic energy 2D")
+            sys.exit(-1)
     else:
         test_elastic_energy_2d(verbose)

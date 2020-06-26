@@ -70,34 +70,13 @@ def test_pd_forward(verbose):
     v0 = np.zeros(dofs)
     f = np.random.uniform(low=0, high=5, size=(frame_num, dofs)) * density * dx * dx
 
-    def step(method, opt, vis_folder):
-        q = [q0,]
-        v = [v0,]
-        for i in range(frame_num):
-            q_next_array = StdRealVector(dofs)
-            v_next_array = StdRealVector(dofs)
-            deformable.PyForward(method, q[-1], v[-1], f[i], dt, opt, q_next_array, v_next_array)
-            deformable.PySaveToMeshFile(q[-1], str(folder / vis_folder / '{:04d}.bin'.format(i)))
-            q_next = ndarray(q_next_array)
-            v_next = ndarray(v_next_array)
-            q.append(q_next)
-            v.append(v_next)
-        return q, v
-
-    def visualize(vis_folder):
-        for i in range(frame_num):
-            mesh = Mesh2d()
-            mesh.Initialize(str(folder / vis_folder / '{:04d}.bin'.format(i)))
-            display_quad_mesh(mesh, xlim=[-dx, 50 * dx], ylim=[-dx, 50 * dx],
-                file_name=folder / vis_folder / '{:04d}.png'.format(i), show=False)
-        export_gif(folder / vis_folder, folder / str(vis_folder + '.gif'), 5)
-
+    x0 = np.concatenate([q0, v0])
     t0 = time.time()
     create_folder(folder / 'newton')
-    q_newton, v_newton = step(newton_method, newton_opt, 'newton')
+    q_newton, v_newton = step(newton_method, newton_opt, folder / 'newton', deformable, x0, f, frame_num, dt)
     t1 = time.time()
     create_folder(folder / 'pd')
-    q_pd, v_pd = step(pd_method, pd_opt, 'pd')
+    q_pd, v_pd = step(pd_method, pd_opt, folder / 'pd', deformable, x0, f, frame_num, dt)
     t2 = time.time()
     if verbose:
         print_info('Newton: {:3.3f}s; PD: {:3.3f}s'.format(t1 - t0, t2 - t1))
@@ -115,8 +94,8 @@ def test_pd_forward(verbose):
 
     if verbose:
         print_info('PD and Newton solutions are the same.')
-        visualize('newton')
-        visualize('pd')
+        visualize(folder, 'newton', frame_num, dx)
+        visualize(folder, 'pd', frame_num, dx)
         print_info('Showing Newton gif...')
         os.system('eog {}'.format(folder / 'newton.gif'))
         print_info('Showing PD gif...')
@@ -124,13 +103,40 @@ def test_pd_forward(verbose):
 
     return states_equal
 
+def step(method, opt, vis_path, deformable, qv, f, frame_num, dt):
+    dofs = deformable.dofs()
+    q0 = qv[:dofs]
+    v0 = qv[dofs:2*dofs]
+    q = [q0,]
+    v = [v0,]
+    for i in range(frame_num):
+        q_next_array = StdRealVector(dofs)
+        v_next_array = StdRealVector(dofs)
+        deformable.PyForward(method, q[-1], v[-1], f[i], dt, opt, q_next_array, v_next_array)
+        deformable.PySaveToMeshFile(q[-1], str(vis_path / '{:04d}.bin'.format(i)))
+        q_next = ndarray(q_next_array)
+        v_next = ndarray(v_next_array)
+        q.append(q_next)
+        v.append(v_next)
+    return q, v
+
+def visualize(folder, vis_folder, frame_num, dx):
+    for i in range(frame_num):
+        mesh = Mesh2d()
+        mesh.Initialize(str(folder / vis_folder / '{:04d}.bin'.format(i)))
+        display_quad_mesh(mesh, xlim=[-dx, 50 * dx], ylim=[-dx, 50 * dx],
+            file_name=folder / vis_folder / '{:04d}.png'.format(i), show=False)
+    export_gif(folder / vis_folder, folder / str(vis_folder + '.gif'), 5)
+
 if __name__ == '__main__':
     verbose = True
     if not verbose:
         print_info("Testing pd energy...")
         if test_pd_forward(verbose):
             print_ok("Test completed with no errors")
+            sys.exit(0)
         else:
             print_error("Errors found in pd forward")
+            sys.exit(-1)
     else:
         test_pd_forward(verbose)

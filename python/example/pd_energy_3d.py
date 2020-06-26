@@ -87,7 +87,9 @@ if __name__ == '__main__':
         print_info("Testing pd energy 3D...")
         if test_pd_energy_3d(verbose):
             print_ok("Test completed with no errors")
+            sys.exit(0)
         else:
             print_error("Errors found in pd energy 3D")
+            sys.exit(-1)
     else:
         test_pd_energy_3d(verbose)

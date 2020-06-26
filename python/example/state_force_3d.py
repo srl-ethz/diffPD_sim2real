@@ -25,19 +25,6 @@ def test_state_force_3d(verbose):
     q0 = np.random.normal(size=dofs)
     v0 = np.random.normal(size=dofs)
     f_weight = np.random.normal(size=dofs)
-    def loss_and_grad(qv, state_force):
-        q = qv[:dofs]
-        v = qv[dofs:]
-        f = ndarray(state_force.PyForwardForce(q, v))
-        loss = f.dot(f_weight)
-
-        # Compute gradients.
-        dl_df = np.copy(f_weight)
-        dl_dq = StdRealVector(dofs)
-        dl_dv = StdRealVector(dofs)
-        state_force.PyBackwardForce(q, v, f, dl_df, dl_dq, dl_dv)
-        grad = np.concatenate([ndarray(dl_dq), ndarray(dl_dv)])
-        return loss, grad
 
     gravity = GravitationalStateForce3d()
     g = StdRealArray3d()
@@ -57,7 +44,7 @@ def test_state_force_3d(verbose):
     #print_info('Wrong gradients will be displayed in red.')
     for state_force in [gravity, collision]:
         def l_and_g(x):
-            return loss_and_grad(x, state_force)
+            return loss_and_grad(x, f_weight, state_force, dofs)
         grads_equal = check_gradients(l_and_g, np.concatenate([q0, v0]), eps, atol, rtol, verbose)
         if not grads_equal:
             forces_equal = False
@@ -66,13 +53,29 @@ def test_state_force_3d(verbose):
 
     return forces_equal
 
+def loss_and_grad(qv, f_weight, state_force, dofs):
+    q = qv[:dofs]
+    v = qv[dofs:]
+    f = ndarray(state_force.PyForwardForce(q, v))
+    loss = f.dot(f_weight)
+
+    # Compute gradients.
+    dl_df = np.copy(f_weight)
+    dl_dq = StdRealVector(dofs)
+    dl_dv = StdRealVector(dofs)
+    state_force.PyBackwardForce(q, v, f, dl_df, dl_dq, dl_dv)
+    grad = np.concatenate([ndarray(dl_dq), ndarray(dl_dv)])
+    return loss, grad
+
 if __name__ == '__main__':
-    verbose = True
+    verbose = False
     if not verbose:
         print_info("Testing state force 3D...")
         if test_state_force_3d(verbose):
             print_ok("Test completed with no errors")
+            sys.exit(0)
         else:
             print_error("Errors found in state force 3D")
+            sys.exit(-1)
     else:
         test_state_force_3d(verbose)

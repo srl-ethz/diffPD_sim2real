@@ -72,46 +72,6 @@ def test_deformable_backward_2d(verbose):
     f_ext[:, 0] = np.random.uniform(low=0, high=10, size=vertex_num) * dx * dx * density # Shifting to its right.
     f_ext = ndarray(f_ext).ravel()
 
-    def loss_and_grad(qvf, method, opt, compute_grad):
-        q_init = ndarray(qvf[:dofs])
-        v_init = ndarray(qvf[dofs:2 * dofs])
-        f_ext = ndarray(qvf[2 * dofs:])
-        q = [q_init,]
-        v = [v_init,]
-        for i in range(frame_num):
-            q_cur = q[-1]
-            v_cur = v[-1]
-            q_next_array = StdRealVector(dofs)
-            v_next_array = StdRealVector(dofs)
-            deformable.PyForward(method, q_cur, v_cur, f_ext, dt, opt, q_next_array, v_next_array)
-            q_next = ndarray(q_next_array)
-            v_next = ndarray(v_next_array)
-            q.append(q_next)
-            v.append(v_next)
-
-        # Compute loss.
-        loss = q[-1].dot(q_next_weight) + v[-1].dot(v_next_weight)
-        dl_dq_next = np.copy(q_next_weight)
-        dl_dv_next = np.copy(v_next_weight)
-        dl_df_ext = np.zeros(dofs)
-
-        if compute_grad:
-            # Compute gradients.
-            for i in reversed(range(frame_num)):
-                dl_dq = StdRealVector(dofs)
-                dl_dv = StdRealVector(dofs)
-                dl_df = StdRealVector(dofs)
-                deformable.PyBackward(method, q[i], v[i], f_ext, dt, q[i + 1], v[i + 1], dl_dq_next, dl_dv_next, opt,
-                    dl_dq, dl_dv, dl_df)
-                dl_dq_next = ndarray(dl_dq)
-                dl_dv_next = ndarray(dl_dv)
-                dl_df_ext += ndarray(dl_df)
-
-            grad = np.concatenate([dl_dq_next, dl_dv_next, dl_df_ext])
-            return loss, grad
-        else:
-            return loss
-
     eps = 1e-8
     atol = 1e-4
     rtol = 1e-2
@@ -129,13 +89,14 @@ def test_deformable_backward_2d(verbose):
             print_info('Checking gradients in {} method.'.format(method))
         t0 = time.time()
         x0 = np.concatenate([q0, v0, f_ext])
+        x0_nw = np.concatenate([q_next_weight, v_next_weight])
         def l_and_g(x):
-            return loss_and_grad(x, method, opt, True)
+            return loss_and_grad(x, method, opt, True, deformable, frame_num, dt, x0_nw)
         def l(x):
-            return loss_and_grad(x, method, opt, False)
+            return loss_and_grad(x, method, opt, False, deformable, frame_num, dt, x0_nw)
         grads_check = check_gradients(l_and_g, x0, eps, atol, rtol, verbose, skip_var=skip_var, loss_only=l)
         t1 = time.time()
-        if not grads_equal:
+        if not grads_check:
             grads_equal = False
             if not verbose:
                 return False
@@ -144,13 +105,58 @@ def test_deformable_backward_2d(verbose):
 
     return grads_equal
 
+def loss_and_grad(qvf, method, opt, compute_grad, deformable, frame_num, dt, qv_nw):
+    dofs = deformable.dofs()
+    q_init = ndarray(qvf[:dofs])
+    v_init = ndarray(qvf[dofs:2 * dofs])
+    f_ext = ndarray(qvf[2 * dofs:])
+    q_next_weight = ndarray(qv_nw[:dofs])
+    v_next_weight = ndarray(qv_nw[dofs:2*dofs])
+    q = [q_init,]
+    v = [v_init,]
+    for i in range(frame_num):
+        q_cur = q[-1]
+        v_cur = v[-1]
+        q_next_array = StdRealVector(dofs)
+        v_next_array = StdRealVector(dofs)
+        deformable.PyForward(method, q_cur, v_cur, f_ext, dt, opt, q_next_array, v_next_array)
+        q_next = ndarray(q_next_array)
+        v_next = ndarray(v_next_array)
+        q.append(q_next)
+        v.append(v_next)
+
+    # Compute loss.
+    loss = q[-1].dot(q_next_weight) + v[-1].dot(v_next_weight)
+    dl_dq_next = np.copy(q_next_weight)
+    dl_dv_next = np.copy(v_next_weight)
+    dl_df_ext = np.zeros(dofs)
+
+    if compute_grad:
+        # Compute gradients.
+        for i in reversed(range(frame_num)):
+            dl_dq = StdRealVector(dofs)
+            dl_dv = StdRealVector(dofs)
+            dl_df = StdRealVector(dofs)
+            deformable.PyBackward(method, q[i], v[i], f_ext, dt, q[i + 1], v[i + 1], dl_dq_next, dl_dv_next, opt,
+                dl_dq, dl_dv, dl_df)
+            dl_dq_next = ndarray(dl_dq)
+            dl_dv_next = ndarray(dl_dv)
+            dl_df_ext += ndarray(dl_df)
+
+        grad = np.concatenate([dl_dq_next, dl_dv_next, dl_df_ext])
+        return loss, grad
+    else:
+        return loss
+
 if __name__ == '__main__':
-    verbose = True
+    verbose = False
     if not verbose:
         print_info("Testing deformable backward 2D...")
         if test_deformable_backward_2d(verbose):
             print_ok("Test completed with no errors")
+            sys.exit(0)
         else:
             print_error("Errors found in deformable backward 2D")
+            sys.exit(-1)
     else:
         test_deformable_backward_2d(verbose)

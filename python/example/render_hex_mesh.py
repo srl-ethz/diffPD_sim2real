@@ -101,7 +101,4 @@ if __name__ == '__main__':
             print_error("Errors found in render hex mesh")
             sys.exit(-1)
     else:
-        if test_render_hex_mesh(verbose):
-            sys.exit(0)
-        else:
-            sys.exit(-1)
+        test_render_hex_mesh(verbose)
