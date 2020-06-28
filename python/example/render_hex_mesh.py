@@ -31,7 +31,9 @@ def test_render_hex_mesh(verbose):
     mesh = Mesh3d()
     mesh.Initialize(bin_file_name)
 
-    render_hex_mesh(mesh, folder / 'render_hex_mesh_1.png')
+    resolution = (400, 400)
+    sample_num = 64
+    render_hex_mesh(mesh, folder / 'render_hex_mesh_1.png', resolution=resolution, sample=sample_num)
 
     # Test if first render matches.
     render_result = image_to_numpy_array(folder / 'render_hex_mesh_1.png')

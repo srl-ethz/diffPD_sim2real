@@ -9,6 +9,7 @@ if __name__ == '__main__':
     tests = [
         'render_hex_mesh',
         'render_quad_mesh',
+        'elastic_energy_2d',
     ]
 
     failure_cnt = 0
