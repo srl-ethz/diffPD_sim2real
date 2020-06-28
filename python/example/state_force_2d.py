@@ -39,18 +39,15 @@ def test_state_force_2d(verbose):
     eps = 1e-8
     atol = 1e-4
     rtol = 1e-2
-    #print_info('Wrong gradients will be displayed in red.')
-    forces_equal = True
     for state_force in [gravity, collision]:
         def l_and_g(x):
             return loss_and_grad(x, f_weight, state_force, dofs)
-        grads_equal = check_gradients(l_and_g, np.concatenate([q0, v0]), eps, atol, rtol, verbose)
-        if not grads_equal:
-            forces_equal = False
-            if not verbose:
-                return forces_equal
+        if not check_gradients(l_and_g, np.concatenate([q0, v0]), eps, atol, rtol, verbose):
+            if verbose:
+                print_error('StateForce2d gradients mismatch.')
+            return False
 
-    return forces_equal
+    return True
 
 def loss_and_grad(qv, f_weight, state_force, dofs):
     q = qv[:dofs]
@@ -67,14 +64,5 @@ def loss_and_grad(qv, f_weight, state_force, dofs):
     return loss, grad
 
 if __name__ == '__main__':
-    verbose = False
-    if not verbose:
-        print_info("Testing state force 2D...")
-        if test_state_force_2d(verbose):
-            print_ok("Test completed with no errors")
-            sys.exit(0)
-        else:
-            print_error("Errors found in state force 2D")
-            sys.exit(-1)
-    else:
-        test_state_force_2d(verbose)
+    verbose = True
+    test_state_force_2d(verbose)

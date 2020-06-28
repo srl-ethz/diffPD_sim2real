@@ -7,10 +7,16 @@ from py_diff_pd.common.common import print_ok, print_error
 if __name__ == '__main__':
     # If you want to add a new test, simply add its name here --- you can find their names from README.md.
     tests = [
+        # Display.
         'render_hex_mesh',
         'render_quad_mesh',
+        # Numerical check.
         'elastic_energy_2d',
         'elastic_energy_3d',
+        'state_force_2d',
+        'state_force_3d',
+        'pd_energy_2d',
+        'pd_energy_3d',
     ]
 
     failure_cnt = 0

@@ -22,6 +22,8 @@ def test_pd_energy_3d(verbose):
     # Hyperparameters.
     youngs_modulus = 1e6
     poissons_ratio = 0.45
+    la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
+    mu = youngs_modulus / (2 * (1 + poissons_ratio))
     density = 1e4
     cell_nums = (4, 4, 8)
     dx = 0.2
@@ -37,12 +39,13 @@ def test_pd_energy_3d(verbose):
 
     deformable = Deformable3d()
     deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
-    deformable.AddPdEnergy('corotated', [youngs_modulus,], [])
+    deformable.AddPdEnergy('corotated', [mu * 2,], [])
+    deformable.AddPdEnergy('volume', [la,], [])
     deformable.AddPdEnergy('planar_collision', [1e3, 0.0, 0.0, 1.0, -dx / 2], [0,])
 
     dofs = deformable.dofs()
     vertex_num = int(dofs / 3)
-    q0 = ndarray(mesh.py_vertices())
+    q0 = ndarray(mesh.py_vertices()) + np.random.normal(scale=0.1 * dx, size=dofs)
 
     def loss_and_grad(q):
         loss = deformable.PyComputePdEnergy(q)
@@ -52,11 +55,10 @@ def test_pd_energy_3d(verbose):
     eps = 1e-8
     atol = 1e-4
     rtol = 1e-2
-    x0 = q0 + np.random.normal(scale=0.1 * dx, size=dofs)
-    grads_equal = check_gradients(loss_and_grad, x0, eps, atol, rtol, verbose)
-    if not grads_equal:
-        if not verbose:
-            return False
+    if not check_gradients(loss_and_grad, q0, eps, atol, rtol, verbose):
+        if verbose:
+            print_error('ComputePdEnergy and PdEnergyForce mismatch.')
+        return False
 
     # Check PdEnergyForceDifferential.
     dq = np.random.normal(scale=1e-5, size=dofs)
@@ -65,31 +67,19 @@ def test_pd_energy_3d(verbose):
     df_analytical2 = K @ dq
     if not np.allclose(df_analytical, df_analytical2):
         if verbose:
-            grads_equal = False
-            print_error("Analytical elastic force differential values do not match")
-        else:
-            return False
+            print_error('Analytical elastic force differential values do not match.')
+        return False
+
     df_numerical = ndarray(deformable.PyPdEnergyForce(q0 + dq)) - ndarray(deformable.PyPdEnergyForce(q0))
     if not np.allclose(df_analytical, df_numerical, atol, rtol):
         if verbose:
-            grads_equal = False
-            print_error("Analytical elastic force differential values do not match numerical ones")
-        else:
-            return False
+            print_error('Analytical elastic force differential values do not match numerical ones.')
+        return False
 
     shutil.rmtree(folder)
 
-    return grads_equal
+    return True
 
 if __name__ == '__main__':
-    verbose = False
-    if not verbose:
-        print_info("Testing pd energy 3D...")
-        if test_pd_energy_3d(verbose):
-            print_ok("Test completed with no errors")
-            sys.exit(0)
-        else:
-            print_error("Errors found in pd energy 3D")
-            sys.exit(-1)
-    else:
-        test_pd_energy_3d(verbose)
+    verbose = True
+    test_pd_energy_3d(verbose)
