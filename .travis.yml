@@ -2,6 +2,9 @@
 # https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/use-conda-with-travis-ci.html
 
 dist: bionic
+branches:
+  only:
+    - master
 language: python
 python:
   # We don't actually use the Travis Python, but this keeps it organized.
@@ -23,7 +26,6 @@ install:
   - conda env create -f environment.yml
   - conda activate diff_pd
   - bash install.sh
-
 script:
   # Your test script goes here
   - cd python/example
