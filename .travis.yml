@@ -27,4 +27,4 @@ install:
 script:
   # Your test script goes here
   - cd python/example
-  - python elastic_energy_2d.py
+  - python run_all_tests.py
