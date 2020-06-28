@@ -40,6 +40,7 @@ void RotatingDeformable<vertex_dim, element_dim>::ForwardSemiImplicit(const Vect
     CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_vertex_energies().empty(), "PdVertexEnergy is not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_element_energies().empty(), "PdElementEnergy is not supported in the rotating frame.");
+    CheckError(Deformable<vertex_dim, element_dim>::pd_muscle_energies().empty(), "PdMuscleEnergy is not supported in the rotating frame.");
     // v_next = v + dt * ((f_ext + f_int) / m - [w]^2 q - 2 [w] v)
     // q_next = q + dt * v_next.
     v_next = v;
@@ -71,6 +72,7 @@ void RotatingDeformable<vertex_dim, element_dim>::ForwardNewton(const std::strin
     CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_vertex_energies().empty(), "PdVertexEnergy is not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_element_energies().empty(), "PdElementEnergy is not supported in the rotating frame.");
+    CheckError(Deformable<vertex_dim, element_dim>::pd_muscle_energies().empty(), "PdMuscleEnergy is not supported in the rotating frame.");
     // TODO: what are the available methods?
     CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
@@ -183,6 +185,7 @@ void RotatingDeformable<vertex_dim, element_dim>::BackwardSemiImplicit(const Vec
     CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_vertex_energies().empty(), "PdVertexEnergy is not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_element_energies().empty(), "PdElementEnergy is not supported in the rotating frame.");
+    CheckError(Deformable<vertex_dim, element_dim>::pd_muscle_energies().empty(), "PdMuscleEnergy is not supported in the rotating frame.");
     // TODO.
 }
 
@@ -194,6 +197,7 @@ void RotatingDeformable<vertex_dim, element_dim>::BackwardNewton(const std::stri
     CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_vertex_energies().empty(), "PdVertexEnergy is not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_element_energies().empty(), "PdElementEnergy is not supported in the rotating frame.");
+    CheckError(Deformable<vertex_dim, element_dim>::pd_muscle_energies().empty(), "PdMuscleEnergy is not supported in the rotating frame.");
     // TODO: what are the available method?
     const auto& dirichlet = Deformable<vertex_dim, element_dim>::dirichlet();
     for (const auto& pair : dirichlet) CheckError(q_next(pair.first) == pair.second, "Inconsistent q_next.");
@@ -249,6 +253,7 @@ void RotatingDeformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const s
     CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_vertex_energies().empty(), "PdVertexEnergy is not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_element_energies().empty(), "PdElementEnergy is not supported in the rotating frame.");
+    CheckError(Deformable<vertex_dim, element_dim>::pd_muscle_energies().empty(), "PdMuscleEnergy is not supported in the rotating frame.");
     CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
     CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");

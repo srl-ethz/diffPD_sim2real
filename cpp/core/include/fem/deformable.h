@@ -34,6 +34,7 @@
 #include "fem/state_force.h"
 #include "pd_energy/pd_vertex_energy.h"
 #include "pd_energy/pd_element_energy.h"
+#include "pd_energy/pd_muscle_energy.h"
 #include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
@@ -61,6 +62,9 @@ public:
     }
     const std::vector<std::shared_ptr<PdElementEnergy<vertex_dim>>>& pd_element_energies() const {
         return pd_element_energies_;
+    }
+    const std::vector<std::pair<std::shared_ptr<PdMuscleEnergy<vertex_dim>>, std::vector<int>>>& pd_muscle_energies() const {
+        return pd_muscle_energies_;
     }
 
     void SetDirichletBoundaryCondition(const int dof, const real val) {
@@ -92,6 +96,12 @@ public:
     const VectorXr ElasticForce(const VectorXr& q) const;
     const VectorXr ElasticForceDifferential(const VectorXr& q, const VectorXr& dq) const;
     const SparseMatrixElements ElasticForceDifferential(const VectorXr& q) const;
+
+    // Actuation.
+    const real ActuationEnergy(const VectorXr& q, const VectorXr& a) const;
+    const VectorXr ActuationForce(const VectorXr& q, const VectorXr& a) const;
+    const VectorXr ActuationForceDifferential(const VectorXr& q, const VectorXr& a, const VectorXr& dq, const VectorXr& da) const;
+    void ActuationForceDifferential(const VectorXr& q, const VectorXr& a, SparseMatrixElements& dq, SparseMatrixElements& da) const;
 
     void Forward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext, const real dt,
         const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
@@ -204,6 +214,8 @@ private:
     // Projective-dynamics energies.
     std::vector<std::pair<std::shared_ptr<PdVertexEnergy<vertex_dim>>, std::set<int>>> pd_vertex_energies_;
     std::vector<std::shared_ptr<PdElementEnergy<vertex_dim>>> pd_element_energies_;
+    std::vector<std::pair<std::shared_ptr<PdMuscleEnergy<vertex_dim>>, std::vector<int>>> pd_muscle_energies_;
+    int act_dofs_;
 };
 
 #endif
