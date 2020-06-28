@@ -2,6 +2,7 @@
 #include "pd_energy/planar_collision_pd_vertex_energy.h"
 #include "pd_energy/corotated_pd_element_energy.h"
 #include "pd_energy/volume_pd_element_energy.h"
+#include "pd_energy/pd_muscle_energy.h"
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::AddPdEnergy(const std::string& energy_type, const std::vector<real> params,
@@ -37,6 +38,25 @@ void Deformable<vertex_dim, element_dim>::AddPdEnergy(const std::string& energy_
         energy->Initialize(stiffness);
         CheckError(indices.empty(), "Volume PD material is assumed to be applied to all elements.");
         pd_element_energies_.push_back(energy);
+    } else if (energy_type == "muscle") {
+        CheckError(param_size == 1 + vertex_dim, "Inconsistent param size.");
+        auto energy = std::make_shared<PdMuscleEnergy<vertex_dim>>();
+        const real stiffness = params[0];
+        Eigen::Matrix<real, vertex_dim, 1> fiber_direction;
+        for (int i = 0; i < vertex_dim; ++i) fiber_direction(i) = params[1 + i];
+        energy->Initialize(stiffness, fiber_direction);
+        // Check muscles.
+        std::set<int> unique_idx;
+        std::vector<int> element_idx;
+        const int element_num = mesh_.NumOfElements();
+        for (const int idx : indices) {
+            CheckError(0 <= idx && idx < element_num, "Element index out of bound.");
+            CheckError(unique_idx.find(idx) == unique_idx.end(), "Duplicated elements.");
+            element_idx.push_back(idx);
+            unique_idx.insert(idx);
+        }
+        pd_muscle_energies_.push_back(std::make_pair(energy, element_idx));
+        act_dofs_ += static_cast<int>(element_idx.size());
     } else {
         PrintError("Unsupported PD energy: " + energy_type);
     }
