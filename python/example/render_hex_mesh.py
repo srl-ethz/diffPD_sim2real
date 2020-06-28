@@ -31,12 +31,12 @@ def test_render_hex_mesh(verbose):
     mesh = Mesh3d()
     mesh.Initialize(bin_file_name)
 
-    render_hex_mesh(mesh, folder / 'render_hex_mesh.png')
+    render_hex_mesh(mesh, folder / 'render_hex_mesh_1.png')
 
     # Test if first render matches.
-    render_result = image_to_numpy_array(folder / 'render_hex_mesh.png')
+    render_result = image_to_numpy_array(folder / 'render_hex_mesh_1.png')
     if verbose:
-        os.system('eog {}'.format(folder / 'render_hex_mesh.png'))
+        os.system('eog {}'.format(folder / 'render_hex_mesh_1.png'))
     render_template = image_to_numpy_array(folder / 'hex_master_1.png')
     abs_tol = 1e-2
     rel_tol = 1e-2
@@ -50,11 +50,11 @@ def test_render_hex_mesh(verbose):
     sample_num = 16
     # Scale the cube by 0.5, rotate along the vertical axis by 30 degrees, and translate by (0.5, 0.5, 0).
     transforms = [('s', 0.5), ('r', (np.pi / 6, 0, 0, 1)), ('t', (0.5, 0.5, 0))]
-    render_hex_mesh(mesh, folder / 'render_hex_mesh2.png', resolution=resolution, sample=sample_num, transforms=transforms)
+    render_hex_mesh(mesh, folder / 'render_hex_mesh_2.png', resolution=resolution, sample=sample_num, transforms=transforms)
     # Test if second render matches.
-    render_result = image_to_numpy_array(folder / 'render_hex_mesh2.png')
+    render_result = image_to_numpy_array(folder / 'render_hex_mesh_2.png')
     if verbose:
-        os.system('eog {}'.format(folder / 'render_hex_mesh2.png'))
+        os.system('eog {}'.format(folder / 'render_hex_mesh_2.png'))
     render_template = image_to_numpy_array(folder / 'hex_master_2.png')
     if not compare_images(render_template, render_result, abs_tol, rel_tol):
         if verbose:
