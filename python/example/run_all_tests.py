@@ -18,6 +18,7 @@ if __name__ == '__main__':
         'pd_energy_2d',
         'pd_energy_3d',
         'pd_forward',
+        'deformable_backward_2d',
     ]
 
     failure_cnt = 0

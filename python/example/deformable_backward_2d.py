@@ -25,6 +25,8 @@ def test_deformable_backward_2d(verbose):
     # Hyperparameters.
     youngs_modulus = 1e4
     poissons_ratio = 0.45
+    la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
+    mu = youngs_modulus / (2 * (1 + poissons_ratio))
     density = 1e4
     cell_nums = (8, 4)
     node_nums = (cell_nums[0] + 1, cell_nums[1] + 1)
@@ -46,18 +48,23 @@ def test_deformable_backward_2d(verbose):
     deformable = Deformable2d()
     deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
     # Boundary conditions.
-    for i in range(node_nums[0]):
-        node_idx = i * node_nums[1]
+    for i in range(node_nums[1]):
+        node_idx = i
         vx, vy = mesh.py_vertex(node_idx)
         deformable.SetDirichletBoundaryCondition(2 * node_idx, vx)
         deformable.SetDirichletBoundaryCondition(2 * node_idx + 1, vy)
 
     # State forces.
     deformable.AddStateForce("gravity", [0.0, -9.81])
-    deformable.AddStateForce("planar_collision", [100., 0.01, 0.0, 1.0, -dx / 2])
+
+    # Collision.
+    deformable.AddPdEnergy('planar_collision', [1e4, 0.0, 1.0, -dx * 0.5], [
+        i * node_nums[1] for i in range(node_nums[0])
+    ])
 
     # Elasticity.
-    deformable.AddPdEnergy('corotated', [youngs_modulus,], [])
+    deformable.AddPdEnergy('corotated', [2 * mu,], [])
+    deformable.AddPdEnergy('volume', [la,], [])
 
     dofs = deformable.dofs()
     vertex_num = mesh.NumOfVertices()
@@ -69,7 +76,7 @@ def test_deformable_backward_2d(verbose):
     dt = 3e-2   # Corresponds to 30 fps.
     frame_num = 30  # 1 second.
     f_ext = np.zeros((vertex_num, 2))
-    f_ext[:, 0] = np.random.uniform(low=0, high=10, size=vertex_num) * dx * dx * density # Shifting to its right.
+    f_ext[:, 0] = np.random.uniform(low=0, high=10, size=vertex_num) * dx * dx * density
     f_ext = ndarray(f_ext).ravel()
 
     eps = 1e-8
@@ -81,9 +88,8 @@ def test_deformable_backward_2d(verbose):
         node_idx = int(dof // 2)
         i = int(node_idx // node_nums[1])
         j = node_idx % node_nums[1]
-        return j == 0
+        return i == 0
 
-    grads_equal = True
     for method, opt in zip(methods, opts):
         if verbose:
             print_info('Checking gradients in {} method.'.format(method))
@@ -94,16 +100,15 @@ def test_deformable_backward_2d(verbose):
             return loss_and_grad(x, method, opt, True, deformable, frame_num, dt, x0_nw)
         def l(x):
             return loss_and_grad(x, method, opt, False, deformable, frame_num, dt, x0_nw)
-        grads_check = check_gradients(l_and_g, x0, eps, atol, rtol, verbose, skip_var=skip_var, loss_only=l)
-        t1 = time.time()
-        if not grads_check:
-            grads_equal = False
-            if not verbose:
-                return False
+        if not check_gradients(l_and_g, x0, eps, atol, rtol, verbose, skip_var=skip_var, loss_only=l):
+            if verbose:
+                print_error('Gradient check failed at {}'.format(method))
+            return False
         if verbose:
+            t1 = time.time()
             print_info('Gradient check finished in {:3.3f}s.'.format(t1 - t0))
 
-    return grads_equal
+    return True
 
 def loss_and_grad(qvf, method, opt, compute_grad, deformable, frame_num, dt, qv_nw):
     dofs = deformable.dofs()
@@ -149,14 +154,5 @@ def loss_and_grad(qvf, method, opt, compute_grad, deformable, frame_num, dt, qv_
         return loss
 
 if __name__ == '__main__':
-    verbose = False
-    if not verbose:
-        print_info("Testing deformable backward 2D...")
-        if test_deformable_backward_2d(verbose):
-            print_ok("Test completed with no errors")
-            sys.exit(0)
-        else:
-            print_error("Errors found in deformable backward 2D")
-            sys.exit(-1)
-    else:
-        test_deformable_backward_2d(verbose)
+    verbose = True
+    test_deformable_backward_2d(verbose)
