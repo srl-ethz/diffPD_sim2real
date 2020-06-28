@@ -53,6 +53,9 @@ def test_elastic_energy_3d(verbose):
     x0 = q0 + np.random.normal(scale=0.1 * dx, size=dofs)
     grads_equal = check_gradients(loss_and_grad, x0, eps, atol, rtol, verbose)
     if not grads_equal:
+        if verbose:
+            print_error('Elastic energy and elastic force do not match.')
+        return False
         if not verbose:
             return False
 
@@ -62,32 +65,20 @@ def test_elastic_energy_3d(verbose):
     K = ndarray(deformable.PyElasticForceDifferential(q0))
     df_analytical2 = K @ dq
     if not np.allclose(df_analytical, df_analytical2):
-        grads_equal = False
         if verbose:
-            print_error("Analytical elastic force differential values do not match")
-        else:
-            return grads_equal
+            print_error('Analytical elastic force differential values do not match.')
+        return False
+
     df_numerical = ndarray(deformable.PyElasticForce(q0 + dq)) - ndarray(deformable.PyElasticForce(q0))
     if not np.allclose(df_analytical, df_numerical, atol, rtol):
-        grads_equal = False
         if verbose:
-            print_error("Analytical elastic force differential values do not match numerical ones")
-        else:
-            return grads_equal
+            print_error('Analytical elastic force differential values do not match numerical ones.')
+        return False
 
     shutil.rmtree(folder)
 
-    return grads_equal
+    return True
 
 if __name__ == '__main__':
-    verbose = False
-    if not verbose:
-        print_info("Testing elastic energy 3D...")
-        if test_elastic_energy_3d(verbose):
-            print_ok("Test completed with no errors")
-            sys.exit(0)
-        else:
-            print_error("Errors found in elastic energy 3D")
-            sys.exit(-1)
-    else:
-        test_elastic_energy_3d(verbose)
+    verbose = True
+    test_elastic_energy_3d(verbose)
