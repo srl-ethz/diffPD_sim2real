@@ -27,6 +27,8 @@ def test_deformable_backward_3d(verbose):
     # Hyperparameters.
     youngs_modulus = 1e6
     poissons_ratio = 0.45
+    la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
+    mu = youngs_modulus / (2 * (1 + poissons_ratio))
     density = 1e3
     cell_nums = (2, 2, 1)
     origin = np.random.normal(size=3)
@@ -40,8 +42,7 @@ def test_deformable_backward_3d(verbose):
 
     # Initialization.
     folder = Path('deformable_backward_3d')
-    render_opts = {'img_resolution': (400,400), 'render_samples': 4, 'origin': origin, 'cell_nums': cell_nums, 'dx': dx}
-    create_folder(folder)
+    render_opts = { 'img_resolution': (400, 400), 'render_samples': 4, 'origin': origin, 'cell_nums': cell_nums, 'dx': dx }
     bin_file_name = folder / 'cuboid.bin'
     voxels = np.ones(cell_nums)
     generate_hex_mesh(voxels, dx, origin, bin_file_name)
@@ -71,7 +72,8 @@ def test_deformable_backward_3d(verbose):
     deformable.AddPdEnergy('planar_collision', [5e4, 0.0, 0.0, 1.0, 0.0], vertex_indices)
 
     # Elasticity.
-    deformable.AddPdEnergy('corotated', [youngs_modulus,], [])
+    deformable.AddPdEnergy('corotated', [2 * mu,], [])
+    deformable.AddPdEnergy('volume', [la,], [])
 
     dofs = deformable.dofs()
     vertex_num = mesh.NumOfVertices()
@@ -90,19 +92,8 @@ def test_deformable_backward_3d(verbose):
     dt = 1e-2
     frame_num = 30
     f_ext = np.zeros((vertex_num, 3))
-    f_ext[:, 0] = np.random.uniform(low=0, high=10, size=vertex_num) * density * (dx ** 3) # Shifting to its right.
+    f_ext[:, 0] = np.random.uniform(low=0, high=10, size=vertex_num) * density * (dx ** 3)
     f_ext = ndarray(f_ext).ravel()
-
-    eps = 1e-8
-    atol = 1e-4
-    check_rtol = 1e-2
-    rtols = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9]
-    losses = {}
-    grads = {}
-
-    for method in methods:
-        losses[method] = []
-        grads[method] = []
 
     def skip_var(dof):
         # Skip boundary conditions on q.
@@ -110,10 +101,15 @@ def test_deformable_backward_3d(verbose):
         node_idx = int(dof // 3)
         return node_idx == pivot_idx
 
-    grads_equal = True
-
     x0 = np.concatenate([q0, v0, f_ext])
     x0_nw = np.concatenate([q_next_weight, v_next_weight])
+    rtols = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9]
+    losses = {}
+    grads = {}
+    for method in methods:
+        losses[method] = []
+        grads[method] = []
+
     for method, opt in zip(methods, opts):
         if verbose:
             print_info('method: {}'.format(method))
@@ -124,40 +120,42 @@ def test_deformable_backward_3d(verbose):
             })
             print_info(tabular.head_string())
 
-            for rtol in rtols:
-                opt['rel_tol'] = rtol
-                loss, grad = loss_and_grad(np.copy(x0), method, opt, True, deformable, frame_num, dt, x0_nw)
-                grad_norm = np.linalg.norm(grad)
+        for rtol in rtols:
+            opt['rel_tol'] = rtol
+            loss, grad = loss_and_grad(np.copy(x0), method, opt, True, deformable, frame_num, dt, x0_nw)
+            grad_norm = np.linalg.norm(grad)
+            if verbose:
                 print(tabular.row_string({
                     'rel_tol': rtol,
                     'loss': loss,
-                    '|grad|': grad_norm }))
-                losses[method].append(loss)
-                grads[method].append(grad_norm)
+                    '|grad|': grad_norm
+                }))
+            losses[method].append(loss)
+            grads[method].append(grad_norm)
 
-            print_info('Checking gradients in {} method. Wrong gradients will be shown in red.'.format(method))
-
-        else:
-            opt['rel_tol'] = rtols[-1]
-
-        t0 = time.time()
-        def l_and_g(x):
-            return loss_and_grad(x, method, opt, True, deformable, frame_num, dt, x0_nw)
-        def l(x):
-            return loss_and_grad(x, method, opt, False, deformable, frame_num, dt, x0_nw)
-        grad_equal = check_gradients(l_and_g, np.copy(x0), eps, atol, check_rtol, verbose, skip_var=skip_var, loss_only=l)
-        if not grad_equal:
-            grads_equal = False
-            if not verbose:
-                return False
-
-        t1 = time.time()
+    pickle.dump((rtols, losses, grads), open(folder / 'table.bin', 'wb'))
+    # Compare table.bin to table_master.bin
+    rtols_master, losses_master, grads_master = pickle.load(open(folder / 'table_master.bin', 'rb'))
+    def compare_list(l1, l2):
+        if len(l1) != len(l2): return False
+        for e1, e2 in zip(l1, l2):
+            if e1 != e2: return False
+        return True
+    if not compare_list(rtols, rtols_master):
         if verbose:
-            print_info('Gradient check finished in {:3.3f}s.'.format(t1 - t0))
+            print_error('rtols and rtols_master are different.')
+        return False
+    for method in methods:
+        if not compare_list(losses[method], losses_master[method]):
+            if verbose:
+                print_error('losses[{}] and losses_master[{}] are different.'.format(method, method))
+            return False
+        if not compare_list(grads[method], grads_master[method]):
+            if verbose:
+                print_error('grads[{}] and grads_master[{}] are different.'.format(method, method))
+            return False
 
     if verbose:
-        pickle.dump((rtols, losses, grads), open(folder / 'table.bin', 'wb'))
-
         # Plot loss and grad vs rtol
         import matplotlib.pyplot as plt
         fig = plt.figure(figsize=(10, 5))
@@ -168,6 +166,7 @@ def test_deformable_backward_3d(verbose):
             ax.set_xlabel('relative error')
             ax.set_ylabel('magnitude (/)')
             ax.set_xscale('log')
+            ax.set_xlim(rtols[0], rtols[-1])
             for method in methods:
                 ax.plot(rtols, y[method], label=method)
             ax.grid(True)
@@ -182,7 +181,25 @@ def test_deformable_backward_3d(verbose):
             visualize(folder, x0, method, opt, deformable, frame_num, dt, x0_nw, render_opts)
             os.system('eog {}.gif'.format(folder / method))
 
-    return grads_equal
+    # Check gradients.
+    eps = 1e-8
+    atol = 1e-4
+    rtol = 1e-6
+    for method, opt in zip(methods, opts):
+        t0 = time.time()
+        def l_and_g(x):
+            return loss_and_grad(x, method, opt, True, deformable, frame_num, dt, x0_nw)
+        def l(x):
+            return loss_and_grad(x, method, opt, False, deformable, frame_num, dt, x0_nw)
+        if not check_gradients(l_and_g, np.copy(x0), eps, atol, rtol, verbose, skip_var=skip_var, loss_only=l):
+            if verbose:
+                print_error('Gradient check failed at {}'.format(method))
+            return False
+        if verbose:
+            t1 = time.time()
+            print_info('Gradient check finished in {:3.3f}s.'.format(t1 - t0))
+
+    return True
 
 def loss_and_grad(qvf, method, opt, compute_grad, deformable, frame_num, dt, qv_nw):
     dofs = deformable.dofs()
@@ -256,14 +273,5 @@ def visualize(folder, qvf, method, opt, deformable, frame_num, dt, qv_nw, render
     export_gif(folder / method, '{}.gif'.format(folder / method), 10)
 
 if __name__ == '__main__':
-    verbose = False
-    if not verbose:
-        print_info("Testing deformable backward 3D...")
-        if test_deformable_backward_3d(verbose):
-            print_ok("Test completed with no errors")
-            sys.exit(0)
-        else:
-            print_error("Errors found in deformable backward 3D")
-            sys.exit(-1)
-    else:
-        test_deformable_backward_3d(verbose)
+    verbose = True
+    test_deformable_backward_3d(verbose)
