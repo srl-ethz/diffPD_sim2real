@@ -167,9 +167,10 @@ def render_hex_mesh(hex_mesh, file_name,
     # Create a pbrt script.
     pbrt_script = '.tmp.pbrt'
     obj_file_name = '.tmp.obj'
+    error_file_name = '.tmp.error'
     scene_file_name = '.scene.pbrt'
     hex2obj(hex_mesh, obj_file_name)
-    os.system('{} {} {}'.format(str(root / 'external/pbrt_build/obj2pbrt'), obj_file_name, scene_file_name))
+    os.system('{} {} {} 2>{}'.format(str(root / 'external/pbrt_build/obj2pbrt'), obj_file_name, scene_file_name, error_file_name))
 
     x_res, y_res = resolution
     with open(pbrt_script, 'w') as f:
@@ -238,5 +239,6 @@ def render_hex_mesh(hex_mesh, file_name,
 
     os.remove('{}.exr'.format(file_name_only))
     os.remove(scene_file_name)
+    os.remove(error_file_name)
     os.remove(obj_file_name)
     os.remove(pbrt_script)
