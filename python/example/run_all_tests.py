@@ -17,6 +17,7 @@ if __name__ == '__main__':
         'state_force_3d',
         'pd_energy_2d',
         'pd_energy_3d',
+        'pd_forward',
     ]
 
     failure_cnt = 0

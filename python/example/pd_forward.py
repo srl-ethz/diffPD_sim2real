@@ -30,6 +30,8 @@ def test_pd_forward(verbose):
     # FEM parameters.
     youngs_modulus = 4e5
     poissons_ratio = 0.45
+    la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
+    mu = youngs_modulus / (2 * (1 + poissons_ratio))
     density = 1e4
     newton_method = 'newton_pcg'
     newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4 }
@@ -53,7 +55,8 @@ def test_pd_forward(verbose):
     ])
 
     # Elasticity.
-    deformable.AddPdEnergy('corotated', [youngs_modulus,], [])
+    deformable.AddPdEnergy('corotated', [2 * mu,], [])
+    deformable.AddPdEnergy('volume', [la,], [])
 
     # Forward simulation.
     dt = 0.01
@@ -82,15 +85,12 @@ def test_pd_forward(verbose):
         print_info('Newton: {:3.3f}s; PD: {:3.3f}s'.format(t1 - t0, t2 - t1))
     atol = 0
     rtol = 5e-3
-    states_equal = True
     for qn, vn, qp, vp in zip(q_newton, v_newton, q_pd, v_pd):
         state_equal = np.linalg.norm(qn - qp) < rtol * np.linalg.norm(qn) + atol
         if not state_equal:
-            states_equal = False
             if verbose:
                 print_error(np.linalg.norm(qn - qp), np.linalg.norm(qn))
-            else:
-                return False
+            return False
 
     if verbose:
         print_info('PD and Newton solutions are the same.')
@@ -101,12 +101,12 @@ def test_pd_forward(verbose):
         print_info('Showing PD gif...')
         os.system('eog {}'.format(folder / 'pd.gif'))
 
-    return states_equal
+    return True
 
 def step(method, opt, vis_path, deformable, qv, f, frame_num, dt):
     dofs = deformable.dofs()
     q0 = qv[:dofs]
-    v0 = qv[dofs:2*dofs]
+    v0 = qv[dofs:2 * dofs]
     q = [q0,]
     v = [v0,]
     for i in range(frame_num):
@@ -130,13 +130,4 @@ def visualize(folder, vis_folder, frame_num, dx):
 
 if __name__ == '__main__':
     verbose = True
-    if not verbose:
-        print_info("Testing pd energy...")
-        if test_pd_forward(verbose):
-            print_ok("Test completed with no errors")
-            sys.exit(0)
-        else:
-            print_error("Errors found in pd forward")
-            sys.exit(-1)
-    else:
-        test_pd_forward(verbose)
+    test_pd_forward(verbose)
