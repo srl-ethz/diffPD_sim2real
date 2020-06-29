@@ -42,16 +42,22 @@ const std::string CyanTail() {
 }
 
 void PrintError(const std::string& message, const int return_code) {
+#if PRINT_LEVEL >= PRINT_ERROR
     std::cerr << RedHead() << message << RedTail() << std::endl;
     throw return_code;
+#endif
 }
 
 void PrintWarning(const std::string& message) {
+#if PRINT_LEVEL >= PRINT_ERROR_AND_WARNING
     std::cout << YellowHead() << message << YellowTail() << std::endl;
+#endif
 }
 
 void PrintInfo(const std::string& message) {
+#if PRINT_LEVEL >= PRINT_ALL
     std::cout << CyanHead() << message << CyanTail() << std::endl;
+#endif
 }
 
 void PrintSuccess(const std::string& message) {
@@ -73,7 +79,7 @@ void Toc(const std::string& message) {
 }
 
 void CheckError(const bool condition, const std::string& error_message) {
-#ifdef SAFETY_CHECK
+#if PRINT_LEVEL >= PRINT_ERROR
     if (!condition) {
         throw ExceptionWithCallStack((RedHead() + error_message + RedTail()).c_str());
     }

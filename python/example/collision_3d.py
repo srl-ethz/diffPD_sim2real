@@ -12,16 +12,29 @@ from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.display import render_hex_mesh, export_gif
 
-if __name__ == '__main__':
+def compare_mesh_3d(mesh1, mesh2):
+    # Make sure they have the same size.
+    if mesh1.NumOfElements() != mesh2.NumOfElements(): return False
+    if mesh1.NumOfVertices() != mesh2.NumOfVertices(): return False
+    # Check elements.
+    for f in range(mesh1.NumOfElements()):
+        fi = ndarray(mesh1.py_element(f))
+        fj = ndarray(mesh2.py_element(f))
+        if np.max(np.abs(fi - fj)) > 0:
+            return False
+    # Check vertices.
+    vi = ndarray(mesh1.py_vertices())
+    vj = ndarray(mesh2.py_vertices())
+    return np.allclose(vi.ravel(), vj.ravel())
+
+def test_collision_3d(verbose):
     seed = 42
     np.random.seed(seed)
     print_info('Seed: {}'.format(seed))
 
     folder = Path('collision_3d')
-    collision_style = 'backward'    # Choose 'forward' or 'backward'.
     img_resolution = (400, 400)
     render_samples = 16
-    create_folder(folder)
 
     # Mesh parameters.
     cell_nums = (4, 4, 12)
@@ -38,6 +51,8 @@ if __name__ == '__main__':
     # FEM parameters.
     youngs_modulus = 1e6
     poissons_ratio = 0.45
+    la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
+    mu = youngs_modulus / (2 * (1 + poissons_ratio))
     density = 1e3
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
     opts = ({ 'max_newton_iter': 1000, 'max_ls_iter': 10, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4 },
@@ -49,18 +64,16 @@ if __name__ == '__main__':
 
     # State forces.
     deformable.AddStateForce('gravity', [0.0, 0.0, -9.81])
-    if collision_style == 'forward':
-        deformable.AddStateForce('planar_collision', [5e3, 0.01, 0.0, 0.0, 1.0, 0.0])
-    else:
-        vertex_indices = []
-        for i in range(node_nums[0]):
-            for j in range(node_nums[1]):
-                idx = i * node_nums[1] * node_nums[2] + j * node_nums[2]
-                vertex_indices.append(idx)
-        deformable.AddPdEnergy('planar_collision', [5e3, 0.0, 0.0, 1.0, 0.0], vertex_indices)
+    vertex_indices = []
+    for i in range(node_nums[0]):
+        for j in range(node_nums[1]):
+            idx = i * node_nums[1] * node_nums[2] + j * node_nums[2]
+            vertex_indices.append(idx)
+    deformable.AddPdEnergy('planar_collision', [5e3, 0.0, 0.0, 1.0, 0.0], vertex_indices)
 
     # Elasticity.
-    deformable.AddPdEnergy('corotated', [youngs_modulus,], [])
+    deformable.AddPdEnergy('corotated', [2 * mu,], [])
+    deformable.AddPdEnergy('volume', [la,], [])
 
     # Simulation.
     dt = 0.03
@@ -70,13 +83,20 @@ if __name__ == '__main__':
     v0 = np.zeros(dofs)
 
     def simulate(method, opt):
-        create_folder(folder / method)
         q = [q0,]
         v = [v0,]
         for i in range(frame_num):
             q_cur = q[-1]
             v_cur = v[-1]
             deformable.PySaveToMeshFile(q_cur, str(folder / method / '{:04d}.bin'.format(i)))
+            mesh = Mesh3d()
+            mesh.Initialize(str(folder / method / '{:04d}.bin'.format(i)))
+            mesh_template = Mesh3d()
+            mesh_template.Initialize(str(folder / method / '{:04d}_master.bin'.format(i)))
+            if not compare_mesh_3d(mesh_template, mesh):
+                if verbose:
+                    print_error('Shape from {} is unexpected.'.format(method))
+                return False
 
             f = np.zeros(dofs)
             q_next_array = StdRealVector(dofs)
@@ -87,20 +107,29 @@ if __name__ == '__main__':
             q.append(q_next)
             v.append(v_next)
 
-        # Display.
-        scale = 1.0 / (origin[2] + cell_nums[2] * dx + 2 * dx)
-        for i in range(frame_num):
-            mesh = Mesh3d()
-            mesh.Initialize(str(folder / method / '{:04d}.bin'.format(i)))
-            render_hex_mesh(mesh, resolution=img_resolution, file_name=folder / method / '{:04d}.png'.format(i),
-                sample=render_samples, transforms=[
-                    ('t', (-origin[0], -origin[1], 0)),
-                    ('s', scale),
-                    ('t', (0.5 - cell_nums[0] / 2 * dx * scale, 0.5 - cell_nums[1] / 2 * dx * scale, 0))
-                ])
+        if verbose:
+            # Display.
+            scale = 1.0 / (origin[2] + cell_nums[2] * dx + 2 * dx)
+            for i in range(frame_num):
+                mesh = Mesh3d()
+                mesh.Initialize(str(folder / method / '{:04d}.bin'.format(i)))
+                render_hex_mesh(mesh, resolution=img_resolution, file_name=folder / method / '{:04d}.png'.format(i),
+                    sample=render_samples, transforms=[
+                        ('t', (-origin[0], -origin[1], 0)),
+                        ('s', scale),
+                        ('t', (0.5 - cell_nums[0] / 2 * dx * scale, 0.5 - cell_nums[1] / 2 * dx * scale, 0))
+                    ])
 
-        export_gif(folder / method, folder / '{}.gif'.format(method), 10)
+            export_gif(folder / method, folder / '{}.gif'.format(method), 10)
+            os.system('eog {}.gif'.format(folder / method))
+
+        return True
 
     for method, opt in zip(methods, opts):
-        simulate(method, opt)
-        os.system('eog {}.gif'.format(folder / method))
+        if not simulate(method, opt): return False
+
+    return True
+
+if __name__ == '__main__':
+    verbose = True
+    test_collision_3d(verbose)

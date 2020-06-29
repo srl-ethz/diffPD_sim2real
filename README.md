@@ -41,7 +41,7 @@ Navigate to the `python/example` path and run `python [example_name].py` where t
 - `rotating_deformable_3d` solves the dynamic motion of a 3D cube in a rotational frame.
 
 ### Collisions
-- `collision_3d` shows a 3D cuboid hitting on the ground solved with an option to choose either explicit or implicit penalty force. The simulation is done with Newton-PCG, Newton-Cholesky, and PD. In the end, it will play three videos of almost identical motions, which also cross-validates the implementations of these three simulation methods. With the explicit method, the jumper gains more and more energy by hitting the ground. With the implicit method, the jumper becomes damped and a bit sticky.
+- `collision_3d` shows a 3D cuboid hitting on the ground with an implicit penalty force. The simulation is done with Newton-PCG, Newton-Cholesky, and PD. In the end, it will play three videos of almost identical motions, which also cross-validates the implementations of these three simulation methods. With the implicit method, the jumper becomes damped and a bit sticky.
 
 ### Demos
 - `benchmark_3d` compares and reports the time cost of one forward call and one backward call in Newton-PCG, Newton-Cholesky, and PD. Below is the time cost on a benchmark cantilever beam with 4131 DoFs. We simulated the example for 30 frames with dt = `0.03`. `forward` and `backward` indicates the time cost for forward simulation (30 frames in total) and back propagation respectively. This result was generated with `OMP_NUM_THREADS=4`.

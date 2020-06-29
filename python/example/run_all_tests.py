@@ -22,6 +22,8 @@ if __name__ == '__main__':
         'deformable_backward_3d',
         # Quasi-static solvers.
         'deformable_quasi_static_3d',
+        # Collisions.
+        'collision_3d',
     ]
 
     failure_cnt = 0

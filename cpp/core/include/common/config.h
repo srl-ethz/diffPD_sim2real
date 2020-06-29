@@ -26,7 +26,16 @@
 
 using real = double;
 
-#define SAFETY_CHECK    1
+// PRINT_LEVEL:
+// 0: silence;
+// 1: print error only;
+// 2: print error and warning;
+// 3: print all.
+#define PRINT_NOTHING           0
+#define PRINT_ERROR             1
+#define PRINT_ERROR_AND_WARNING 2
+#define PRINT_ALL               3
+#define PRINT_LEVEL             PRINT_ERROR
 
 using Vector2i = Eigen::Matrix<int, 2, 1>;
 using Vector3i = Eigen::Matrix<int, 3, 1>;
