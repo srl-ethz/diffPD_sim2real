@@ -196,7 +196,7 @@ def test_deformable_backward_3d(verbose):
         t1 = time.time()
         # Print time even if verbose is False --- without this print, Travis CI will unfortunately terminate
         # the build process because its CPU is so slow that it won't finish this test in 10 minutes.
-        print_info('Gradient check finished in {:3.3f}s.'.format(t1 - t0))
+        print_info('Gradient check for {} finished in {:3.3f}s.'.format(method, t1 - t0))
 
     return True
 

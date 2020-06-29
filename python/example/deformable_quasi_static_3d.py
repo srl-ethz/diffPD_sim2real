@@ -29,7 +29,8 @@ def compare_mesh_3d(mesh1, mesh2):
 def test_deformable_quasi_static_3d(verbose):
     seed = 42
     np.random.seed(seed)
-    print_info('Seed: {}'.format(seed))
+    if verbose:
+        print_info('Seed: {}'.format(seed))
 
     folder = Path('deformable_quasi_static_3d')
     display_method = 'pbrt'
