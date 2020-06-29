@@ -138,9 +138,7 @@ def test_deformable_backward_3d(verbose):
     rtols_master, losses_master, grads_master = pickle.load(open(folder / 'table_master.bin', 'rb'))
     def compare_list(l1, l2):
         if len(l1) != len(l2): return False
-        for e1, e2 in zip(l1, l2):
-            if e1 != e2: return False
-        return True
+        return np.allclose(l1, l2)
     if not compare_list(rtols, rtols_master):
         if verbose:
             print_error('rtols and rtols_master are different.')
