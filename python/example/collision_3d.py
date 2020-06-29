@@ -30,7 +30,8 @@ def compare_mesh_3d(mesh1, mesh2):
 def test_collision_3d(verbose):
     seed = 42
     np.random.seed(seed)
-    print_info('Seed: {}'.format(seed))
+    if verbose:
+        print_info('Seed: {}'.format(seed))
 
     folder = Path('collision_3d')
     img_resolution = (400, 400)
