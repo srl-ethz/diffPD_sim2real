@@ -11,15 +11,29 @@ from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.display import display_hex_mesh, render_hex_mesh, export_gif
 
-if __name__ == '__main__':
+def compare_mesh_3d(mesh1, mesh2):
+    # Make sure they have the same size.
+    if mesh1.NumOfElements() != mesh2.NumOfElements(): return False
+    if mesh1.NumOfVertices() != mesh2.NumOfVertices(): return False
+    # Check elements.
+    for f in range(mesh1.NumOfElements()):
+        fi = ndarray(mesh1.py_element(f))
+        fj = ndarray(mesh2.py_element(f))
+        if np.max(np.abs(fi - fj)) > 0:
+            return False
+    # Check vertices.
+    vi = ndarray(mesh1.py_vertices())
+    vj = ndarray(mesh2.py_vertices())
+    return np.allclose(vi.ravel(), vj.ravel())
+
+def test_deformable_quasi_static_3d(verbose):
     seed = 42
     np.random.seed(seed)
     print_info('Seed: {}'.format(seed))
 
     folder = Path('deformable_quasi_static_3d')
     display_method = 'pbrt'
-    render_samples = 4
-    create_folder(folder)
+    render_samples = 16
 
     # Mesh parameters.
     cell_nums = (2, 2, 4)
@@ -68,16 +82,30 @@ if __name__ == '__main__':
     f_ext = np.zeros(dofs)
     q_array = StdRealVector(dofs)
     deformable.PyGetQuasiStaticState(method, f_ext, opt, q_array)
-
-    # Display the state.
     deformable.PySaveToMeshFile(q_array, str(folder / 'quasi_static.bin'))
     mesh = Mesh3d()
     mesh.Initialize(str(folder / 'quasi_static.bin'))
-    if display_method == 'pbrt':
-        render_hex_mesh(mesh, file_name=folder / 'quasi_static.png', sample=render_samples,
-            transforms=[('t', (.1, .1, 0)), ('s', 2.5)])
-        import os
-        os.system('eog {}'.format(folder / 'quasi_static.png'))
-    elif display_method == 'matplotlib':
-        display_hex_mesh(mesh, xlim=[-dx, (cell_nums[0] + 1) * dx], ylim=[-dx, (cell_nums[1] + 1) * dx],
-            title='Quasi-static', file_name=folder / 'quasi_static.png', show=True)
+    mesh_template = Mesh3d()
+    mesh_template.Initialize(str(folder / 'quasi_static_master.bin'))
+    # Compuare mesh and mesh_template.
+    if not compare_mesh_3d(mesh_template, mesh):
+        if verbose:
+            print_error('Quasi-static solution is not as expected.')
+        return False
+
+    if verbose:
+        # Display the state.
+        if display_method == 'pbrt':
+            render_hex_mesh(mesh, file_name=folder / 'quasi_static.png', sample=render_samples,
+                transforms=[('t', (.1, .1, 0)), ('s', 2.5)])
+            import os
+            os.system('eog {}'.format(folder / 'quasi_static.png'))
+        elif display_method == 'matplotlib':
+            display_hex_mesh(mesh, xlim=[-dx, (cell_nums[0] + 1) * dx], ylim=[-dx, (cell_nums[1] + 1) * dx],
+                title='Quasi-static', file_name=folder / 'quasi_static.png', show=True)
+
+    return True
+
+if __name__ == '__main__':
+    verbose = True
+    test_deformable_quasi_static_3d(verbose)

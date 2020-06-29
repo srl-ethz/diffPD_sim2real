@@ -134,7 +134,7 @@ def test_deformable_backward_3d(verbose):
             grads[method].append(grad_norm)
 
     pickle.dump((rtols, losses, grads), open(folder / 'table.bin', 'wb'))
-    # Compare table.bin to table_master.bin
+    # Compare table.bin to table_master.bin.
     rtols_master, losses_master, grads_master = pickle.load(open(folder / 'table_master.bin', 'rb'))
     def compare_list(l1, l2):
         if len(l1) != len(l2): return False
@@ -154,7 +154,7 @@ def test_deformable_backward_3d(verbose):
             return False
 
     if verbose:
-        # Plot loss and grad vs rtol
+        # Plot loss and grad vs rtol.
         import matplotlib.pyplot as plt
         fig = plt.figure(figsize=(10, 5))
         ax_fb = fig.add_subplot(121)

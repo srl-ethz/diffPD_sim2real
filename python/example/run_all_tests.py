@@ -20,6 +20,8 @@ if __name__ == '__main__':
         'pd_forward',
         'deformable_backward_2d',
         'deformable_backward_3d',
+        # Quasi-static solvers.
+        'deformable_quasi_static_3d',
     ]
 
     failure_cnt = 0
