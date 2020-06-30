@@ -112,7 +112,7 @@ def step(method, opt, vis_path, deformable, qv, f, frame_num, dt):
     for i in range(frame_num):
         q_next_array = StdRealVector(dofs)
         v_next_array = StdRealVector(dofs)
-        deformable.PyForward(method, q[-1], v[-1], f[i], dt, opt, q_next_array, v_next_array)
+        deformable.PyForward(method, q[-1], v[-1], StdRealVector(0), f[i], dt, opt, q_next_array, v_next_array)
         deformable.PySaveToMeshFile(q[-1], str(vis_path / '{:04d}.bin'.format(i)))
         q_next = ndarray(q_next_array)
         v_next = ndarray(v_next_array)

@@ -28,7 +28,6 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
     const real mass = density_ * cell_volume_;
     const real h2m = dt * dt / mass;
     const VectorXr rhs = q + dt * v + h2m * (f_ext + ForwardStateForce(q, v));
-    auto eval_force = [&](const VectorXr& q_cur){ return ElasticForce(q_cur) + PdEnergyForce(q_cur) + ActuationForce(q_cur, a); };
     VectorXr selected = VectorXr::Ones(dofs_);
     // q_next - h2m * eval_force(q_next) = rhs.
     VectorXr q_sol = rhs;
@@ -37,7 +36,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
         q_sol(pair.first) = pair.second;
         selected(pair.first) = 0;
     }
-    VectorXr force_sol = eval_force(q_sol);
+    VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
     if (verbose_level > 0) PrintInfo("Newton's method");
     for (int i = 0; i < max_newton_iter; ++i) {
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
@@ -70,12 +69,12 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
         // Line search.
         real step_size = 1;
         VectorXr q_sol_next = q_sol + step_size * dq;
-        VectorXr force_next = eval_force(q_sol_next);
+        VectorXr force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
         for (int j = 0; j < max_ls_iter; ++j) {
             if (!force_next.hasNaN()) break;
             step_size /= 2;
             q_sol_next = q_sol + step_size * dq;
-            force_next = eval_force(q_sol_next);
+            force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
             if (verbose_level > 1) std::cout << "Line search iteration: " << j << ", step size: " << step_size << std::endl;
             PrintWarning("Newton's method is using < 1 step size: " + std::to_string(step_size));
         }
