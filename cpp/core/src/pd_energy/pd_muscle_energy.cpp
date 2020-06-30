@@ -1,4 +1,5 @@
 #include "pd_energy/pd_muscle_energy.h"
+#include "common/geometry.h"
 #include "common/common.h"
 
 template<int dim>
@@ -43,7 +44,7 @@ const Eigen::Matrix<real, dim, dim> PdMuscleEnergy<dim>::StressTensorDifferentia
     else {
         const Eigen::Matrix<real, dim, 1> dFm = dF * fiber_direction_;
         const real dl = (Fm / l).dot(dFm);
-        // r = 1 - activation_level_ / l.
+        // r = 1 - activation_level / l.
         const real r = 1 - activation_level / l;
         const real dr = activation_level * dl / l / l;
         Eigen::Matrix<real, dim, dim> dP = stiffness_ * (dr * F + r * dF) * mmt_;
@@ -66,22 +67,20 @@ void PdMuscleEnergy<dim>::StressTensorDifferential(const Eigen::Matrix<real, dim
         // dFm = dF_ij * m_j.
         // dl = 1 / l * Fm_i * dFm_i = 1 / l * Fm_i * dF_ij * m_j.
         // dl = (Fm_i * m_j / l) * dF_ij.
-        const Eigen::Matrix<real, dim, dim> dl = Fm * fiber_direction_.transpose() / l;
+        const Eigen::Matrix<real, dim, dim> Fmmt = F * mmt_;
         const real r = 1 - activation_level / l;
-        const Eigen::Matrix<real, dim, dim> dr = activation_level * dl / l / l;
+        const Eigen::Matrix<real, dim * dim, 1> dr = activation_level * Flatten(Fmmt) / (l * l * l);
         // stiffness_ * ((dr : dF) * F + r * dF) * mmt.
-        // P_ij = stiffness * (dr_ik * dF_ik * F_kp + r * dF_ip) * mmt_pj.
+        // P_ij = stiffness * (dr_sl * dF_sl * F_ip + r * dF_ip) * mmt_pj.
         //      = stiffness * (dr_ik * F_kp * mmt_pj * dF_ik + r * mmt_pj * dF_ip).
         Eigen::Matrix<real, dim * dim, dim * dim> Pij;
         Pij.setZero();
-        // Part 1: P_ij = dr_ik * F_kp * mmt_pj * dF_ik.
-        const Eigen::Matrix<real, dim, dim> Fmmt = F * mmt_;
-        // P_ij = dr_ik * Fmmt_kj * dF_ik.
+        // Part 1: P_ij = dr_sl * F_ip * mmt_pj * dF_sl.
+        // P_ij = dr_sl * Fmmt_ij * dF_sl.
         for (int i = 0; i < dim; ++i)
             for (int j = 0; j < dim; ++j) {
-                const int row = i + j * dim + i;
-                for (int k = 0; k < dim; ++k)
-                    Pij(row, k * dim + i) += dr(i, k) * Fmmt(k, j);
+                const int row = i + j * dim;
+                Pij.row(row) += Fmmt(i, j) * dr;
             }
         // Part 2: P_ij = r * mmt_pj * dF_ip.
         for (int i = 0; i < dim; ++i)
@@ -93,8 +92,7 @@ void PdMuscleEnergy<dim>::StressTensorDifferential(const Eigen::Matrix<real, dim
         dF = stiffness_ * Pij;
         // P = stiffness_ * (1 - activation_level / l) * F * mmt_;
         const Eigen::Matrix<real, dim, dim> dactivation_level_matrix = -stiffness_ / l * F * mmt_;
-        dactivation_level = Eigen::Map<const Eigen::Matrix<real, dim * dim, 1>>(
-            dactivation_level_matrix.data(), dactivation_level_matrix.size());
+        dactivation_level = Flatten(dactivation_level_matrix);
     }
 }
 

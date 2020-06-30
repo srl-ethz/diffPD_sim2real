@@ -29,6 +29,7 @@ public:
     const real cell_volume() const { return cell_volume_; }
     const real dx() const { return dx_; }
     const int dofs() const { return dofs_; }
+    const int act_dofs() const { return act_dofs_; }
     const Mesh<vertex_dim, element_dim>& mesh() const { return mesh_; }
     const std::map<int, real>& dirichlet() const { return dirichlet_; }
     const std::vector<std::shared_ptr<StateForce<vertex_dim>>>& state_forces() const { return state_forces_; }

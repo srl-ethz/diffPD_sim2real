@@ -27,6 +27,7 @@ Navigate to the `python/example` path and run `python [example_name].py` where t
 - `elastic_energy_2d` and `elastic_energy_3d` test the implementation of `ElasticEnergy`, `ElasticForce`, and `ElasticForceDifferential`.
 - `state_force_2d` and `state_force_3d` test the implementation of state-based forces (e.g., friction, hydrodynamic force, penalty force for collisions) and their gradients w.r.t. position and velocity states.
 - `pd_energy_2d` and `pd_energy_3d` test the implementation of vertex-based and element-based projective dynamics energies.
+- `actuation_2d` and `actuation_3d` test the implementation of the muscle model.
 - `pd_forward` verifies the forward simulation of projective dynamics by comparing it to the solutions from Newton's method.
 - `deformable_backward_2d` uses central differencing to numerically check the gradients in Newton-PCG, Newton-Cholesky, and PD methods. A 2D rectangle is simulated with some fixed boundary conditions and a random but constant external force for 1 second at 30 fps. The loss is defined as a weighted sum of the final position and velocity and the gradients are computed by back-propagation.
 - `deformable_backward_3d` tests the forward simulation and back-propagation in 3D with three methods (Newton-PCG, Newton-Cholesky, and PD) and with dirichlet boundary conditions, gravity, and collisions. `deformable_backward_3d` also plots the loss and magnitude of the three methods against the relative tolerance that was used to compute them.

@@ -17,6 +17,8 @@ if __name__ == '__main__':
         'state_force_3d',
         'pd_energy_2d',
         'pd_energy_3d',
+        'actuation_2d',
+        'actuation_3d',
         'pd_forward',
         'deformable_backward_2d',
         'deformable_backward_3d',
