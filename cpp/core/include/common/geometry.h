@@ -19,4 +19,9 @@ void dSvd(const Matrix2r& F, const Matrix2r& U, const Vector2r& sig, const Matri
 void dSvd(const Matrix3r& F, const Matrix3r& U, const Vector3r& sig, const Matrix3r& V, const Matrix3r& dF,
     Matrix3r& dU, Vector3r& dsig, Matrix3r& dV);
 
+const Vector4r Flatten(const Matrix2r& A);
+const Vector9r Flatten(const Matrix3r& A);
+const Matrix2r Unflatten(const Vector4r& a);
+const Matrix3r Unflatten(const Vector9r& a);
+
 #endif

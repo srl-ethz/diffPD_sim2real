@@ -35,8 +35,8 @@ void RotatingDeformable<vertex_dim, element_dim>::Initialize(const Eigen::Matrix
 }
 
 template<int vertex_dim, int element_dim>
-void RotatingDeformable<vertex_dim, element_dim>::ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
-    const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
+void RotatingDeformable<vertex_dim, element_dim>::ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& a,
+    const VectorXr& f_ext, const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
     CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_vertex_energies().empty(), "PdVertexEnergy is not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_element_energies().empty(), "PdElementEnergy is not supported in the rotating frame.");
@@ -68,7 +68,8 @@ void RotatingDeformable<vertex_dim, element_dim>::ForwardSemiImplicit(const Vect
 
 template<int vertex_dim, int element_dim>
 void RotatingDeformable<vertex_dim, element_dim>::ForwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v,
-    const VectorXr& f_ext, const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
+    const VectorXr& a, const VectorXr& f_ext, const real dt, const std::map<std::string, real>& options,
+    VectorXr& q_next, VectorXr& v_next) const {
     CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_vertex_energies().empty(), "PdVertexEnergy is not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_element_energies().empty(), "PdElementEnergy is not supported in the rotating frame.");
@@ -178,9 +179,9 @@ void RotatingDeformable<vertex_dim, element_dim>::ForwardNewton(const std::strin
 }
 
 template<int vertex_dim, int element_dim>
-void RotatingDeformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q, const VectorXr& v,
+void RotatingDeformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& a,
     const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next,
-    const VectorXr& dl_dv_next, const std::map<std::string, real>& options, VectorXr& dl_dq, VectorXr& dl_dv,
+    const VectorXr& dl_dv_next, const std::map<std::string, real>& options, VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da,
     VectorXr& dl_df_ext) const {
     CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_vertex_energies().empty(), "PdVertexEnergy is not supported in the rotating frame.");
@@ -191,9 +192,9 @@ void RotatingDeformable<vertex_dim, element_dim>::BackwardSemiImplicit(const Vec
 
 template<int vertex_dim, int element_dim>
 void RotatingDeformable<vertex_dim, element_dim>::BackwardNewton(const std::string& method, const VectorXr& q,
-    const VectorXr& v, const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next,
+    const VectorXr& v, const VectorXr& a, const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next,
     const VectorXr& dl_dq_next, const VectorXr& dl_dv_next, const std::map<std::string, real>& options, VectorXr& dl_dq,
-    VectorXr& dl_dv, VectorXr& dl_df_ext) const {
+    VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext) const {
     CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_vertex_energies().empty(), "PdVertexEnergy is not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_element_energies().empty(), "PdElementEnergy is not supported in the rotating frame.");
@@ -248,8 +249,8 @@ void RotatingDeformable<vertex_dim, element_dim>::BackwardNewton(const std::stri
 }
 
 template<int vertex_dim, int element_dim>
-void RotatingDeformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::string& method, const VectorXr& f_ext,
-    const std::map<std::string, real>& options, VectorXr& q) const {
+void RotatingDeformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::string& method, const VectorXr& a,
+    const VectorXr& f_ext, const std::map<std::string, real>& options, VectorXr& q) const {
     CheckError(Deformable<vertex_dim, element_dim>::state_forces().empty(), "State forces are not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_vertex_energies().empty(), "PdVertexEnergy is not supported in the rotating frame.");
     CheckError(Deformable<vertex_dim, element_dim>::pd_element_energies().empty(), "PdElementEnergy is not supported in the rotating frame.");

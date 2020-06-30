@@ -1,5 +1,6 @@
 #include "fem/deformable.h"
 #include "common/common.h"
+#include "common/geometry.h"
 #include "solver/matrix_op.h"
 #include "material/linear.h"
 #include "material/corotated.h"
@@ -128,28 +129,29 @@ void Deformable<vertex_dim, element_dim>::InitializeShapeFunction() {
 }
 
 template<int vertex_dim, int element_dim>
-void Deformable<vertex_dim, element_dim>::Forward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
+void Deformable<vertex_dim, element_dim>::Forward(const std::string& method, const VectorXr& q, const VectorXr& v,
+    const VectorXr& a, const VectorXr& f_ext,
     const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
-    if (method == "semi_implicit") ForwardSemiImplicit(q, v, f_ext, dt, options, q_next, v_next);
-    else if (method == "pd") ForwardProjectiveDynamics(q, v, f_ext, dt, options, q_next, v_next);
-    else if (BeginsWith(method, "newton")) ForwardNewton(method, q, v, f_ext, dt, options, q_next, v_next);
+    if (method == "semi_implicit") ForwardSemiImplicit(q, v, a, f_ext, dt, options, q_next, v_next);
+    else if (method == "pd") ForwardProjectiveDynamics(q, v, a, f_ext, dt, options, q_next, v_next);
+    else if (BeginsWith(method, "newton")) ForwardNewton(method, q, v, a, f_ext, dt, options, q_next, v_next);
     else PrintError("Unsupported forward method: " + method);
 }
 
 template<int vertex_dim, int element_dim>
-void Deformable<vertex_dim, element_dim>::Backward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& f_ext,
-    const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
-    const std::map<std::string, real>& options,
-    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_df_ext) const {
+void Deformable<vertex_dim, element_dim>::Backward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& a,
+    const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next,
+    const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
+    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext) const {
     if (method == "semi_implicit")
-        BackwardSemiImplicit(q, v, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
-            dl_dq, dl_dv, dl_df_ext);
+        BackwardSemiImplicit(q, v, a, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
+            dl_dq, dl_dv, dl_da, dl_df_ext);
     else if (method == "pd")
-        BackwardProjectiveDynamics(q, v, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
-            dl_dq, dl_dv, dl_df_ext);
+        BackwardProjectiveDynamics(q, v, a, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
+            dl_dq, dl_dv, dl_da, dl_df_ext);
     else if (BeginsWith(method, "newton"))
-        BackwardNewton(method, q, v, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
-            dl_dq, dl_dv, dl_df_ext);
+        BackwardNewton(method, q, v, a, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
+            dl_dq, dl_dv, dl_da, dl_df_ext);
     else
         PrintError("Unsupported backward method: " + method);
 }
@@ -166,26 +168,27 @@ void Deformable<vertex_dim, element_dim>::SaveToMeshFile(const VectorXr& q, cons
 // For Python binding.
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::PyForward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v,
-    const std::vector<real>& f_ext, const real dt, const std::map<std::string, real>& options,
+    const std::vector<real>& a, const std::vector<real>& f_ext, const real dt, const std::map<std::string, real>& options,
     std::vector<real>& q_next, std::vector<real>& v_next) const {
     VectorXr q_next_eig, v_next_eig;
-    Forward(method, ToEigenVector(q), ToEigenVector(v), ToEigenVector(f_ext), dt, options, q_next_eig, v_next_eig);
+    Forward(method, ToEigenVector(q), ToEigenVector(v), ToEigenVector(a), ToEigenVector(f_ext), dt, options, q_next_eig, v_next_eig);
     q_next = ToStdVector(q_next_eig);
     v_next = ToStdVector(v_next_eig);
 }
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::PyBackward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v,
-    const std::vector<real>& f_ext, const real dt, const std::vector<real>& q_next, const std::vector<real>& v_next,
-    const std::vector<real>& dl_dq_next, const std::vector<real>& dl_dv_next,
+    const std::vector<real>& a, const std::vector<real>& f_ext, const real dt, const std::vector<real>& q_next,
+    const std::vector<real>& v_next, const std::vector<real>& dl_dq_next, const std::vector<real>& dl_dv_next,
     const std::map<std::string, real>& options,
-    std::vector<real>& dl_dq, std::vector<real>& dl_dv, std::vector<real>& dl_df_ext) const {
-    VectorXr dl_dq_eig, dl_dv_eig, dl_df_ext_eig;
-    Backward(method, ToEigenVector(q), ToEigenVector(v), ToEigenVector(f_ext), dt, ToEigenVector(q_next),
+    std::vector<real>& dl_dq, std::vector<real>& dl_dv, std::vector<real>& dl_da, std::vector<real>& dl_df_ext) const {
+    VectorXr dl_dq_eig, dl_dv_eig, dl_da_eig, dl_df_ext_eig;
+    Backward(method, ToEigenVector(q), ToEigenVector(v), ToEigenVector(a), ToEigenVector(f_ext), dt, ToEigenVector(q_next),
         ToEigenVector(v_next), ToEigenVector(dl_dq_next), ToEigenVector(dl_dv_next), options,
-        dl_dq_eig, dl_dv_eig, dl_df_ext_eig);
+        dl_dq_eig, dl_dv_eig, dl_da_eig, dl_df_ext_eig);
     dl_dq = ToStdVector(dl_dq_eig);
     dl_dv = ToStdVector(dl_dv_eig);
+    dl_da = ToStdVector(dl_da_eig);
     dl_df_ext = ToStdVector(dl_df_ext_eig);
 }
 
@@ -259,8 +262,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::ElasticForce(const VectorXr&
         for (int j = 0; j < sample_num; ++j) {
             const auto F = DeformationGradient(deformed, j);
             const auto P = material_->StressTensor(F);
-            const Eigen::Matrix<real, element_dim * vertex_dim, 1> f_kd =
-                dF_dxkd_flattened_[j] * Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(P.data(), P.size());
+            const Eigen::Matrix<real, element_dim * vertex_dim, 1> f_kd = dF_dxkd_flattened_[j] * Flatten(P);
             for (int k = 0; k < element_dim; ++k)
                 for (int d = 0; d < vertex_dim; ++d)
                     f_ints[k](vertex_dim * vi(k) + d) += f_kd(k * vertex_dim + d);
@@ -291,7 +293,7 @@ const SparseMatrixElements Deformable<vertex_dim, element_dim>::ElasticForceDiff
                 for (int t = 0; t < vertex_dim; ++t) {
                     const Eigen::Matrix<real, vertex_dim, vertex_dim> dF_single =
                         Eigen::Matrix<real, vertex_dim, 1>::Unit(t) / dx_ * grad_undeformed_sample_weights_[j].col(s).transpose();
-                    dF.col(s * vertex_dim + t) += Eigen::Map<const VectorXr>(dF_single.data(), dF_single.size());
+                    dF.col(s * vertex_dim + t) += Flatten(dF_single);
             }
             const auto dP = material_->StressTensorDifferential(F) * dF;
             const Eigen::Matrix<real, element_dim * vertex_dim, element_dim * vertex_dim> df_kd = dF_dxkd_flattened_[j] * dP;
@@ -323,9 +325,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::ElasticForceDifferential(con
             const auto F = DeformationGradient(deformed, j);
             const auto dF = DeformationGradient(ddeformed, j);
             const Eigen::Matrix<real, vertex_dim, vertex_dim> dP = material_->StressTensorDifferential(F, dF);
-            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> dP_flattened =
-                Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(dP.data(), dP.size());
-            const Eigen::Matrix<real, element_dim * vertex_dim, 1> df_kd = dF_dxkd_flattened_[j] * dP_flattened;
+            const Eigen::Matrix<real, element_dim * vertex_dim, 1> df_kd = dF_dxkd_flattened_[j] * Flatten(dP);
             for (int k = 0; k < element_dim; ++k)
                 for (int d = 0; d < vertex_dim; ++d)
                     df_ints[k](vertex_dim * vi(k) + d) += df_kd(k * vertex_dim + d);

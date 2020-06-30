@@ -184,3 +184,19 @@ void dSvd(const Matrix3r& F, const Matrix3r& U, const Vector3r& sig, const Matri
     dU = U * domega_U;
     dV = V * domega_V;
 }
+
+const Vector4r Flatten(const Matrix2r& A) {
+    return Eigen::Map<const Vector4r>(A.data(), A.size());
+}
+
+const Vector9r Flatten(const Matrix3r& A) {
+    return Eigen::Map<const Vector9r>(A.data(), A.size());
+}
+
+const Matrix2r Unflatten(const Vector4r& a) {
+    return Eigen::Map<const Matrix2r>(a.data(), 2, 2);
+}
+
+const Matrix3r Unflatten(const Vector9r& a) {
+    return Eigen::Map<const Matrix3r>(a.data(), 3, 3);
+}

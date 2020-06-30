@@ -16,6 +16,7 @@ void Deformable<vertex_dim, element_dim>::AddStateForce(const std::string& force
         state_forces_.push_back(force);
     } else if (force_type == "planar_collision") {
         CheckError(param_size == 3 + vertex_dim, "Inconsistent params for PlanarCollisionStateForce.");
+        PrintWarning("Explicit planar collisions is not recommended. Consider using PdVertexEnergy instead.");
         const real stiffness = params[0];
         const real cutoff_dist = params[1];
         Eigen::Matrix<real, vertex_dim, 1> normal;
@@ -48,6 +49,21 @@ void Deformable<vertex_dim, element_dim>::BackwardStateForce(const VectorXr& q, 
         dl_dq += dl_dqi;
         dl_dv += dl_dvi;
     }
+}
+
+template<int vertex_dim, int element_dim>
+const std::vector<real> Deformable<vertex_dim, element_dim>::PyForwardStateForce(const std::vector<real>& q,
+    const std::vector<real>& v) const {
+    return ToStdVector(ForwardStateForce(ToEigenVector(q), ToEigenVector(v)));
+}
+
+template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::PyBackwardStateForce(const std::vector<real>& q, const std::vector<real>& v,
+    const std::vector<real>& f, const std::vector<real>& dl_df, std::vector<real>& dl_dq, std::vector<real>& dl_dv) const {
+    VectorXr dl_dq_eig, dl_dv_eig;
+    BackwardStateForce(ToEigenVector(q), ToEigenVector(v), ToEigenVector(f), ToEigenVector(dl_df), dl_dq_eig, dl_dv_eig);
+    dl_dq = ToStdVector(dl_dq_eig);
+    dl_dv = ToStdVector(dl_dv_eig);
 }
 
 template class Deformable<2, 4>;

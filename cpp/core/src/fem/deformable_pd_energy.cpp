@@ -1,11 +1,11 @@
 #include "fem/deformable.h"
+#include "common/geometry.h"
 #include "pd_energy/planar_collision_pd_vertex_energy.h"
 #include "pd_energy/corotated_pd_element_energy.h"
 #include "pd_energy/volume_pd_element_energy.h"
-#include "pd_energy/pd_muscle_energy.h"
 
 template<int vertex_dim, int element_dim>
-void Deformable<vertex_dim, element_dim>::AddPdEnergy(const std::string& energy_type, const std::vector<real> params,
+void Deformable<vertex_dim, element_dim>::AddPdEnergy(const std::string& energy_type, const std::vector<real>& params,
     const std::vector<int>& indices) {
     pd_solver_ready_ = false;
     const int param_size = static_cast<int>(params.size());
@@ -17,46 +17,33 @@ void Deformable<vertex_dim, element_dim>::AddPdEnergy(const std::string& energy_
         for (int i = 0; i < vertex_dim; ++i) normal[i] = params[1 + i];
         const real offset = params[1 + vertex_dim];
         energy->Initialize(stiffness, normal, offset);
+
         // Treat indices as vertex indices.
         std::set<int> vertex_indices;
         for (const int idx : indices) {
             CheckError(0 <= idx && idx < mesh_.NumOfVertices(), "Vertex index out of bound.");
             vertex_indices.insert(idx);
         }
+
         pd_vertex_energies_.push_back(std::make_pair(energy, vertex_indices));
     } else if (energy_type == "corotated") {
         CheckError(param_size == 1, "Inconsistent param size.");
         auto energy = std::make_shared<CorotatedPdElementEnergy<vertex_dim>>();
         const real stiffness = params[0];
         energy->Initialize(stiffness);
+
         CheckError(indices.empty(), "Corotated PD material is assumed to be applied to all elements.");
+
         pd_element_energies_.push_back(energy);
     } else if (energy_type == "volume") {
         CheckError(param_size == 1, "Inconsistent param size.");
         auto energy = std::make_shared<VolumePdElementEnergy<vertex_dim>>();
         const real stiffness = params[0];
         energy->Initialize(stiffness);
+
         CheckError(indices.empty(), "Volume PD material is assumed to be applied to all elements.");
+
         pd_element_energies_.push_back(energy);
-    } else if (energy_type == "muscle") {
-        CheckError(param_size == 1 + vertex_dim, "Inconsistent param size.");
-        auto energy = std::make_shared<PdMuscleEnergy<vertex_dim>>();
-        const real stiffness = params[0];
-        Eigen::Matrix<real, vertex_dim, 1> fiber_direction;
-        for (int i = 0; i < vertex_dim; ++i) fiber_direction(i) = params[1 + i];
-        energy->Initialize(stiffness, fiber_direction);
-        // Check muscles.
-        std::set<int> unique_idx;
-        std::vector<int> element_idx;
-        const int element_num = mesh_.NumOfElements();
-        for (const int idx : indices) {
-            CheckError(0 <= idx && idx < element_num, "Element index out of bound.");
-            CheckError(unique_idx.find(idx) == unique_idx.end(), "Duplicated elements.");
-            element_idx.push_back(idx);
-            unique_idx.insert(idx);
-        }
-        pd_muscle_energies_.push_back(std::make_pair(energy, element_idx));
-        act_dofs_ += static_cast<int>(element_idx.size());
     } else {
         PrintError("Unsupported PD energy: " + energy_type);
     }
@@ -113,8 +100,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdEnergyForce(const VectorXr
             for (int j = 0; j < sample_num; ++j) {
                 const auto F = DeformationGradient(deformed, j);
                 const auto P = energy->StressTensor(F);
-                const Eigen::Matrix<real, element_dim * vertex_dim, 1> f_kd =
-                    dF_dxkd_flattened_[j] * Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(P.data(), P.size());
+                const Eigen::Matrix<real, element_dim * vertex_dim, 1> f_kd = dF_dxkd_flattened_[j] * Flatten(P);
                 for (int k = 0; k < element_dim; ++k)
                     for (int d = 0; d < vertex_dim; ++d)
                         f_ints[k](vertex_dim * vi(k) + d) += f_kd(k * vertex_dim + d);
@@ -153,9 +139,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdEnergyForceDifferential(co
                 const auto F = DeformationGradient(deformed, j);
                 const auto dF = DeformationGradient(ddeformed, j);
                 const Eigen::Matrix<real, vertex_dim, vertex_dim> dP = energy->StressTensorDifferential(F, dF);
-                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> dP_flattened =
-                    Eigen::Map<const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(dP.data(), dP.size());
-                const Eigen::Matrix<real, element_dim * vertex_dim, 1> df_kd = dF_dxkd_flattened_[j] * dP_flattened;
+                const Eigen::Matrix<real, element_dim * vertex_dim, 1> df_kd = dF_dxkd_flattened_[j] * Flatten(dP);
                 for (int k = 0; k < element_dim; ++k)
                     for (int d = 0; d < vertex_dim; ++d)
                         df_ints[k](vertex_dim * vi(k) + d) += df_kd(k * vertex_dim + d);
@@ -195,7 +179,7 @@ const SparseMatrixElements Deformable<vertex_dim, element_dim>::PdEnergyForceDif
                     for (int t = 0; t < vertex_dim; ++t) {
                         const Eigen::Matrix<real, vertex_dim, vertex_dim> dF_single =
                             Eigen::Matrix<real, vertex_dim, 1>::Unit(t) / dx_ * grad_undeformed_sample_weights_[j].col(s).transpose();
-                        dF.col(s * vertex_dim + t) += Eigen::Map<const VectorXr>(dF_single.data(), dF_single.size());
+                        dF.col(s * vertex_dim + t) += Flatten(dF_single);
                 }
                 const auto dP = energy->StressTensorDifferential(F) * dF;
                 const Eigen::Matrix<real, element_dim * vertex_dim, element_dim * vertex_dim> df_kd = dF_dxkd_flattened_[j] * dP;
