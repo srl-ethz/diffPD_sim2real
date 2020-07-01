@@ -139,4 +139,38 @@ J_T * dq - h2m * J_T * S * J * J_T * dq
 This confirms that `J_T * dq` is one solution to the dual system. Since `I - h2m * J`' is symmetric positive definite, the solution is unique, finihsing our proof. This shows a (well known) less destructive method to update Newton's iterations.
 
 ### PD method
-TODO.
+The governing equations are
+```
+q_next = q + h * v_next
+v_next = v + h / m * (f_ext + f_ela(q_next) + f_state(q, v) + f_pd(q_next) + f_act(q_next, u))
+```
+Note that f_ela is not supported in PD, we have
+```
+q_next = q + h * v + h2m * f_ext + h2m * f_state(q, v) + h2m * f_pd(q_next) + h2m * f_act(q_next, u)
+```
+or equivalently,
+```
+q_next - h2m * f_pd(q_next) - h2m * f_act(q_next, u) = q + h * v + h2m * f_ext + h2m * f_state(q, v)
+```
+Let `rhs := q + h * v + h2m * f_ext + h2m * f_state(q, v)` and notice that
+```
+f_pd(q_next) = -w_i S'A'(ASq_next - proj(q_next))
+```
+for element energy, and
+```
+f_pd(q_next)_i = -w_i (q_i - proj(q_i))
+```
+for vertex energy. For muscles, we have
+```
+f_act(q_next, u)_i = -w_i S'A'M'(MASq_next - proj(q_next))
+```
+As a result, the governing equations become:
+```
+q_next + h2m * w_i * S'A'AS q_next + h2m * w_i * q_i + h2m * w_i * S'A'M'MASq_next
+= rhs + h2m * w_i * S'A' * proj(q_next) + h2m * w_i * proj(q_i) + h2m * w_i * S'A'M' proj(q_next)
+```
+Therefore, the PD-style updates are:
+```
+(I + h2m * w_i * S'A'AS + h2m * w_i + h2m * w_i * S'A'M'MAS)q_next = rhs + ...
+```
+To incorporate Dirichlet boundary conditions, we zero out rows and cols in the matrix after the first plus on the left-hand side.

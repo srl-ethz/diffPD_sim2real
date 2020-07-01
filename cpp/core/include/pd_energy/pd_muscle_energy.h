@@ -12,6 +12,8 @@ public:
 
     const real stiffness() const { return stiffness_; }
     const Eigen::Matrix<real, dim, 1>& fiber_direction() const { return fiber_direction_; }
+    const SparseMatrix MtM() const { return MtM_; }
+    const SparseMatrix Mt() const { return Mt_; }
 
     const real EnergyDensity(const Eigen::Matrix<real, dim, dim>& F, const real activation_level) const;
     const Eigen::Matrix<real, dim, dim> StressTensor(const Eigen::Matrix<real, dim, dim>& F,
@@ -21,10 +23,22 @@ public:
     void StressTensorDifferential(const Eigen::Matrix<real, dim, dim>& F, const real activation_level,
         Eigen::Matrix<real, dim * dim, dim * dim>& dF, Eigen::Matrix<real, dim * dim, 1>& dactivation_level) const;
 
+    // APIs needed by projective dynamics.
+    const Eigen::Matrix<real, dim, 1> ProjectToManifold(const Eigen::Matrix<real, dim, dim>& F,
+        const real activation_level) const;
+    const Eigen::Matrix<real, dim, 1> ProjectToManifoldDifferential(const Eigen::Matrix<real, dim, dim>& F,
+        const real activation_level, const Eigen::Matrix<real, dim, dim>& dF, const real dactivation_level) const;
+    void ProjectToManifoldDifferential(const Eigen::Matrix<real, dim, dim>& F, const real activation_level,
+        Eigen::Matrix<real, dim, dim * dim>& dF, Eigen::Matrix<real, dim, 1>& dactivation_level) const;
+
 private:
     real stiffness_;
     Eigen::Matrix<real, dim, 1> fiber_direction_;
     Eigen::Matrix<real, dim, dim> mmt_;
+    // M * Flatten(F) = Fm.
+    // MtM = M' * M.
+    SparseMatrix Mt_;
+    SparseMatrix MtM_;
 };
 
 #endif

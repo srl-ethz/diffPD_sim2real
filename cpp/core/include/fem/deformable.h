@@ -161,7 +161,7 @@ private:
     const SparseMatrix QuasiStaticMatrix(const VectorXr& q, const VectorXr& a) const;
 
     void SetupProjectiveDynamicsSolver(const real dt) const;
-    const VectorXr ProjectiveDynamicsLocalStep(const VectorXr& q_cur) const;
+    const VectorXr ProjectiveDynamicsLocalStep(const VectorXr& q_cur, const VectorXr& a_cur) const;
     const VectorXr ProjectiveDynamicsLocalStepTransposeDifferential(const VectorXr& q_cur, const VectorXr& dq_cur) const;
 
     void SetupProjectiveDynamicsLocalStepTransposeDifferential(const VectorXr& q_cur,

@@ -1,5 +1,6 @@
 #include "fem/deformable.h"
 #include "common/common.h"
+#include "common/geometry.h"
 #include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
@@ -7,30 +8,27 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
     CheckError(!material_, "PD does not support material models.");
 
     if (pd_solver_ready_) return;
+    // I + h2m * w_i * S'A'AS + h2m * w_i + h2m * w_i * S'A'M'MAS.
     // Assemble and pre-factorize the left-hand-side matrix.
     const int element_num = mesh_.NumOfElements();
     const int sample_num = element_dim;
     const int vertex_num = mesh_.NumOfVertices();
-    // The left-hand side is (m / h^2 + \sum w_i SAAS)q.
-    // Here we assemble I + h^2/m \sum w_i SAAS.
     const real mass = density_ * cell_volume_;
     const real h2m = dt * dt / mass;
     std::array<SparseMatrixElements, vertex_dim> nonzeros;
-    for (int i = 0; i < dofs_; ++i) {
-        // Skip dofs fixed by the dirichlet boundary conditions -- we will add them back later.
-        if (dirichlet_.find(i) == dirichlet_.end()) {
-            const int node_idx = i / vertex_dim;
-            const int node_offset = i % vertex_dim;
-            nonzeros[node_offset].push_back(Eigen::Triplet<real>(node_idx, node_idx, 1));
-        }
+    // Part I: Add I.
+    #pragma omp parallel for
+    for (int k = 0; k < vertex_dim; ++k) {
+        for (int i = 0; i < vertex_num; ++i)
+            nonzeros[k].push_back(Eigen::Triplet<real>(i, i, 1));
     }
 
-    // Part II: PD element energy.
+    // Part II: PD element energy: h2m * w_i * S'A'AS.
     real w = 0;
     for (const auto& energy : pd_element_energies_) w += energy->stiffness();
     w *= cell_volume_ / sample_num;
     const real h2mw = h2m * w;
-    // For each element and for eacn sample, AS maps q to the deformation gradient F.
+    // For each element and for each sample, AS maps q to the deformation gradient F.
     std::array<SparseMatrixElements, sample_num> AtA;
     for (int j = 0; j < sample_num; ++j) AtA[j] = FromSparseMatrix(pd_At_[j] * pd_A_[j]);
     for (int i = 0; i < element_num; ++i) {
@@ -57,21 +55,47 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
         }
     }
 
-    // PdVertexEnergy terms.
+    // PdVertexEnergy terms: h2m * w_i.
     for (const auto& pair : pd_vertex_energies_) {
         const auto& energy = pair.first;
         const real stiffness = energy->stiffness();
         const real h2mw = h2m * stiffness;
         for (const int idx : pair.second)
-            for (int k = 0; k < vertex_dim; ++k)
+            for (int k = 0; k < vertex_dim; ++k) {
+                CheckError(dirichlet_.find(vertex_dim * idx + k) == dirichlet_.end(),
+                    "A DoF is set by both vertex energy and boundary conditions.");
                 nonzeros[k].push_back(Eigen::Triplet<real>(idx, idx, h2mw));
+            }
     }
 
-    // Part III: add back dirichlet boundary conditions.
-    for (const auto& pair : dirichlet_) {
-        const int node_idx = pair.first / vertex_dim;
-        const int node_offset = pair.first % vertex_dim;
-        nonzeros[node_offset].push_back(Eigen::Triplet<real>(node_idx, node_idx, 1));
+    // PdMuscleEnergy terms: h2m * w_i * S'A'M'MAS.
+    for (const auto& pair : pd_muscle_energies_) {
+        const auto& energy = pair.first;
+        const auto& MtM = energy->MtM();
+        std::array<SparseMatrixElements, sample_num> AtMtMA;
+        for (int j = 0; j < sample_num; ++j) AtMtMA[j] = FromSparseMatrix(pd_At_[j] * MtM * pd_A_[j]);
+        const real h2mw = h2m * energy->stiffness() * cell_volume_ / sample_num;
+        for (const int i : pair.second) {
+            const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+            std::array<int, vertex_dim * element_dim> remap_idx;
+            for (int j = 0; j < element_dim; ++j)
+                for (int k = 0; k < vertex_dim; ++k)
+                    remap_idx[j * vertex_dim + k] = vertex_dim * vi[j] + k;
+            for (int j = 0; j < sample_num; ++j)
+                for (const auto& triplet: AtMtMA[j]) {
+                    const int row = triplet.row();
+                    const int col = triplet.col();
+                    const real val = triplet.value() * h2mw;
+                    // Skip dofs that are fixed by dirichlet boundary conditions.
+                    if (dirichlet_.find(remap_idx[row]) == dirichlet_.end() &&
+                        dirichlet_.find(remap_idx[col]) == dirichlet_.end()) {
+                        const int r = remap_idx[row];
+                        const int c = remap_idx[col];
+                        CheckError((r - c) % vertex_dim == 0, "AtMtMA violates the assumption that x, y, and z are decoupled.");
+                        nonzeros[r % vertex_dim].push_back(Eigen::Triplet<real>(r / vertex_dim, c / vertex_dim, val));
+                    }
+                }
+        }
     }
 
     // Assemble and pre-factorize the matrix.
@@ -85,8 +109,9 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
 
 // Returns \sum w_i (SA)'Bp.
 template<int vertex_dim, int element_dim>
-const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(const VectorXr& q_cur) const {
+const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(const VectorXr& q_cur, const VectorXr& a_cur) const {
     CheckError(!material_, "PD does not support material models.");
+    CheckError(act_dofs_ == static_cast<int>(a_cur.size()), "Inconsistent actuation size.");
     for (const auto& pair : dirichlet_) CheckError(q_cur(pair.first) == pair.second, "Boundary conditions violated.");
 
     // We minimize:
@@ -121,12 +146,9 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
             for (int j = 0; j < sample_num; ++j) {
                 const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
                 const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_bound = pd_A_[j] * deformed_dirichlet;
-                const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Map<const Eigen::Matrix<real, vertex_dim, vertex_dim>>(
-                    F_flattened.data(), vertex_dim, vertex_dim
-                );
+                const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Unflatten(F_flattened);
                 const Eigen::Matrix<real, vertex_dim, vertex_dim> Bp = energy->ProjectToManifold(F);
-                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> Bp_flattened = Eigen::Map<
-                    const Eigen::Matrix<real, vertex_dim * vertex_dim, 1>>(Bp.data(), Bp.size());
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> Bp_flattened = Flatten(Bp);
                 const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtBp = pd_At_[j] * (Bp_flattened - F_bound);
                 for (int k = 0; k < element_dim; ++k)
                     for (int d = 0; d < vertex_dim; ++d)
@@ -134,6 +156,36 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
             }
         }
     }
+    // Project PdMuscleEnergy:
+    // rhs = w_i S'A'M'(Bp(q) - MASq_0) = w_i * A' (M'Bp(q) - M'MASq_0).
+    int act_idx = 0;
+    for (const auto& pair : pd_muscle_energies_) {
+        const auto& energy = pair.first;
+        const real wi = energy->stiffness() * cell_volume_ / sample_num;
+        const auto& MtM = energy->MtM();
+        const auto& Mt = energy->Mt();
+        const int element_cnt = static_cast<int>(pair.second.size());
+        #pragma omp parallel for
+        for (int ei = 0; ei < element_cnt; ++ei) {
+            const int i = pair.second[ei];
+            const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+            const auto deformed = ScatterToElementFlattened(q_cur, i);
+            const auto deformed_dirichlet = ScatterToElementFlattened(q_boundary, i);
+            for (int j = 0; j < sample_num; ++j) {
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_bound = pd_A_[j] * deformed_dirichlet;
+                const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Unflatten(F_flattened);
+                const Eigen::Matrix<real, vertex_dim, 1> Bp = energy->ProjectToManifold(F, a_cur(act_idx + ei));
+                const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtBp = pd_At_[j] * (Mt * Bp - MtM * F_bound);
+                for (int k = 0; k < element_dim; ++k)
+                    for (int d = 0; d < vertex_dim; ++d)
+                        pd_rhss[k](vertex_dim * vi[k] + d) += wi * AtBp(k * vertex_dim + d);
+            }
+        }
+        act_idx += element_cnt;
+    }
+    CheckError(act_idx == act_dofs_, "Your loop over actions has introduced a bug.");
+
     VectorXr pd_rhs = VectorXr::Zero(dofs_);
     for (int i = 0; i < element_dim; ++i) pd_rhs += pd_rhss[i];
 
@@ -177,26 +229,24 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
     const real mass = density_ * cell_volume_;
     const real h2m = dt * dt / mass;
     const VectorXr f_state = ForwardStateForce(q, v);
+    // rhs := q + h * v + h2m * f_ext + h2m * f_state(q, v).
     const VectorXr rhs = q + dt * v + h2m * (f_ext + f_state);
     VectorXr q_sol = rhs;   // Initial guess.
     VectorXr selected = VectorXr::Ones(dofs_);
     // Enforce boundary conditions.
     for (const auto& pair : dirichlet_) {
-        const int dof = pair.first;
-        const real val = pair.second;
-        if (q(dof) != val)
-            PrintWarning("Inconsistent dirichlet boundary conditions at q(" + std::to_string(dof)
-                + "): " + std::to_string(q(dof)) + " != " + std::to_string(val));
-        q_sol(dof) = val;
-        selected(dof) = 0;
+        q_sol(pair.first) = pair.second;
+        selected(pair.first) = 0;
     }
-    VectorXr force_sol = PdEnergyForce(q_sol);
+
+    // Left-hand side = q_next - h2m * f_pd(q_next) - h2m * f_act(q_next, u)
+    VectorXr force_sol = PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
     if (verbose_level > 0) PrintInfo("Projective dynamics");
     for (int i = 0; i < max_pd_iter; ++i) {
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
         // Local step.
         if (verbose_level > 1) Tic();
-        VectorXr pd_rhs = rhs + h2m * ProjectiveDynamicsLocalStep(q_sol);
+        VectorXr pd_rhs = rhs + h2m * ProjectiveDynamicsLocalStep(q_sol, a);
         for (const auto& pair : dirichlet_) pd_rhs(pair.first) = pair.second;
         if (verbose_level > 1) Toc("Local step");
 
@@ -207,7 +257,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
 
         // Check for convergence.
         if (verbose_level > 1) Tic();
-        const VectorXr force_next = PdEnergyForce(q_sol_next);
+        const VectorXr force_next = PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
         const VectorXr lhs = q_sol_next - h2m * force_next;
         const real abs_error = VectorXr((lhs - rhs).array() * selected.array()).norm();
         const real rhs_norm = VectorXr(selected.array() * rhs.array()).norm();

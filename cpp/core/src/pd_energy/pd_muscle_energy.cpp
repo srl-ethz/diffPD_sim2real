@@ -10,6 +10,18 @@ void PdMuscleEnergy<dim>::Initialize(const real stiffness, const Eigen::Matrix<r
     CheckError(norm > eps, "Singular fiber_direction.");
     fiber_direction_ = fiber_direction / norm;
     mmt_ = fiber_direction_ * fiber_direction_.transpose();
+    // M * Flatten(F) = Fm.
+    // MtM = M' * M.
+    SparseMatrixElements nonzeros_MtM, nonzeros_Mt;
+    for (int i = 0; i < dim; ++i)
+        for (int j = 0; j < dim; ++j)
+            for (int k = 0; k < dim; ++k)
+                nonzeros_MtM.push_back(Eigen::Triplet<real>(dim * i + k, dim * j + k, mmt_(i, j)));
+    for (int i = 0; i < dim; ++i)
+        for (int j = 0; j < dim; ++j)
+            nonzeros_Mt.push_back(Eigen::Triplet<real>(dim * i + j, j, fiber_direction_(i)));
+    MtM_ = ToSparseMatrix(dim * dim, dim * dim, nonzeros_MtM);
+    Mt_ = ToSparseMatrix(dim * dim, dim, nonzeros_Mt);
 }
 
 template<int dim>
@@ -93,6 +105,67 @@ void PdMuscleEnergy<dim>::StressTensorDifferential(const Eigen::Matrix<real, dim
         // P = stiffness_ * (1 - activation_level / l) * F * mmt_;
         const Eigen::Matrix<real, dim, dim> dactivation_level_matrix = -stiffness_ / l * F * mmt_;
         dactivation_level = Flatten(dactivation_level_matrix);
+    }
+}
+
+template<int dim>
+const Eigen::Matrix<real, dim, 1> PdMuscleEnergy<dim>::ProjectToManifold(const Eigen::Matrix<real, dim, dim>& F,
+    const real activation_level) const {
+    // Density = \|Fm - a / l * Fm\|^2.
+    const real l = (F * fiber_direction_).norm();
+    const real eps = std::numeric_limits<real>::epsilon();
+    if (l <= eps) return Eigen::Matrix<real, dim, 1>::Zero();
+    else return activation_level / l * F * fiber_direction_;
+}
+
+template<int dim>
+const Eigen::Matrix<real, dim, 1> PdMuscleEnergy<dim>::ProjectToManifoldDifferential(const Eigen::Matrix<real, dim, dim>& F,
+    const real activation_level, const Eigen::Matrix<real, dim, dim>& dF, const real dactivation_level) const {
+    const Eigen::Matrix<real, dim, 1> Fm = F * fiber_direction_;
+    const real l = Fm.norm();
+    const real eps = std::numeric_limits<real>::epsilon();
+    if (l <= eps) return Eigen::Matrix<real, dim, 1>::Zero();
+    else {
+        const Eigen::Matrix<real, dim, 1> dFm = dF * fiber_direction_;
+        const real dl = (Fm / l).dot(dFm);
+        const real r = activation_level / l;
+        const real dr = dactivation_level / l - activation_level / l / l * dl;
+        return (r * dF + dr * F) * fiber_direction_;
+    }
+}
+
+template<int dim>
+void PdMuscleEnergy<dim>::ProjectToManifoldDifferential(const Eigen::Matrix<real, dim, dim>& F, const real activation_level,
+    Eigen::Matrix<real, dim, dim * dim>& dF, Eigen::Matrix<real, dim, 1>& dactivation_level) const {
+    const Eigen::Matrix<real, dim, 1> Fm = F * fiber_direction_;
+    const real l = Fm.norm();
+    const real eps = std::numeric_limits<real>::epsilon();
+    if (l <= eps) {
+        dF.setZero();
+        dactivation_level.setZero();
+    } else {
+        // Return: (r * dF + dr * F) * fiber_direction_.
+        // dFm = dF_ij * m_j.
+        // dl = Fm_i / l * dFm_i = Fm_i / l * dF_ij * m_j = 1 / l * (Fm_i * m_j) * dF_ij.
+        const Eigen::Matrix<real, dim, dim> dl = (F * mmt_) / l;
+        const real r = activation_level / l;
+        // dr = dactivation_level / l - activation_level / l / l * dl;
+        // dF.
+        // (r * dF - a / l / l * dl * F) * m.
+        // Part 1: r * dF * m.
+        // dF_i = r * dF_ij * m_j.
+        dF.setZero();
+        for (int i = 0; i < dim; ++i)
+            for (int j = 0; j < dim; ++j)
+                dF(i, i + j * dim) += r * fiber_direction_(j);
+        // Part 2: -a / l / l * dl * F * m.
+        // dF_i = (-a / l / l) * (dl_pq * dF_pq) * Fm_i.
+        for (int i = 0; i < dim; ++i)
+            for (int p = 0; p < dim; ++p)
+                for (int q = 0; q < dim; ++q)
+                    dF(i, p + q * dim) += -activation_level / l / l * Fm(i) * dl(p, q);
+        // da.
+        dactivation_level = Fm / l;
     }
 }
 
