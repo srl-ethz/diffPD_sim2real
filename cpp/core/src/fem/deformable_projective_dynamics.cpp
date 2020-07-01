@@ -276,9 +276,9 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
 }
 
 template<int vertex_dim, int element_dim>
-void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsLocalStepTransposeDifferential(const VectorXr& q_cur,
-    const VectorXr& a_cur,
-    std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>& pd_backward_local_matrices) const {
+void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsLocalStepTransposeDifferential(const VectorXr& q_cur, const VectorXr& a_cur,
+    std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>& pd_backward_local_element_matrices,
+    std::vector<std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>>& pd_backward_local_muscle_matrices) const {
     CheckError(!material_, "PD does not support material models.");
     for (const auto& pair : dirichlet_) CheckError(q_cur(pair.first) == pair.second, "Boundary conditions violated.");
 
@@ -287,7 +287,7 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsLocalStepTransp
 
     const int element_num = mesh_.NumOfElements();
     // Project PdElementEnergy.
-    pd_backward_local_matrices.resize(element_num);
+    pd_backward_local_element_matrices.resize(element_num);
     #pragma omp parallel for
     for (int i = 0; i < element_num; ++i) {
         const auto deformed = ScatterToElementFlattened(q_cur, i);
@@ -305,14 +305,42 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsLocalStepTransp
             }
             wAtdBptAS += pd_At_[j] * wdBpT * pd_A_[j];
         }
-        pd_backward_local_matrices[i] = wAtdBptAS;
+        pd_backward_local_element_matrices[i] = wAtdBptAS;
+    }
+    // Project PdMuscleEnergy.
+    pd_backward_local_muscle_matrices.resize(pd_muscle_energies_.size());
+    int energy_idx = 0;
+    int act_idx = 0;
+    for (const auto& pair : pd_muscle_energies_) {
+        const auto& energy = pair.first;
+        const real wi = energy->stiffness() * cell_volume_ / sample_num;
+        const auto& Mt = energy->Mt();
+        const int element_cnt = static_cast<int>(pair.second.size());
+        pd_backward_local_muscle_matrices[energy_idx].resize(element_cnt);
+        #pragma omp parallel for
+        for (int ei = 0; ei < element_cnt; ++ei) {
+            const int i = pair.second[ei];
+            const auto deformed = ScatterToElementFlattened(q_cur, i);
+            pd_backward_local_muscle_matrices[energy_idx][ei].setZero();
+            for (int j = 0; j < sample_num; ++j) {
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
+                const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Unflatten(F_flattened);
+                Eigen::Matrix<real, vertex_dim, vertex_dim * vertex_dim> JF;
+                Eigen::Matrix<real, vertex_dim, 1> Ja;
+                energy->ProjectToManifoldDifferential(F, a_cur(act_idx + ei), JF, Ja);
+                pd_backward_local_muscle_matrices[energy_idx][ei] += wi * pd_At_[j] * JF.transpose() * Mt.transpose() * pd_A_[j];
+            }
+        }
+        act_idx += element_cnt;
+        ++energy_idx;
     }
 }
 
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ApplyProjectiveDynamicsLocalStepTransposeDifferential(const VectorXr& q_cur,
     const VectorXr& a_cur,
-    const std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>& pd_backward_local_matrices,
+    const std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>& pd_backward_local_element_matrices,
+    const std::vector<std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>>& pd_backward_local_muscle_matrices,
     const VectorXr& dq_cur) const {
     // This function implements J_local(q_cur, a_cur)^T * J_T * dq_cur. Or equvalently,
     // - Set dq_cur(Dirichlet DoFs) = 0.
@@ -332,7 +360,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::ApplyProjectiveDynamicsLocal
     #pragma omp parallel for
     for (int i = 0; i < element_num; ++i) {
         const auto ddeformed = ScatterToElementFlattened(dq_cur_pruned, i);
-        const Eigen::Matrix<real, vertex_dim * element_dim, 1> wAtdBptASx = pd_backward_local_matrices[i] * ddeformed;
+        const Eigen::Matrix<real, vertex_dim * element_dim, 1> wAtdBptASx = pd_backward_local_element_matrices[i] * ddeformed;
         const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
         for (int k = 0; k < element_dim; ++k)
             for (int d = 0; d < vertex_dim; ++d)
@@ -341,33 +369,22 @@ const VectorXr Deformable<vertex_dim, element_dim>::ApplyProjectiveDynamicsLocal
 
     // Project PdMuscleEnergy:
     // rhs = w_i S'A'M'(Bp(q) - MASq_0) = w_i * A' (M'Bp(q) - M'MASq_0).
-    // TODO: data can be pre-computed.
     int act_idx = 0;
-    const int sample_num = element_dim;
+    int energy_idx = 0;
     for (const auto& pair : pd_muscle_energies_) {
-        const auto& energy = pair.first;
-        const real wi = energy->stiffness() * cell_volume_ / sample_num;
-        const auto& Mt = energy->Mt();
         const int element_cnt = static_cast<int>(pair.second.size());
         #pragma omp parallel for
         for (int ei = 0; ei < element_cnt; ++ei) {
             const int i = pair.second[ei];
-            const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
-            const auto deformed = ScatterToElementFlattened(q_cur, i);
             const auto ddeformed = ScatterToElementFlattened(dq_cur_pruned, i);
-            for (int j = 0; j < sample_num; ++j) {
-                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
-                const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Unflatten(F_flattened);
-                Eigen::Matrix<real, vertex_dim, vertex_dim * vertex_dim> JF;
-                Eigen::Matrix<real, vertex_dim, 1> Ja;
-                energy->ProjectToManifoldDifferential(F, a_cur(act_idx + ei), JF, Ja);
-                const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtBp = pd_At_[j] * JF.transpose() * Mt.transpose() * pd_A_[j] * ddeformed;
-                for (int k = 0; k < element_dim; ++k)
-                    for (int d = 0; d < vertex_dim; ++d)
-                        pd_rhss[k](vertex_dim * vi[k] + d) += wi * AtBp(k * vertex_dim + d);
-            }
+            const Eigen::Matrix<real, vertex_dim * element_dim, 1> wAtdBptASx = pd_backward_local_muscle_matrices[energy_idx][ei] * ddeformed;
+            const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+            for (int k = 0; k < element_dim; ++k)
+                for (int d = 0; d < vertex_dim; ++d)
+                    pd_rhss[k](vertex_dim * vi(k) + d) += wAtdBptASx(k * vertex_dim + d);
         }
         act_idx += element_cnt;
+        ++energy_idx;
     }
     CheckError(act_idx == act_dofs_, "Your loop over actions has introduced a bug.");
     VectorXr pd_rhs = VectorXr::Zero(dofs_);
@@ -435,14 +452,16 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     }
     if (verbose_level > 0) PrintInfo("Projective dynamics");
     // Setup the right-hand side.
-    std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>> pd_backward_local_matrices;
-    SetupProjectiveDynamicsLocalStepTransposeDifferential(q_next, a, pd_backward_local_matrices);
+    std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>> pd_backward_local_element_matrices;
+    std::vector<std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>> pd_backward_local_energy_matrices;
+    SetupProjectiveDynamicsLocalStepTransposeDifferential(q_next, a, pd_backward_local_element_matrices, pd_backward_local_energy_matrices);
     for (int i = 0; i < max_pd_iter; ++i) {
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
         if (verbose_level > 1) Tic();
         // Local step.
         VectorXr pd_rhs = dl_dq_next_agg +
-            h2m * ApplyProjectiveDynamicsLocalStepTransposeDifferential(q_next, a, pd_backward_local_matrices, adjoint);
+            h2m * ApplyProjectiveDynamicsLocalStepTransposeDifferential(q_next, a,
+                pd_backward_local_element_matrices, pd_backward_local_energy_matrices, adjoint);
         for (const auto& pair : dirichlet_) pd_rhs(pair.first) = 0;
         if (verbose_level > 1) Toc("Local step");
 
