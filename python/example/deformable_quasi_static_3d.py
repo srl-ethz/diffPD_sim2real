@@ -7,7 +7,7 @@ import scipy.optimize
 import numpy as np
 
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
-from py_diff_pd.common.common import create_folder, ndarray, print_info
+from py_diff_pd.common.common import create_folder, ndarray, print_info, print_error
 from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.display import display_hex_mesh, render_hex_mesh, export_gif
 
@@ -78,11 +78,19 @@ def test_deformable_quasi_static_3d(verbose):
             deformable.SetDirichletBoundaryCondition(3 * node_idx + 1, vy_new)
             deformable.SetDirichletBoundaryCondition(3 * node_idx + 2, vz)
 
+    # Actuations.
+    act_indices = []
+    for k in range(cell_nums[2]):
+        act_indices.append(k)
+    deformable.AddActuation(5e5, [1.0, 0.0, 0.0], act_indices)
+
     # Quasi-static state.
     dofs = deformable.dofs()
+    act_dofs = deformable.act_dofs()
+    act = np.zeros(act_dofs)
     f_ext = np.zeros(dofs)
     q_array = StdRealVector(dofs)
-    deformable.PyGetQuasiStaticState(method, f_ext, opt, q_array)
+    deformable.PyGetQuasiStaticState(method, act, f_ext, opt, q_array)
     deformable.PySaveToMeshFile(q_array, str(folder / 'quasi_static.bin'))
     mesh = Mesh3d()
     mesh.Initialize(str(folder / 'quasi_static.bin'))

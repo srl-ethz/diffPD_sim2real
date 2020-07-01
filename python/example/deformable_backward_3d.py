@@ -75,7 +75,12 @@ def test_deformable_backward_3d(verbose):
     deformable.AddPdEnergy('corotated', [2 * mu,], [])
     deformable.AddPdEnergy('volume', [la,], [])
 
+    # Actuation.
+    act_indices = [0,]
+    deformable.AddActuation(1e4, [0.1, 0.2, 0.7], act_indices)
+
     dofs = deformable.dofs()
+    act_dofs = deformable.act_dofs()
     vertex_num = mesh.NumOfVertices()
     c, s = np.cos(np.pi / 4), np.sin(np.pi / 4)
     R = ndarray([[c, 0, -s],
@@ -86,6 +91,7 @@ def test_deformable_backward_3d(verbose):
         qi = q0[3 * i:3 * i + 3]
         q0[3 * i:3 * i + 3] = R @ (qi - pivot) + pivot
     v0 = np.zeros(dofs)
+    a0 = np.random.uniform(size=act_dofs)
 
     q_next_weight = np.random.normal(size=dofs)
     v_next_weight = np.random.normal(size=dofs)
@@ -101,7 +107,7 @@ def test_deformable_backward_3d(verbose):
         node_idx = int(dof // 3)
         return node_idx == pivot_idx
 
-    x0 = np.concatenate([q0, v0, f_ext])
+    x0 = np.concatenate([q0, v0, a0, f_ext])
     x0_nw = np.concatenate([q_next_weight, v_next_weight])
     rtols = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9]
     losses = {}
@@ -200,11 +206,13 @@ def test_deformable_backward_3d(verbose):
 
     return True
 
-def loss_and_grad(qvf, method, opt, compute_grad, deformable, frame_num, dt, qv_nw):
+def loss_and_grad(qvaf, method, opt, compute_grad, deformable, frame_num, dt, qv_nw):
     dofs = deformable.dofs()
-    q_init = ndarray(qvf[:dofs])
-    v_init = ndarray(qvf[dofs:2 * dofs])
-    f_ext = ndarray(qvf[2 * dofs:])
+    act_dofs = deformable.act_dofs()
+    q_init = ndarray(qvaf[:dofs])
+    v_init = ndarray(qvaf[dofs:2 * dofs])
+    a = ndarray(qvaf[2 * dofs:2 * dofs + act_dofs])
+    f_ext = ndarray(qvaf[2 * dofs + act_dofs:])
     q_next_weight = ndarray(qv_nw[:dofs])
     v_next_weight = ndarray(qv_nw[dofs:2*dofs])
     q = [q_init,]
@@ -214,7 +222,7 @@ def loss_and_grad(qvf, method, opt, compute_grad, deformable, frame_num, dt, qv_
         v_cur = v[-1]
         q_next_array = StdRealVector(dofs)
         v_next_array = StdRealVector(dofs)
-        deformable.PyForward(method, q_cur, v_cur, f_ext, dt, opt, q_next_array, v_next_array)
+        deformable.PyForward(method, q_cur, v_cur, a, f_ext, dt, opt, q_next_array, v_next_array)
         q_next = ndarray(q_next_array)
         v_next = ndarray(v_next_array)
         q.append(q_next)
@@ -224,6 +232,7 @@ def loss_and_grad(qvf, method, opt, compute_grad, deformable, frame_num, dt, qv_
     loss = q[-1].dot(q_next_weight) + v[-1].dot(v_next_weight)
     dl_dq_next = np.copy(q_next_weight)
     dl_dv_next = np.copy(v_next_weight)
+    dl_da = np.zeros(act_dofs)
     dl_df_ext = np.zeros(dofs)
 
     # Compute gradients.
@@ -231,25 +240,29 @@ def loss_and_grad(qvf, method, opt, compute_grad, deformable, frame_num, dt, qv_
         for i in reversed(range(frame_num)):
             dl_dq = StdRealVector(dofs)
             dl_dv = StdRealVector(dofs)
+            dl_dai = StdRealVector(act_dofs)
             dl_df = StdRealVector(dofs)
-            deformable.PyBackward(method, q[i], v[i], f_ext, dt, q[i + 1], v[i + 1], dl_dq_next, dl_dv_next, opt,
-                dl_dq, dl_dv, dl_df)
+            deformable.PyBackward(method, q[i], v[i], a, f_ext, dt, q[i + 1], v[i + 1], dl_dq_next, dl_dv_next, opt,
+                dl_dq, dl_dv, dl_dai, dl_df)
             dl_dq_next = ndarray(dl_dq)
             dl_dv_next = ndarray(dl_dv)
+            dl_da += ndarray(dl_dai)
             dl_df_ext += ndarray(dl_df)
 
-        grad = np.concatenate([dl_dq_next, dl_dv_next, dl_df_ext])
+        grad = np.concatenate([dl_dq_next, dl_dv_next, dl_da, dl_df_ext])
         return loss, grad
     else:
         return loss
 
-def visualize(folder, qvf, method, opt, deformable, frame_num, dt, qv_nw, render_opts):
+def visualize(folder, qvaf, method, opt, deformable, frame_num, dt, qv_nw, render_opts):
     create_folder(folder / method)
 
     dofs = deformable.dofs()
-    q_cur = qvf[:dofs]
-    v_cur = qvf[dofs:2 * dofs]
-    f_cur = qvf[2 * dofs:3 * dofs]
+    act_dofs = deformable.act_dofs()
+    q_cur = qvaf[:dofs]
+    v_cur = qvaf[dofs:2 * dofs]
+    a_cur = qvaf[2 * dofs: 2 * dofs + act_dofs]
+    f_cur = qvaf[2 * dofs + act_dofs:]
     q_next_weight = qv_nw[:dofs]
     v_next_weight = qv_nw[dofs:2*dofs]
     for i in range(frame_num):
@@ -265,7 +278,7 @@ def visualize(folder, qvf, method, opt, deformable, frame_num, dt, qv_nw, render
 
         q_next_array = StdRealVector(dofs)
         v_next_array = StdRealVector(dofs)
-        deformable.PyForward(method, q_cur, v_cur, f_cur, dt, opt, q_next_array, v_next_array)
+        deformable.PyForward(method, q_cur, v_cur, a_cur, f_cur, dt, opt, q_next_array, v_next_array)
         q_cur = ndarray(q_next_array).copy()
         v_cur = ndarray(v_next_array).copy()
 

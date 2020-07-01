@@ -102,7 +102,7 @@ def test_collision_3d(verbose):
             f = np.zeros(dofs)
             q_next_array = StdRealVector(dofs)
             v_next_array = StdRealVector(dofs)
-            deformable.PyForward(method, q_cur, v_cur, f, dt, opt, q_next_array, v_next_array)
+            deformable.PyForward(method, q_cur, v_cur, [], f, dt, opt, q_next_array, v_next_array)
             q_next = ndarray(q_next_array)
             v_next = ndarray(v_next_array)
             q.append(q_next)
