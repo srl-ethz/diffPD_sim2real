@@ -165,12 +165,12 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     // q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, u)) = const.
     // lhs(q_next, u) = 0.
     // dlhs/dq_next * dq_next/du + dlhs/du = 0.
-    // dq_next/du = (dlhs/dq_next)^(-1) * dlhs/du
-    // dl_du = adjoint * dlhs/du.
+    // dq_next/du = -(dlhs/dq_next)^(-1) * dlhs/du
+    // dl_du = -adjoint * dlhs/du.
     // Here adjoint is a row vector and dlhs/du is a Jacobian.
     SparseMatrixElements dact_dq, dact_da;
     ActuationForceDifferential(q_next, a, dact_dq, dact_da);
-    dl_da = adjoint.transpose() * ToSparseMatrix(dofs_, act_dofs_, dact_da);
+    dl_da = adjoint.transpose() * ToSparseMatrix(dofs_, act_dofs_, dact_da) * h2m;
 }
 
 template<int vertex_dim, int element_dim>
