@@ -48,7 +48,7 @@ def test_deformable_backward_2d(verbose):
     deformable = Deformable2d()
     deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
     # Boundary conditions.
-    for i in range(node_nums[1]):
+    for i in range(1, node_nums[1]):
         node_idx = i
         vx, vy = mesh.py_vertex(node_idx)
         deformable.SetDirichletBoundaryCondition(2 * node_idx, vx)
@@ -66,10 +66,18 @@ def test_deformable_backward_2d(verbose):
     deformable.AddPdEnergy('corotated', [2 * mu,], [])
     deformable.AddPdEnergy('volume', [la,], [])
 
+    # Actuation.
+    act_indices = []
+    for j in range(cell_nums[1]):
+        act_indices.append(2 * cell_nums[1] + j)
+    deformable.AddActuation(1e4, [0.0, 1.0], act_indices)
+
     dofs = deformable.dofs()
+    act_dofs = deformable.act_dofs()
     vertex_num = mesh.NumOfVertices()
     q0 = ndarray(mesh.py_vertices())
     v0 = np.zeros(dofs)
+    a0 = np.random.uniform(size=act_dofs)
 
     q_next_weight = np.random.normal(size=dofs)
     v_next_weight = np.random.normal(size=dofs)
@@ -94,7 +102,7 @@ def test_deformable_backward_2d(verbose):
         if verbose:
             print_info('Checking gradients in {} method.'.format(method))
         t0 = time.time()
-        x0 = np.concatenate([q0, v0, f_ext])
+        x0 = np.concatenate([q0, v0, a0, f_ext])
         x0_nw = np.concatenate([q_next_weight, v_next_weight])
         def l_and_g(x):
             return loss_and_grad(x, method, opt, True, deformable, frame_num, dt, x0_nw)
@@ -110,11 +118,13 @@ def test_deformable_backward_2d(verbose):
 
     return True
 
-def loss_and_grad(qvf, method, opt, compute_grad, deformable, frame_num, dt, qv_nw):
+def loss_and_grad(qvaf, method, opt, compute_grad, deformable, frame_num, dt, qv_nw):
     dofs = deformable.dofs()
-    q_init = ndarray(qvf[:dofs])
-    v_init = ndarray(qvf[dofs:2 * dofs])
-    f_ext = ndarray(qvf[2 * dofs:])
+    act_dofs = deformable.act_dofs()
+    q_init = ndarray(qvaf[:dofs])
+    v_init = ndarray(qvaf[dofs:2 * dofs])
+    a = ndarray(qvaf[2 * dofs:2 * dofs + act_dofs])
+    f_ext = ndarray(qvaf[2 * dofs + act_dofs:])
     q_next_weight = ndarray(qv_nw[:dofs])
     v_next_weight = ndarray(qv_nw[dofs:2*dofs])
     q = [q_init,]
@@ -124,7 +134,7 @@ def loss_and_grad(qvf, method, opt, compute_grad, deformable, frame_num, dt, qv_
         v_cur = v[-1]
         q_next_array = StdRealVector(dofs)
         v_next_array = StdRealVector(dofs)
-        deformable.PyForward(method, q_cur, v_cur, f_ext, dt, opt, q_next_array, v_next_array)
+        deformable.PyForward(method, q_cur, v_cur, a, f_ext, dt, opt, q_next_array, v_next_array)
         q_next = ndarray(q_next_array)
         v_next = ndarray(v_next_array)
         q.append(q_next)
@@ -134,6 +144,7 @@ def loss_and_grad(qvf, method, opt, compute_grad, deformable, frame_num, dt, qv_
     loss = q[-1].dot(q_next_weight) + v[-1].dot(v_next_weight)
     dl_dq_next = np.copy(q_next_weight)
     dl_dv_next = np.copy(v_next_weight)
+    dl_da = np.zeros(act_dofs)
     dl_df_ext = np.zeros(dofs)
 
     if compute_grad:
@@ -141,14 +152,16 @@ def loss_and_grad(qvf, method, opt, compute_grad, deformable, frame_num, dt, qv_
         for i in reversed(range(frame_num)):
             dl_dq = StdRealVector(dofs)
             dl_dv = StdRealVector(dofs)
+            dl_dai = StdRealVector(act_dofs)
             dl_df = StdRealVector(dofs)
-            deformable.PyBackward(method, q[i], v[i], f_ext, dt, q[i + 1], v[i + 1], dl_dq_next, dl_dv_next, opt,
-                dl_dq, dl_dv, dl_df)
+            deformable.PyBackward(method, q[i], v[i], a, f_ext, dt, q[i + 1], v[i + 1], dl_dq_next, dl_dv_next, opt,
+                dl_dq, dl_dv, dl_dai, dl_df)
             dl_dq_next = ndarray(dl_dq)
             dl_dv_next = ndarray(dl_dv)
+            dl_da += ndarray(dl_dai)
             dl_df_ext += ndarray(dl_df)
 
-        grad = np.concatenate([dl_dq_next, dl_dv_next, dl_df_ext])
+        grad = np.concatenate([dl_dq_next, dl_dv_next, dl_da, dl_df_ext])
         return loss, grad
     else:
         return loss

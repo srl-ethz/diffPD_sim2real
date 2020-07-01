@@ -338,17 +338,15 @@ const VectorXr Deformable<vertex_dim, element_dim>::ApplyProjectiveDynamicsLocal
             for (int d = 0; d < vertex_dim; ++d)
                 pd_rhss[k](vertex_dim * vi(k) + d) += wAtdBptASx(k * vertex_dim + d);
     }
-    VectorXr pd_rhs = VectorXr::Zero(dofs_);
-    for (int i = 0; i < element_dim; ++i) pd_rhs += pd_rhss[i];
 
     // Project PdMuscleEnergy:
     // rhs = w_i S'A'M'(Bp(q) - MASq_0) = w_i * A' (M'Bp(q) - M'MASq_0).
+    // TODO: data can be pre-computed.
     int act_idx = 0;
     const int sample_num = element_dim;
     for (const auto& pair : pd_muscle_energies_) {
         const auto& energy = pair.first;
         const real wi = energy->stiffness() * cell_volume_ / sample_num;
-        const auto& MtM = energy->MtM();
         const auto& Mt = energy->Mt();
         const int element_cnt = static_cast<int>(pair.second.size());
         #pragma omp parallel for
@@ -372,6 +370,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::ApplyProjectiveDynamicsLocal
         act_idx += element_cnt;
     }
     CheckError(act_idx == act_dofs_, "Your loop over actions has introduced a bug.");
+    VectorXr pd_rhs = VectorXr::Zero(dofs_);
+    for (int i = 0; i < element_dim; ++i) pd_rhs += pd_rhss[i];
 
     // Project PdVertexEnergy.
     for (const auto& pair : pd_vertex_energies_) {
@@ -478,7 +478,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
             // So dl_da = adjoint.transpose() * J_T * J_Local * h2m;
             SparseMatrixElements dact_dq, dact_da;
             ActuationForceDifferential(q_next, a, dact_dq, dact_da);
-            dl_da = adjoint.transpose() * ToSparseMatrix(dofs_, act_dofs_, dact_da);
+            dl_da = adjoint.transpose() * ToSparseMatrix(dofs_, act_dofs_, dact_da) * h2m;
             return;
         }
 
