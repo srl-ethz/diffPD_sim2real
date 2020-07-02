@@ -47,6 +47,10 @@ Navigate to the `python/example` path and run `python [example_name].py` where t
 ### Demos
 - `benchmark_3d` compares and reports the time cost of one forward call and one backward call in Newton-PCG, Newton-Cholesky, and PD. Below is the time cost on a benchmark cantilever beam with 4131 DoFs. We simulated the example for 30 frames with dt = `0.03`. `forward` and `backward` indicates the time cost for forward simulation (30 frames in total) and back propagation respectively. This result was generated with `OMP_NUM_THREADS=4`.
 ![benchmark](python/example/benchmark_3d/benchmark.png)
+
+- `benchmark_semi_implicit_3d` reports the time cost, loss, and |grad| for the semi implicit solver over various dt values. Below is the time cost for a cantilever beam with 8019 DoFs. The solver was only stable for time steps smaller than 0.3 milliseconds. This result was generated on Seb's computer for `dt = [3e-4, 2e-4, 1e-4]`.
+![benchmark](python/example/benchmark_semi_implicit_3d/benchmark_semi_implicit_3d.png)
+
 - `sticky_finger_3d` optimizes a constant force applied to the nodes of a cuboid whose bottom is fixed on the ground. The goal is to bend the cuboid so that the upper-right corner reaches a target 3D position with zero velocity after 1 second. Optimization results with Newton-PCG, Newton-Cholesky, and PD are reported on the terminal, and a video of the final solution will pop up and play in the end.
 
 ## Implementation details of the `Deformable` class
