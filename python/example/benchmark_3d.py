@@ -25,7 +25,7 @@ if __name__ == '__main__':
 
     # Setting thread number.
     max_threads = int(subprocess.run(['nproc', '--all'], capture_output=True).stdout)
-    thread_cts = [2 ** i for i in range(max_threads) if 2 ** i <= max_threads]
+    thread_cts = [4, 8, 16, 32]
 
     # Hyperparameters.
     youngs_modulus = 1e6

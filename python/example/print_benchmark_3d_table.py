@@ -15,7 +15,7 @@ if __name__ == '__main__':
     for idx, rel_tol in enumerate(rel_tols):
         print_info('rel_tol: {:3.3e}'.format(rel_tol))
         tabular = PrettyTabular({
-            'method': '{:^20s}',
+            'method': '{:^30s}',
             'forward and backward (s)': '{:3.3f}',
             'forward only (s)': '{:3.3f}',
             'loss': '{:3.3f}',
