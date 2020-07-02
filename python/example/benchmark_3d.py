@@ -23,22 +23,24 @@ if __name__ == '__main__':
     print('seed: {}'.format(seed))
     np.random.seed(seed)
 
-    # Setting Thread Number
+    # Setting thread number.
     max_threads = int(subprocess.run(['nproc', '--all'], capture_output=True).stdout)
     thread_cts = [2 ** i for i in range(max_threads) if 2 ** i <= max_threads]
 
     # Hyperparameters.
     youngs_modulus = 1e6
     poissons_ratio = 0.45
+    la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
+    mu = youngs_modulus / (2 * (1 + poissons_ratio))
     density = 1e3
     cell_nums = (32, 8, 8)
     origin = np.random.normal(size=3)
     node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
     dx = 0.01
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
-    opts = ({ 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_pd_iter': 500, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 })
+    opts = ({ 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
+        { 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
+        { 'max_pd_iter': 5000, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 })
 
     # Initialization.
     folder = Path('benchmark_3d')
@@ -65,15 +67,24 @@ if __name__ == '__main__':
     # State-based forces.
     deformable.AddStateForce('gravity', [0, 0, -9.81])
     # Elasticity.
-    deformable.AddPdEnergy('corotated', [youngs_modulus / (1 + poissons_ratio),], [])
+    deformable.AddPdEnergy('corotated', [2 * mu,], [])
+    deformable.AddPdEnergy('volume', [la,], [])
     # Collisions.
     def to_index(i, j, k):
         return i * node_nums[1] * node_nums[2] + j * node_nums[2] + k
     collision_indices = [to_index(cell_nums[0], 0, 0), to_index(cell_nums[0], cell_nums[1], 0)]
-    deformable.AddPdEnergy('planar_collision', [5e3, 0.0, 0.0, 1.0, -origin[2] + 2 * dx], collision_indices)
+    deformable.AddPdEnergy('planar_collision', [5e3, 0.0, 0.0, 1.0, -origin[2] + 0.5 * dx], collision_indices)
+    # Actuation.
+    act_indices = []
+    for i in range(cell_nums[0]):
+        j = 0
+        k = 0
+        act_indices.append(i * cell_nums[1] * cell_nums[2] + j * cell_nums[2] + k)
+    deformable.AddActuation(1e5, [1.0, 0.0, 0.0], act_indices)
 
     # Initial state set by rotating the cuboid kinematically.
     dofs = deformable.dofs()
+    act_dofs = deformable.act_dofs()
     vertex_num = mesh.NumOfVertices()
     q0 = ndarray(mesh.py_vertices())
     max_theta = np.pi / 6
@@ -90,16 +101,18 @@ if __name__ == '__main__':
                 v = ndarray(mesh.py_vertex(idx))
                 q0[3 * idx:3 * idx + 3] = R @ (v - center) + center
     v0 = np.zeros(dofs)
+    a0 = np.random.uniform(low=0, high=0.2, size=act_dofs)
     f_ext = np.random.normal(scale=0.1, size=dofs) * density * (dx ** 3)
 
     # Visualization.
     dt = 1e-2
     frame_num = 25
-    def visualize(qvf, method, opt):
+    def visualize(qvaf, method, opt):
         create_folder(folder / method)
-        q_init = ndarray(qvf[:dofs])
-        v_init = ndarray(qvf[dofs:2 * dofs])
-        f_ext = ndarray(qvf[2 * dofs:])
+        q_init = ndarray(qvaf[:dofs])
+        v_init = ndarray(qvaf[dofs:2 * dofs])
+        a = ndarray(qvaf[2 * dofs:2 * dofs + act_dofs])
+        f_ext = ndarray(qvaf[2 * dofs + act_dofs:])
         q = [q_init,]
         v = [v_init,]
         for i in range(frame_num):
@@ -111,13 +124,13 @@ if __name__ == '__main__':
             render_hex_mesh(mesh, file_name=folder / method / '{:04d}.png'.format(i), resolution=img_resolution,
                 sample=render_samples, transforms=[
                     ('t', -origin),
-                    ('t', (0, 0, 2 * dx)),
+                    ('t', (0, 0, 0.5 * dx)),
                     ('t', (0, cell_nums[0] / 2 * dx, 0)),
                     ('s', 1.25 / ((cell_nums[0] + 2) * dx)),
                 ])
             q_next_array = StdRealVector(dofs)
             v_next_array = StdRealVector(dofs)
-            deformable.PyForward(method, q_cur, v_cur, f_ext, dt, opt, q_next_array, v_next_array)
+            deformable.PyForward(method, q_cur, v_cur, a, f_ext, dt, opt, q_next_array, v_next_array)
             q_next = ndarray(q_next_array)
             v_next = ndarray(v_next_array)
             q.append(q_next)
@@ -127,16 +140,17 @@ if __name__ == '__main__':
         os.system('eog {}'.format(folder / '{}.gif'.format(method)))
 
     for method, opt in zip(methods, opts):
-        visualize(np.concatenate([q0, v0, f_ext]), method, opt)
+        visualize(np.concatenate([q0, v0, a0, f_ext]), method, opt)
 
     # Benchmark time.
     q_next_weight = np.random.normal(size=dofs)
     v_next_weight = np.random.normal(size=dofs)
-    def loss_and_grad(qvf, method, opt, compute_grad):
+    def loss_and_grad(qvaf, method, opt, compute_grad):
         t0 = time.time()
-        q_init = ndarray(qvf[:dofs])
-        v_init = ndarray(qvf[dofs:2 * dofs])
-        f_ext = ndarray(qvf[2 * dofs:])
+        q_init = ndarray(qvaf[:dofs])
+        v_init = ndarray(qvaf[dofs:2 * dofs])
+        a = ndarray(qvaf[2 * dofs:2 * dofs + act_dofs])
+        f_ext = ndarray(qvaf[2 * dofs + act_dofs:])
         q = [q_init,]
         v = [v_init,]
         for i in range(frame_num):
@@ -144,7 +158,7 @@ if __name__ == '__main__':
             v_cur = v[-1]
             q_next_array = StdRealVector(dofs)
             v_next_array = StdRealVector(dofs)
-            deformable.PyForward(method, q_cur, v_cur, f_ext, dt, opt, q_next_array, v_next_array)
+            deformable.PyForward(method, q_cur, v_cur, a, f_ext, dt, opt, q_next_array, v_next_array)
             q_next = ndarray(q_next_array)
             v_next = ndarray(v_next_array)
             q.append(q_next)
@@ -154,6 +168,7 @@ if __name__ == '__main__':
         loss = q[-1].dot(q_next_weight) + v[-1].dot(v_next_weight)
         dl_dq_next = np.copy(q_next_weight)
         dl_dv_next = np.copy(v_next_weight)
+        dl_da = np.zeros(act_dofs)
         dl_df_ext = np.zeros(dofs)
 
         t1 = time.time()
@@ -163,14 +178,16 @@ if __name__ == '__main__':
             for i in reversed(range(frame_num)):
                 dl_dq = StdRealVector(dofs)
                 dl_dv = StdRealVector(dofs)
+                dl_dai = StdRealVector(act_dofs)
                 dl_df = StdRealVector(dofs)
-                deformable.PyBackward(method, q[i], v[i], f_ext, dt, q[i + 1], v[i + 1], dl_dq_next, dl_dv_next, opt,
-                    dl_dq, dl_dv, dl_df)
+                deformable.PyBackward(method, q[i], v[i], a, f_ext, dt, q[i + 1], v[i + 1],
+                    dl_dq_next, dl_dv_next, opt, dl_dq, dl_dv, dl_dai, dl_df)
                 dl_dq_next = ndarray(dl_dq)
                 dl_dv_next = ndarray(dl_dv)
+                dl_da += ndarray(dl_dai)
                 dl_df_ext += ndarray(dl_df)
 
-            grad = np.concatenate([dl_dq_next, dl_dv_next, dl_df_ext])
+            grad = np.concatenate([dl_dq_next, dl_dv_next, dl_da, dl_df_ext])
             t2 = time.time()
             return loss, grad, t1 - t0, t2 - t1
         else:
@@ -187,25 +204,18 @@ if __name__ == '__main__':
     losses = {}
     grads = {}
     for method in methods:
-        if method == 'pd' or method == 'newton_pcg':
-            for thread_ct in thread_cts:
-                meth_thread_num = '{}_{}threads'.format(method, thread_ct)
-                forward_backward_times[meth_thread_num] = []
-                forward_times[meth_thread_num] = []
-                backward_times[meth_thread_num] = []
-                losses[meth_thread_num] = []
-                grads[meth_thread_num] = []
-        else:
-            forward_backward_times[method] = []
-            forward_times[method] = []
-            backward_times[method] = []
-            losses[method] = []
-            grads[method] = []
+        for thread_ct in thread_cts:
+            meth_thread_num = '{}_{}threads'.format(method, thread_ct)
+            forward_backward_times[meth_thread_num] = []
+            forward_times[meth_thread_num] = []
+            backward_times[meth_thread_num] = []
+            losses[meth_thread_num] = []
+            grads[meth_thread_num] = []
 
     for rel_tol in rel_tols:
         print_info('rel_tol: {:3.3e}'.format(rel_tol))
         tabular = PrettyTabular({
-            'method': '{:^20s}',
+            'method': '{:^30s}',
             'forward and backward (s)': '{:3.3f}',
             'forward only (s)': '{:3.3f}',
             'loss': '{:3.3f}',
@@ -213,38 +223,24 @@ if __name__ == '__main__':
         })
         print_info(tabular.head_string())
 
-        x0 = np.concatenate([q0, v0, f_ext])
+        x0 = np.concatenate([q0, v0, a0, f_ext])
         for method, opt in zip(methods, opts):
             opt['rel_tol'] = rel_tol
-            if method == 'pd' or method == 'newton_pcg':
-                for thread_ct in thread_cts:
-                    opt['thread_ct'] = thread_ct
-                    meth_thread_num = '{}_{}threads'.format(method, thread_ct)
-                    l, g, forward_time, backward_time = loss_and_grad(x0, method, opt, True)
-                    print(tabular.row_string({
-                        'method': meth_thread_num,
-                        'forward and backward (s)': forward_time + backward_time,
-                        'forward only (s)': forward_time,
-                        'loss': l,
-                        '|grad|': np.linalg.norm(g) }))
-                    forward_backward_times[meth_thread_num].append(forward_time + backward_time)
-                    forward_times[meth_thread_num].append(forward_time)
-                    backward_times[meth_thread_num].append(backward_time)
-                    losses[meth_thread_num].append(l)
-                    grads[meth_thread_num].append(g)
-            else:
+            for thread_ct in thread_cts:
+                opt['thread_ct'] = thread_ct
+                meth_thread_num = '{}_{}threads'.format(method, thread_ct)
                 l, g, forward_time, backward_time = loss_and_grad(x0, method, opt, True)
                 print(tabular.row_string({
-                    'method': method,
+                    'method': meth_thread_num,
                     'forward and backward (s)': forward_time + backward_time,
                     'forward only (s)': forward_time,
                     'loss': l,
                     '|grad|': np.linalg.norm(g) }))
-                forward_backward_times[method].append(forward_time + backward_time)
-                forward_times[method].append(forward_time)
-                backward_times[method].append(backward_time)
-                losses[method].append(l)
-                grads[method].append(g)
+                forward_backward_times[meth_thread_num].append(forward_time + backward_time)
+                forward_times[meth_thread_num].append(forward_time)
+                backward_times[meth_thread_num].append(backward_time)
+                losses[meth_thread_num].append(l)
+                grads[meth_thread_num].append(g)
     pickle.dump((rel_tols, forward_times, backward_times, losses, grads), open(folder / 'table.bin', 'wb'))
 
     import matplotlib.pyplot as plt
@@ -259,15 +255,17 @@ if __name__ == '__main__':
         ax.set_ylabel('relative error')
         ax.set_yscale('log')
         for method in methods:
-            if method == 'pd' or method == 'newton_pcg':
-                color = 'green' if method == 'pd' else 'blue'
-                for thread_ct in thread_cts:
-                    idx = thread_cts.index(thread_ct)
-                    meth_thread_num = '{}_{}threads'.format(method, thread_ct)
-                    ax.plot(t[meth_thread_num], rel_tols, label=meth_thread_num,
-                     color=color, dashes=dash_list[idx])
-            else:
-                ax.plot(t[method], rel_tols, label=method, color='red')
+            if 'pd' in method:
+                color = 'green'
+            elif 'pcg' in method:
+                color = 'blue'
+            elif 'cholesky' in method:
+                color = 'red'
+            for thread_ct in thread_cts:
+                idx = thread_cts.index(thread_ct)
+                meth_thread_num = '{}_{}threads'.format(method, thread_ct)
+                ax.plot(t[meth_thread_num], rel_tols, label=meth_thread_num,
+                    color=color, dashes=dash_list[idx])
         ax.grid(True)
         ax.legend()
         ax.set_title(title)

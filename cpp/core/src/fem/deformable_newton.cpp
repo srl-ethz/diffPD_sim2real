@@ -37,6 +37,10 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
         selected(pair.first) = 0;
     }
     VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
+    auto eval_energy = [&](const VectorXr& q_cur, const VectorXr& f_cur){
+        return ((q_cur - h2m * f_cur - rhs).array() * selected.array()).square().sum();
+    };
+    real energy_sol = eval_energy(q_sol, force_sol);
     if (verbose_level > 0) PrintInfo("Newton's method");
     for (int i = 0; i < max_newton_iter; ++i) {
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
@@ -70,13 +74,17 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
         real step_size = 1;
         VectorXr q_sol_next = q_sol + step_size * dq;
         VectorXr force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
+        real energy_next = eval_energy(q_sol_next, force_next);
         for (int j = 0; j < max_ls_iter; ++j) {
-            if (!force_next.hasNaN()) break;
+            if (!force_next.hasNaN() && energy_next < energy_sol) break;
             step_size /= 2;
             q_sol_next = q_sol + step_size * dq;
             force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
-            if (verbose_level > 1) std::cout << "Line search iteration: " << j << ", step size: " << step_size << std::endl;
-            PrintWarning("Newton's method is using < 1 step size: " + std::to_string(step_size));
+            energy_next = eval_energy(q_sol_next, force_next);
+            if (verbose_level > 1) {
+                std::cout << "Line search iteration: " << j << ", step size: " << step_size << std::endl;
+                std::cout << "energ_sol: " << energy_sol << ", " << "energy_next: " << energy_next << std::endl;
+            }
         }
         CheckError(!force_next.hasNaN(), "Elastic force has NaN.");
 
@@ -94,6 +102,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
         // Update.
         q_sol = q_sol_next;
         force_sol = force_next;
+        energy_sol = energy_next;
     }
     PrintError("Newton's method fails to converge.");
 }
