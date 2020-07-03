@@ -123,7 +123,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
     // (M + w_i S'A'AS)q_i with dirichlet enetries properly set as 0 or 1.
     // The rhs becomes:
     // w_i S'A'(Bp(q) - ASq_0). Do not worry about the rows corresponding to dirichlet --- it will be set in
-    // the forward and backward functions. 
+    // the forward and backward functions.
 
     const int sample_num = element_dim;
     // Handle dirichlet boundary conditions.

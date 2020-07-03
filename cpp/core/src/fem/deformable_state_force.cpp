@@ -1,6 +1,7 @@
 #include "fem/deformable.h"
 #include "fem/gravitational_state_force.h"
 #include "fem/planar_collision_state_force.h"
+#include "fem/hydrodynamics_state_force.h"
 
 // Add state-based forces.
 template<int vertex_dim, int element_dim>
@@ -20,10 +21,30 @@ void Deformable<vertex_dim, element_dim>::AddStateForce(const std::string& force
         const real stiffness = params[0];
         const real cutoff_dist = params[1];
         Eigen::Matrix<real, vertex_dim, 1> normal;
-        for (int i = 0; i < vertex_dim; ++i) normal[i] = params[2 + i];
+        for (int i = 0; i < vertex_dim; ++i) normal(i) = params[2 + i];
         const real offset = params[2 + vertex_dim];
         auto force = std::make_shared<PlanarCollisionStateForce<vertex_dim>>();
         force->Initialize(stiffness, cutoff_dist, normal, offset);
+        state_forces_.push_back(force);
+    } else if (force_type == "hydrodynamics") {
+        const int face_num = (param_size - 1 - vertex_dim - 8 * 2) / (element_dim / 2);
+        CheckError(param_size == 1 + vertex_dim + 8 * 2 + face_num * (element_dim / 2) && face_num >= 1,
+            "Inconsistent params for HydrodynamicsStateForce.");
+        const real rho = params[0];
+        Eigen::Matrix<real, vertex_dim, 1> v_water;
+        for (int i = 0; i < vertex_dim; ++i) v_water(i) = params[1 + i];
+        Eigen::Matrix<real, 4, 2> Cd_points, Ct_points;
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 2; ++j) {
+                Cd_points(i, j) = params[1 + vertex_dim + i * 2 + j];
+                Ct_points(i, j) = params[1 + vertex_dim + 8 + i * 2 + j];
+            }
+        Eigen::Matrix<int, element_dim / 2, -1> surface_faces = Eigen::Matrix<int, element_dim / 2, -1>::Zero(element_dim / 2, face_num);
+        for (int i = 0; i < face_num; ++i)
+            for (int j = 0; j < element_dim / 2; ++j)
+                surface_faces(j, i) = params[1 + vertex_dim + 8 * 2 + i * element_dim / 2 + j];
+        auto force = std::make_shared<HydrodynamicsStateForce<vertex_dim, element_dim / 2>>();
+        force->Initialize(rho, v_water, Cd_points, Ct_points, surface_faces);
         state_forces_.push_back(force);
     } else {
         PrintError("Unsupported state force type: " + force_type);

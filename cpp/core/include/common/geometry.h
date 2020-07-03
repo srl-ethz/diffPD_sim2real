@@ -24,4 +24,6 @@ const Vector9r Flatten(const Matrix3r& A);
 const Matrix2r Unflatten(const Vector4r& a);
 const Matrix3r Unflatten(const Vector9r& a);
 
+const Matrix3r SkewSymmetricMatrix(const Vector3r& w);
+
 #endif

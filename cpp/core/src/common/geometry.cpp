@@ -200,3 +200,11 @@ const Matrix2r Unflatten(const Vector4r& a) {
 const Matrix3r Unflatten(const Vector9r& a) {
     return Eigen::Map<const Matrix3r>(a.data(), 3, 3);
 }
+
+const Matrix3r SkewSymmetricMatrix(const Vector3r& w) {
+    Matrix3r W;
+    W << 0, -w(2), w(1),
+        w(2), 0, -w(0),
+        -w(1), w(0), 0;
+    return W;
+}

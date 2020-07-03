@@ -6,6 +6,7 @@
 #include "../include/fem/state_force.h"
 #include "../include/fem/gravitational_state_force.h"
 #include "../include/fem/planar_collision_state_force.h"
+#include "../include/fem/hydrodynamics_state_force.h"
 %}
 
 %exception {
@@ -31,6 +32,7 @@
 %include "../include/fem/state_force.h"
 %include "../include/fem/gravitational_state_force.h"
 %include "../include/fem/planar_collision_state_force.h"
+%include "../include/fem/hydrodynamics_state_force.h"
 
 namespace std {
     %template(StdRealArray2d) array<real, 2>;
@@ -56,3 +58,5 @@ namespace std {
 %template(GravitationalStateForce3d) GravitationalStateForce<3>;
 %template(PlanarCollisionStateForce2d) PlanarCollisionStateForce<2>;
 %template(PlanarCollisionStateForce3d) PlanarCollisionStateForce<3>;
+%template(HydrodynamicsStateForce2d) HydrodynamicsStateForce<2, 2>;
+%template(HydrodynamicsStateForce3d) HydrodynamicsStateForce<3, 4>;
