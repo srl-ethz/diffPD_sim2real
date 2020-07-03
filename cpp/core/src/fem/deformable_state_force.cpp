@@ -42,7 +42,7 @@ void Deformable<vertex_dim, element_dim>::AddStateForce(const std::string& force
         Eigen::Matrix<int, element_dim / 2, -1> surface_faces = Eigen::Matrix<int, element_dim / 2, -1>::Zero(element_dim / 2, face_num);
         for (int i = 0; i < face_num; ++i)
             for (int j = 0; j < element_dim / 2; ++j)
-                surface_faces(j, i) = params[1 + vertex_dim + 8 * 2 + i * element_dim / 2 + j];
+                surface_faces(j, i) = static_cast<int>(params[1 + vertex_dim + 8 * 2 + i * element_dim / 2 + j]);
         auto force = std::make_shared<HydrodynamicsStateForce<vertex_dim, element_dim / 2>>();
         force->Initialize(rho, v_water, Cd_points, Ct_points, surface_faces);
         state_forces_.push_back(force);

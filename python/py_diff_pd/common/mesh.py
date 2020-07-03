@@ -136,3 +136,22 @@ def hex2obj(hex_mesh, obj_file_name=None):
                 f_obj.write('f {} {} {} {}\n'.format(ff[0] + 1, ff[1] + 1, ff[2] + 1, ff[3] + 1))
 
     return v, f
+
+# Extract boundary edges from a 2D mesh.
+def get_boundary_edge(quad_mesh):
+    edges = set()
+    element_num = quad_mesh.NumOfElements()
+    for e in range(element_num):
+        vid = list(quad_mesh.py_element(e))
+        vij = [(vid[0], vid[2]), (vid[2], vid[3]), (vid[3], vid[1]), (vid[1], vid[0])]
+        for vi, vj in vij:
+            assert (vi, vj) not in edges
+            if (vj, vi) in edges:
+                edges.remove((vj, vi))
+            else:
+                edges.add((vi, vj))
+    return list(edges)
+
+# Extract boundary faces from a 3D mesh.
+def get_boundary_face(hex_mesh):
+    pass
