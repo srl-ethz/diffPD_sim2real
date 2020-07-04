@@ -330,23 +330,23 @@ void HydrodynamicsStateForce<3, 4>::BackwardForce(const VectorXr& q, const Vecto
         // Compute derivatives of A.
         // un = (p1 - p0) x (p2 - p1) + (p2 - p0) x (p3 - p2) + (p1 - p0) x (p3 - p1) + (p1 - p3) x (p2 - p1).
         const Vector3r p0 = pos_i.col(0), p1 = pos_i.col(1), p2 = pos_i.col(2), p3 = pos_i.col(3);
-        const Vector3r dA_dp0 = SkewSymmetricMatrix(p1 - p2) * normalized_Aj[0]
+        const Vector3r dA_dp0 = (SkewSymmetricMatrix(p1 - p2) * normalized_Aj[0]
             + SkewSymmetricMatrix(p2 - p3) * normalized_Aj[1]
-            + SkewSymmetricMatrix(p1 - p3) * normalized_Aj[2];
-        const Vector3r dA_dp1 = SkewSymmetricMatrix(p2 - p0) * normalized_Aj[0]
+            + SkewSymmetricMatrix(p1 - p3) * normalized_Aj[2]) / 4;
+        const Vector3r dA_dp1 = (SkewSymmetricMatrix(p2 - p0) * normalized_Aj[0]
             + SkewSymmetricMatrix(p3 - p0) * normalized_Aj[2]
-            + SkewSymmetricMatrix(p2 - p3) * normalized_Aj[3];
-        const Vector3r dA_dp2 = SkewSymmetricMatrix(p0 - p1) * normalized_Aj[0]
+            + SkewSymmetricMatrix(p2 - p3) * normalized_Aj[3]) / 4;
+        const Vector3r dA_dp2 = (SkewSymmetricMatrix(p0 - p1) * normalized_Aj[0]
             + SkewSymmetricMatrix(p3 - p0) * normalized_Aj[1]
-            + SkewSymmetricMatrix(p3 - p1) * normalized_Aj[3];
-        const Vector3r dA_dp3 = SkewSymmetricMatrix(p0 - p2) * normalized_Aj[1]
+            + SkewSymmetricMatrix(p3 - p1) * normalized_Aj[3]) / 4;
+        const Vector3r dA_dp3 = (SkewSymmetricMatrix(p0 - p2) * normalized_Aj[1]
             + SkewSymmetricMatrix(p0 - p1) * normalized_Aj[2]
-            + SkewSymmetricMatrix(p1 - p2) * normalized_Aj[3];
+            + SkewSymmetricMatrix(p1 - p2) * normalized_Aj[3]) / 4;
 
         const Matrix3r dun_dp0 = SkewSymmetricMatrix(2 * (p3 - p1));
-        const Matrix3r dun_dp1 = SkewSymmetricMatrix(2 * (p2 - p0));
-        const Matrix3r dun_dp2 = SkewSymmetricMatrix(2 * (p3 - p1));
-        const Matrix3r dun_dp3 = SkewSymmetricMatrix(2 * (p0 - p2));
+        const Matrix3r dun_dp1 = SkewSymmetricMatrix(2 * (p0 - p2));
+        const Matrix3r dun_dp2 = SkewSymmetricMatrix(2 * (p1 - p3));
+        const Matrix3r dun_dp3 = SkewSymmetricMatrix(2 * (p2 - p0));
 
         const Vector3r d = v_rel / v_rel_len;
         // Compute derivatives of d.
@@ -412,12 +412,12 @@ void HydrodynamicsStateForce<3, 4>::BackwardForce(const VectorXr& q, const Vecto
         for (int j = 0; j < 4; ++j) {
             const int i0 = surface_faces_(j, i);
             const RowVector3r grad = dl_df.segment(3 * i0, 3);
-            dl_dq.segment(3 * surface_faces_(j, 0), 3) += grad * df_node_dp0;
-            dl_dq.segment(3 * surface_faces_(j, 1), 3) += grad * df_node_dp1;
-            dl_dq.segment(3 * surface_faces_(j, 2), 3) += grad * df_node_dp2;
-            dl_dq.segment(3 * surface_faces_(j, 3), 3) += grad * df_node_dp3;
+            dl_dq.segment(3 * surface_faces_(0, i), 3) += grad * df_node_dp0;
+            dl_dq.segment(3 * surface_faces_(1, i), 3) += grad * df_node_dp1;
+            dl_dq.segment(3 * surface_faces_(2, i), 3) += grad * df_node_dp2;
+            dl_dq.segment(3 * surface_faces_(3, i), 3) += grad * df_node_dp3;
             for (int k = 0; k < 4; ++k)
-                dl_dv.segment(3 * surface_faces_(j, k), 3) += grad * df_node_dv;
+                dl_dv.segment(3 * surface_faces_(k, i), 3) += grad * df_node_dv;
         }
     }
 }
