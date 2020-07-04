@@ -8,7 +8,6 @@ if __name__ == '__main__':
     # If you want to add a new test, simply add its name here --- you can find their names from README.md.
     tests = [
         # Display.
-        'render_hex_mesh',
         'render_quad_mesh',
         # Numerical check.
         'elastic_energy_2d',
