@@ -40,11 +40,10 @@ if __name__ == '__main__':
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
     opts = ({ 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
         { 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_pd_iter': 5000, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 })
+        { 'max_pd_iter': 5000, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4, 'method': 1, 'bfgs_history_size': 10 })
 
     # Initialization.
     folder = Path('benchmark_3d')
-    create_folder(folder)
     img_resolution = (400, 400)
     render_samples = 8
     bin_file_name = folder / 'cuboid.bin'
