@@ -240,9 +240,9 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
 
     // Left-hand side = q_next - h2m * f_pd(q_next) - h2m * f_act(q_next, u)
     VectorXr force_sol = PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
-    if (verbose_level > 0) PrintInfo("Projective dynamics");
+    if (verbose_level > 1) std::cout << "Projective dynamics forward" << std::endl;
     for (int i = 0; i < max_pd_iter; ++i) {
-        if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
+        if (verbose_level > 1) std::cout << "Iteration " << i << std::endl;
         // Local step.
         if (verbose_level > 1) Tic();
         VectorXr pd_rhs = rhs + h2m * ProjectiveDynamicsLocalStep(q_sol, a);
@@ -263,6 +263,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
         if (verbose_level > 1) Toc("Convergence");
         if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
         if (abs_error <= rel_tol * rhs_norm + abs_tol) {
+            if (verbose_level > 0) std::cout << "Forward converged at iteration " << i << std::endl;
             q_next = q_sol_next;
             v_next = (q_next - q) / dt;
             return;
@@ -416,12 +417,26 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
     CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
     CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
+    CheckError(options.find("method") != options.end(), "Missing option method.");
     const int max_pd_iter = static_cast<int>(options.at("max_pd_iter"));
     const real abs_tol = options.at("abs_tol");
     const real rel_tol = options.at("rel_tol");
     const int verbose_level = static_cast<int>(options.at("verbose"));
     const real thread_ct = static_cast<int>(options.at("thread_ct"));
     CheckError(max_pd_iter > 0, "Invalid max_pd_iter: " + std::to_string(max_pd_iter));
+    const int method = static_cast<int>(options.at("method"));
+    CheckError(0 <= method && method < 2, "Invalid method.");
+    if (verbose_level > 0) {
+        if (method == 0) std::cout << "Using constant Hessian approximation." << std::endl;
+        else if (method == 1) std::cout << "Using BFGS Hessian approximation." << std::endl;
+        else CheckError(false, "Should never happen: unsupported method.");
+    }
+    int bfgs_history_size = 0;
+    if (method == 1) {
+        CheckError(options.find("bfgs_history_size") != options.end(), "Missing option bfgs_history_size");
+        bfgs_history_size = options.at("bfgs_history_size");
+        CheckError(bfgs_history_size > 1, "Invalid bfgs_history_size.");
+    }
 
     omp_set_num_threads(thread_ct);
     // Pre-factorize the matrix -- it will be skipped if the matrix has already been factorized.
@@ -450,13 +465,18 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
         adjoint(pair.first) = 0;
         selected(pair.first) = 0;
     }
-    if (verbose_level > 0) PrintInfo("Projective dynamics");
+    if (verbose_level > 0) std::cout << "Projective dynamics backward" << std::endl;
     // Setup the right-hand side.
     std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>> pd_backward_local_element_matrices;
     std::vector<std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>> pd_backward_local_energy_matrices;
     SetupProjectiveDynamicsLocalStepTransposeDifferential(q_next, a, pd_backward_local_element_matrices, pd_backward_local_energy_matrices);
+
+    // Initialize queues for BFGS.
+    std::deque<VectorXr> si_history, xi_history;
+    std::deque<VectorXr> yi_history, gi_history;
+
     for (int i = 0; i < max_pd_iter; ++i) {
-        if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
+        if (verbose_level > 1) std::cout << "Iteration " << i << std::endl;
         if (verbose_level > 1) Tic();
         // Local step.
         VectorXr pd_rhs = dl_dq_next_agg +
@@ -464,11 +484,6 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
                 pd_backward_local_element_matrices, pd_backward_local_energy_matrices, adjoint);
         for (const auto& pair : dirichlet_) pd_rhs(pair.first) = 0;
         if (verbose_level > 1) Toc("Local step");
-
-        // Global step.
-        if (verbose_level > 1) Tic();
-        VectorXr adjoint_next = PdLhsSolve(pd_rhs);
-        if (verbose_level > 1) Toc("Global step");
 
         // Check for convergence.
         if (verbose_level > 1) Tic();
@@ -478,6 +493,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
         if (verbose_level > 1) Toc("Convergence");
         if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
         if (abs_error <= rel_tol * rhs_norm + abs_tol) {
+            if (verbose_level > 0) std::cout << "Backward converged at iteration " << i << std::endl;
             // q + h * v + h2m * f_ext + h2m * f_state(q, v).
             for (const auto& pair : dirichlet_) adjoint(pair.first) = 0;
             dl_dq += adjoint;
@@ -502,7 +518,59 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
         }
 
         // Update.
-        adjoint = adjoint_next;
+        if (method == 0) {
+            // Global step.
+            if (verbose_level > 1) Tic();
+            adjoint = PdLhsSolve(pd_rhs);
+            if (verbose_level > 1) Toc("Global step");
+        } else if (method == 1) {
+            // BFGS-style update.
+            // See https://en.wikipedia.org/wiki/Limited-memory_BFGS.
+            VectorXr q = pd_lhs - pd_rhs;
+            if (static_cast<int>(xi_history.size()) == 0) {
+                xi_history.push_back(adjoint);
+                gi_history.push_back(q);
+                adjoint = PdLhsSolve(pd_rhs);
+                continue;
+            }
+            si_history.push_back(adjoint - xi_history.back());
+            yi_history.push_back(q - gi_history.back());
+            xi_history.push_back(adjoint);
+            gi_history.push_back(q);
+            if (static_cast<int>(xi_history.size()) == bfgs_history_size + 2) {
+                xi_history.pop_front();
+                gi_history.pop_front();
+                si_history.pop_front();
+                yi_history.pop_front();
+            }
+            std::deque<real> rhoi_history, alphai_history;
+            for (auto sit = si_history.crbegin(), yit = yi_history.crbegin(); sit != si_history.crend(); ++sit, ++yit) {
+                const VectorXr& yi = *yit;
+                const VectorXr& si = *sit;
+                const real rhoi = 1 / yi.dot(si);
+                const real alphai = rhoi * si.dot(q);
+                rhoi_history.push_front(rhoi);
+                alphai_history.push_front(alphai);
+                q -= alphai * yi;
+            }
+            // H0k = PdLhsSolve(I);
+            VectorXr z = PdLhsSolve(q);
+            auto sit = si_history.cbegin(), yit = yi_history.cbegin();
+            auto rhoit = rhoi_history.cbegin(), alphait = alphai_history.cbegin();
+            for (; sit != si_history.cend(); ++sit, ++yit, ++rhoit, ++alphait) {
+                const real rhoi = *rhoit;
+                const real alphai = *alphait;
+                const VectorXr& si = *sit;
+                const VectorXr& yi = *yit;
+                const real betai = rhoi * yi.dot(z);
+                z += si * (alphai - betai);
+            }
+            z = -z;
+            // TODO: add line search?
+            adjoint += z;
+        } else {
+            CheckError(false, "Should never happen: unsupported method.");
+        }
     }
     PrintError("Projective dynamics back-propagation fails to converge.");
 }
