@@ -34,7 +34,7 @@ def test_deformable_backward_2d(verbose):
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
     opts = ({ 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-10, 'rel_tol': 1e-10, 'verbose': 0, 'thread_ct': 4 },
         { 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-10, 'rel_tol': 1e-10, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_pd_iter': 100, 'abs_tol': 1e-10, 'rel_tol': 1e-10, 'verbose': 0, 'thread_ct': 4, 'method': 0 })
+        { 'max_pd_iter': 100, 'abs_tol': 1e-10, 'rel_tol': 1e-10, 'verbose': 0, 'thread_ct': 4, 'method': 1, 'bfgs_history_size': 10 })
 
     # Initialization.
     folder = Path('deformable_backward_2d')

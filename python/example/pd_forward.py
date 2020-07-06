@@ -36,7 +36,7 @@ def test_pd_forward(verbose):
     newton_method = 'newton_pcg'
     newton_opt = { 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-8, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 }
     pd_method = 'pd'
-    pd_opt = { 'max_pd_iter': 100, 'abs_tol': 1e-8, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 }
+    pd_opt = { 'max_pd_iter': 100, 'abs_tol': 1e-8, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4, 'method': 1, 'bfgs_history_size': 10 }
     deformable = Deformable2d()
     deformable.Initialize(bin_file_name, density, 'none', youngs_modulus, poissons_ratio)
 
