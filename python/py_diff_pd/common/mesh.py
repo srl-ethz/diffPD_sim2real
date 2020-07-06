@@ -136,3 +136,57 @@ def hex2obj(hex_mesh, obj_file_name=None):
                 f_obj.write('f {} {} {} {}\n'.format(ff[0] + 1, ff[1] + 1, ff[2] + 1, ff[3] + 1))
 
     return v, f
+
+# Extract boundary edges from a 2D mesh.
+def get_boundary_edge(quad_mesh):
+    edges = set()
+    element_num = quad_mesh.NumOfElements()
+    for e in range(element_num):
+        vid = list(quad_mesh.py_element(e))
+        vij = [(vid[0], vid[2]), (vid[2], vid[3]), (vid[3], vid[1]), (vid[1], vid[0])]
+        for vi, vj in vij:
+            assert (vi, vj) not in edges
+            if (vj, vi) in edges:
+                edges.remove((vj, vi))
+            else:
+                edges.add((vi, vj))
+    return list(edges)
+
+# Extract boundary faces from a 3D mesh.
+def get_boundary_face(hex_mesh):
+    faces = set()
+    element_num = hex_mesh.NumOfElements()
+
+    def hex_element_to_faces(vid):
+        faces = [[vid[0], vid[1], vid[2], vid[3]],
+            [vid[4], vid[6], vid[7], vid[5]],
+            [vid[0], vid[4], vid[5], vid[1]],
+            [vid[2], vid[3], vid[7], vid[6]],
+            [vid[0], vid[2], vid[6], vid[4]],
+            [vid[1], vid[5], vid[7], vid[3]],
+        ]
+        return faces
+
+    def normalize_idx(l):
+        min_idx = np.argmin(l)
+        if min_idx == 0:
+            l_ret = [l[0], l[1], l[2], l[3]]
+        elif min_idx == 1:
+            l_ret = [l[1], l[2], l[3], l[0]]
+        elif min_idx == 2:
+            l_ret = [l[2], l[3], l[0], l[1]]
+        else:
+            l_ret = [l[3], l[0], l[1], l[2]]
+        return tuple(l_ret)
+
+    for e in range(element_num):
+        vid = list(hex_mesh.py_element(e))
+        for l in hex_element_to_faces(vid):
+            l = normalize_idx(l)
+            assert l not in faces
+            l_reversed = normalize_idx(list(reversed(l)))
+            if l_reversed in faces:
+                faces.remove(l_reversed)
+            else:
+                faces.add(l)
+    return list(faces)

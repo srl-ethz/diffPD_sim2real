@@ -10,7 +10,7 @@ public:
     GravitationalStateForce();
 
     void Initialize(const real mass, const Eigen::Matrix<real, vertex_dim, 1>& g);
-    void PyInitialize(const real mass, std::array<real, vertex_dim>& g) {
+    void PyInitialize(const real mass, const std::array<real, vertex_dim>& g) {
         Eigen::Matrix<real, vertex_dim, 1> g_eig;
         for (int i = 0; i < vertex_dim; ++i) g_eig[i] = g[i];
         Initialize(mass, g_eig);
