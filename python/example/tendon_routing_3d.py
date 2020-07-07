@@ -2,6 +2,7 @@ import sys
 sys.path.append('../')
 
 from pathlib import Path
+import time
 import numpy as np
 import scipy.optimize
 
@@ -16,13 +17,16 @@ if __name__ == '__main__':
     folder = Path('tendon_routing_3d')
     create_folder(folder)
     img_res = (400, 400)
-    sample = 64
+    sample = 4
     sanity_check_grad = False
 
     # Optimization parameters.
-    method = 'pd'
-    opt = { 'max_pd_iter': 100, 'abs_tol': 1e-9, 'rel_tol': 1e-7, 'verbose': 0, 'thread_ct': 4,
-        'method': 1, 'bfgs_history_size': 10 }
+    methods = ('newton_pcg', 'newton_cholesky', 'pd')
+    opts = (
+        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0, 'thread_ct': 4 },
+        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0, 'thread_ct': 4 },
+        { 'max_pd_iter': 500, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0, 'thread_ct': 4, 'method': 1, 'bfgs_history_size': 10 }
+    )
 
     # Mesh.
     cell_nums = (2, 2, 16)
@@ -66,7 +70,7 @@ if __name__ == '__main__':
     dt = 0.01
     frame_num = 30
     target_endpoint = origin + ndarray([-6, -4, 10]) * dx 
-    def loss_and_grad(a):
+    def loss_and_grad(a, method, opt):
         assert len(a) == act_dofs
         q = [np.copy(q0),]
         v = [np.copy(v0),]
@@ -108,20 +112,6 @@ if __name__ == '__main__':
         print('loss: {:3.4f}, |grad|: {:3.4f}'.format(loss, np.linalg.norm(dl_da)))
         return loss, ndarray(dl_da)
 
-    # Optimization.
-    a0 = np.random.normal(size=act_dofs)
-    if sanity_check_grad:
-        from py_diff_pd.common.grad_check import check_gradients
-        eps = 1e-8
-        atol = 1e-4
-        rtol = 1e-2
-        check_gradients(loss_and_grad, a0, eps, atol, rtol, True)
-
-    result = scipy.optimize.minimize(loss_and_grad, np.copy(a0),
-        method='L-BFGS-B', jac=True, bounds=None, options={ 'gtol': 1e-4 })
-    assert result.success
-    a_final = result.x
-
     # Visualize results.
     def visualize(a, f_folder):
         create_folder(folder / f_folder)
@@ -146,5 +136,24 @@ if __name__ == '__main__':
             v.append(v_next)
         export_gif(folder / f_folder, '{}.gif'.format(str(folder / f_folder)), fps=10)
 
-    visualize(a0, 'init')
-    visualize(a_final, 'final')
+    # Optimization.
+    a0 = np.random.normal(size=act_dofs)
+    if sanity_check_grad:
+        from py_diff_pd.common.grad_check import check_gradients
+        eps = 1e-8
+        atol = 1e-4
+        rtol = 1e-2
+        for method, opt in zip(methods, opts):
+            check_gradients(lambda x: loss_and_grad(x, method, opt), a0, eps, atol, rtol, True)
+
+    for method, opt in zip(methods, opts):
+        t0 = time.time()
+        result = scipy.optimize.minimize(lambda x: loss_and_grad(x, method, opt), np.copy(a0),
+            method='L-BFGS-B', jac=True, bounds=None, options={ 'gtol': 1e-4 })
+        t1 = time.time()
+        assert result.success
+        a_final = result.x
+        print_info('Optimizing with {} finished in {:3.3f} seconds'.format(method, t1 - t0))
+
+        visualize(a0, '{}_init'.format(method))
+        visualize(a_final, '{}_final'.format(method))
