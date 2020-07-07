@@ -136,8 +136,8 @@ if __name__ == '__main__':
             v.append(v_next)
         export_gif(folder / f_folder, '{}.gif'.format(str(folder / f_folder)), fps=10)
 
-    # Optimization.
-    a0 = np.random.normal(size=act_dofs)
+    # Optimization --- keep in mind that muscle fiber actuation is bounded by 0 and 1.
+    a0 = np.random.uniform(low=0, high=1, size=act_dofs)
     if sanity_check_grad:
         from py_diff_pd.common.grad_check import check_gradients
         eps = 1e-8
@@ -149,7 +149,7 @@ if __name__ == '__main__':
     for method, opt in zip(methods, opts):
         t0 = time.time()
         result = scipy.optimize.minimize(lambda x: loss_and_grad(x, method, opt), np.copy(a0),
-            method='L-BFGS-B', jac=True, bounds=None, options={ 'gtol': 1e-4 })
+            method='L-BFGS-B', jac=True, bounds=scipy.optimize.Bounds(np.zeros(act_dofs), np.ones(act_dofs)), options={ 'gtol': 1e-4 })
         t1 = time.time()
         assert result.success
         a_final = result.x
