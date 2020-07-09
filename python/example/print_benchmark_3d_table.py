@@ -106,11 +106,14 @@ if __name__ == '__main__':
     fig2 = plt.figure(figsize=(15, 7))
     ax_1 = fig2.add_subplot(121)
     ax_2 = fig2.add_subplot(122)
-    titles_2 = ['losses', '|grads|']
+    titles_2 = ['losses', '|grad|']
     for title, ax, y in zip(titles_2, (ax_1, ax_2), (losses, grad_norms)):
-        ax.set_xlabel('magnitude (/)')
-        ax.set_ylabel('relative error')
-        ax.set_yscale('log')
+        ax.set_xlabel('relative error')
+        ax.set_ylabel('magnitude (/)')
+        ax.set_xscale('log')
+        ax.invert_xaxis()
+        if 'grad' in title:
+            ax.set_yscale('log')
         for method in ['newton_pcg', 'newton_cholesky', 'pd']:
             if 'pd' in method:
                 color = 'tab:green'
@@ -119,11 +122,11 @@ if __name__ == '__main__':
             elif 'cholesky' in method:
                 color = 'tab:red'
             meth_thread_num = '{}_{}threads'.format(method, thread_cts[-1])
-            ax.plot(y[meth_thread_num], rel_tols, label=method, color=color)
+            ax.plot(rel_tols, y[meth_thread_num], label=method, color=color)
         ax.grid(True)
         ax.legend()
         ax.set_title(title)
-        
+
     fig2.savefig(folder / 'benchmark_l_g.pdf')
     fig2.savefig(folder / 'benchmark_l_g.png')
     fig2.tight_layout(pad=3.0)
