@@ -242,3 +242,103 @@ def render_hex_mesh(hex_mesh, file_name,
     os.remove(error_file_name)
     os.remove(obj_file_name)
     os.remove(pbrt_script)
+
+
+
+# The input argument transforms is a list of rotation, translation, and scaling applied to the mesh.
+# transforms = [rotation, translation, scaling, ...]
+# rotation = ('r', (radians, unit_axis.x, unit_axis.y, unit_axis.z))
+# translation = ('t', (tx, ty, tz))
+# scaling = ('s', s)
+# Note that we use right-handed coordinate systems in the project but pbrt uses a left-handed system.
+# As a result, we will take care of transforming the coordinate system in this function.
+def render_hex_mesh_no_floor(hex_mesh, file_name,
+    resolution=(800, 800), sample=128, max_depth=4,
+    camera_pos=(2, -2.2, 2), camera_lookat=(0.5, 0.5, 0.5), camear_up=(0, 0, 1), fov=33,
+    transforms=None):
+    from py_diff_pd.common.project_path import root_path
+    from py_diff_pd.common.mesh import hex2obj
+
+    file_name = str(file_name)
+    assert file_name.endswith('.png') or file_name.endswith('.exr')
+    file_name_only = file_name[:-4]
+
+    root = Path(root_path)
+    # Create a pbrt script.
+    pbrt_script = '.tmp.pbrt'
+    obj_file_name = '.tmp.obj'
+    error_file_name = '.tmp.error'
+    scene_file_name = '.scene.pbrt'
+    hex2obj(hex_mesh, obj_file_name)
+    os.system('{} {} {} 2>{}'.format(str(root / 'external/pbrt_build/obj2pbrt'), obj_file_name, scene_file_name, error_file_name))
+
+    x_res, y_res = resolution
+    with open(pbrt_script, 'w') as f:
+        f.write('Film "image" "integer xresolution" [{:d}] "integer yresolution" [{:d}]\n'.format(x_res, y_res))
+        f.write('    "string filename" "{:s}.exr"\n'.format(file_name_only))
+        
+        f.write('\n')
+        f.write('Sampler "halton" "integer pixelsamples" [{:d}]\n'.format(sample))
+        f.write('Integrator "path" "integer maxdepth" {:d}\n'.format(max_depth))
+
+        f.write('\n')
+        # Flipped y because pbrt uses a left-handed coordinate system.
+        f.write('LookAt {:f} {:f} {:f} {:f} {:f} {:f} {:f} {:f} {:f}\n'.format(
+            camera_pos[0], -camera_pos[1], camera_pos[2],
+            camera_lookat[0], -camera_lookat[1], camera_lookat[2],
+            camear_up[0], -camear_up[1], camear_up[2]))
+        f.write('Camera "perspective" "float fov" [{:f}]\n'.format(fov))
+
+        f.write('\n')
+        f.write('WorldBegin\n')
+
+        f.write('\n')
+        f.write('AttributeBegin\n')
+        f.write('Rotate 90 0 0 1\n')
+        f.write('Rotate -90 1 0 0\n')
+        f.write('LightSource "infinite" "string mapname" "{}" "color scale" [2.5 2.5 2.5]\n'.format(
+            str(root / 'asset/texture/lightmap.exr')
+        ))
+        f.write('AttributeEnd\n')
+
+        f.write('\n')
+        f.write('AttributeBegin\n')
+        f.write('Texture "lines" "color" "imagemap" "string filename" "{}"\n'.format(
+            str(root / 'asset/texture/lines.exr')
+        ))
+        f.write('Material "plastic"\n')
+        f.write('    "color Kd" [.1 .1 .1] "color Ks" [.7 .7 .7] "float roughness" .1\n')
+        f.write('Shape "trianglemesh"\n')
+        f.write('"point P" [ -1000 -1000 -5   1000 -1000 -5   1000 1000 -5 -1000 1000 -5 ] "integer indices" [ 0 1 2 2 3 0]\n')
+        f.write('AttributeEnd\n')
+
+        f.write('\n')
+        f.write('AttributeBegin\n')
+        f.write('Material "plastic" "color Kd" [.4 .4 .4] "color Ks" [.4 .4 .4] "float roughness" .03\n')
+        # Flipped y because pbrt uses a left-handed system.
+        f.write('Scale 1 -1 1\n')
+        if transforms is not None:
+            for key, vals in reversed(transforms):
+                if key == 's':
+                    f.write('Scale {:f} {:f} {:f}\n'.format(vals, vals, vals))
+                elif key == 'r':
+                    deg = np.rad2deg(vals[0])
+                    ax = vals[1:4]
+                    ax /= np.linalg.norm(ax)
+                    f.write('Rotate {:f} {:f} {:f} {:f}\n'.format(deg, ax[0], ax[1], ax[2]))
+                elif key == 't':
+                    f.write('Translate {:f} {:f} {:f}\n'.format(vals[0], vals[1], vals[2]))
+        f.write('Include "{}"\n'.format(scene_file_name))
+        f.write('AttributeEnd\n')
+
+        f.write('\n')
+        f.write('WorldEnd\n')
+
+    os.system('{} {} --quiet'.format(str(root / 'external/pbrt_build/pbrt'), pbrt_script))
+    os.system('convert {}.exr {}.png'.format(file_name_only, file_name_only))
+
+    os.remove('{}.exr'.format(file_name_only))
+    os.remove(scene_file_name)
+    os.remove(error_file_name)
+    os.remove(obj_file_name)
+    os.remove(pbrt_script)
