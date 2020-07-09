@@ -214,12 +214,26 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
     CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
     CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
+    CheckError(options.find("method") != options.end(), "Missing option method.");
     const int max_pd_iter = static_cast<int>(options.at("max_pd_iter"));
     const real abs_tol = options.at("abs_tol");
     const real rel_tol = options.at("rel_tol");
     const int verbose_level = static_cast<int>(options.at("verbose"));
     const int thread_ct = static_cast<int>(options.at("thread_ct"));
     CheckError(max_pd_iter > 0, "Invalid max_pd_iter: " + std::to_string(max_pd_iter));
+    const int method = static_cast<int>(options.at("method"));
+    CheckError(0 <= method && method < 2, "Invalid method.");
+    if (verbose_level > 0) {
+        if (method == 0) std::cout << "Using constant Hessian approximation." << std::endl;
+        else if (method == 1) std::cout << "Using BFGS Hessian approximation." << std::endl;
+        else CheckError(false, "Should never happen: unsupported method.");
+    }
+    int bfgs_history_size = 0;
+    if (method == 1) {
+        CheckError(options.find("bfgs_history_size") != options.end(), "Missing option bfgs_history_size");
+        bfgs_history_size = options.at("bfgs_history_size");
+        CheckError(bfgs_history_size > 1, "Invalid bfgs_history_size.");
+    }
 
     omp_set_num_threads(thread_ct);
     // Pre-factorize the matrix -- it will be skipped if the matrix has already been factorized.
@@ -240,19 +254,75 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
 
     // Left-hand side = q_next - h2m * f_pd(q_next) - h2m * f_act(q_next, u)
     VectorXr force_sol = PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
+
+    // Initialize queues for BFGS.
+    std::deque<VectorXr> si_history, xi_history;
+    std::deque<VectorXr> yi_history, gi_history;
+
     if (verbose_level > 1) std::cout << "Projective dynamics forward" << std::endl;
     for (int i = 0; i < max_pd_iter; ++i) {
         if (verbose_level > 1) std::cout << "Iteration " << i << std::endl;
+
+        VectorXr q_sol_next = q_sol;
         // Local step.
         if (verbose_level > 1) Tic();
         VectorXr pd_rhs = rhs + h2m * ProjectiveDynamicsLocalStep(q_sol, a);
         for (const auto& pair : dirichlet_) pd_rhs(pair.first) = pair.second;
         if (verbose_level > 1) Toc("Local step");
-
-        // Global step.
-        if (verbose_level > 1) Tic();
-        const VectorXr q_sol_next = PdLhsSolve(pd_rhs);
-        if (verbose_level > 1) Toc("Global step");
+        if (method == 0) {
+            // Global step.
+            if (verbose_level > 1) Tic();
+            q_sol_next = PdLhsSolve(pd_rhs);
+            if (verbose_level > 1) Toc("Global step");
+        } else if (method == 1) {
+            // Use q_sol to compute q_sol_next.
+            // BFGS-style update.
+            // See https://en.wikipedia.org/wiki/Limited-memory_BFGS.
+            VectorXr q = PdLhsMatrixOp(q_sol) - pd_rhs;
+            if (static_cast<int>(xi_history.size()) == 0) {
+                xi_history.push_back(q_sol);
+                gi_history.push_back(q);
+                q_sol_next = PdLhsSolve(pd_rhs);
+            } else {
+                si_history.push_back(q_sol - xi_history.back());
+                yi_history.push_back(q - gi_history.back());
+                xi_history.push_back(q_sol);
+                gi_history.push_back(q);
+                if (static_cast<int>(xi_history.size()) == bfgs_history_size + 2) {
+                    xi_history.pop_front();
+                    gi_history.pop_front();
+                    si_history.pop_front();
+                    yi_history.pop_front();
+                }
+                std::deque<real> rhoi_history, alphai_history;
+                for (auto sit = si_history.crbegin(), yit = yi_history.crbegin(); sit != si_history.crend(); ++sit, ++yit) {
+                    const VectorXr& yi = *yit;
+                    const VectorXr& si = *sit;
+                    const real rhoi = 1 / yi.dot(si);
+                    const real alphai = rhoi * si.dot(q);
+                    rhoi_history.push_front(rhoi);
+                    alphai_history.push_front(alphai);
+                    q -= alphai * yi;
+                }
+                // H0k = PdLhsSolve(I);
+                VectorXr z = PdLhsSolve(q);
+                auto sit = si_history.cbegin(), yit = yi_history.cbegin();
+                auto rhoit = rhoi_history.cbegin(), alphait = alphai_history.cbegin();
+                for (; sit != si_history.cend(); ++sit, ++yit, ++rhoit, ++alphait) {
+                    const real rhoi = *rhoit;
+                    const real alphai = *alphait;
+                    const VectorXr& si = *sit;
+                    const VectorXr& yi = *yit;
+                    const real betai = rhoi * yi.dot(z);
+                    z += si * (alphai - betai);
+                }
+                z = -z;
+                // TODO: add line search?
+                q_sol_next += z;
+            }
+        } else {
+            CheckError(false, "Should never happen: unsupported method.");
+        }
 
         // Check for convergence.
         if (verbose_level > 1) Tic();

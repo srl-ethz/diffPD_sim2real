@@ -8,7 +8,7 @@ import scipy.optimize
 import numpy as np
 
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
-from py_diff_pd.common.common import create_folder, ndarray, print_info
+from py_diff_pd.common.common import create_folder, ndarray, print_info, print_error
 from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.display import render_hex_mesh, export_gif
 
@@ -58,7 +58,7 @@ def test_collision_3d(verbose):
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
     opts = ({ 'max_newton_iter': 1000, 'max_ls_iter': 10, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4 },
         { 'max_newton_iter': 1000, 'max_ls_iter': 10, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_pd_iter': 1000, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4 })
+        { 'max_pd_iter': 1000, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4, 'method': 1, 'bfgs_history_size': 10 })
 
     deformable = Deformable3d()
     deformable.Initialize(bin_file_name, density, 'none', youngs_modulus, poissons_ratio)
