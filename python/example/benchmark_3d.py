@@ -40,11 +40,10 @@ if __name__ == '__main__':
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
     opts = ({ 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
         { 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_pd_iter': 5000, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 })
+        { 'max_pd_iter': 5000, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4, 'method': 1, 'bfgs_history_size': 10 })
 
     # Initialization.
     folder = Path('benchmark_3d')
-    create_folder(folder)
     img_resolution = (400, 400)
     render_samples = 8
     bin_file_name = folder / 'cuboid.bin'
@@ -197,7 +196,7 @@ if __name__ == '__main__':
     print('Reporting time cost. DoFs: {:d}, frames: {:d}, dt: {:3.3e}'.format(
         3 * node_nums[0] * node_nums[1] * node_nums[2], frame_num, dt
     ))
-    rel_tols = [1e-1, 1e-2, 1e-3, 1e-4]
+    rel_tols = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8]
     forward_backward_times = {}
     forward_times = {}
     backward_times = {}
@@ -241,7 +240,7 @@ if __name__ == '__main__':
                 backward_times[meth_thread_num].append(backward_time)
                 losses[meth_thread_num].append(l)
                 grads[meth_thread_num].append(g)
-    pickle.dump((rel_tols, forward_times, backward_times, losses, grads), open(folder / 'table.bin', 'wb'))
+        pickle.dump((rel_tols, forward_times, backward_times, losses, grads), open(folder / 'table.bin', 'wb'))
 
     import matplotlib.pyplot as plt
     fig = plt.figure(figsize=(15, 5))
