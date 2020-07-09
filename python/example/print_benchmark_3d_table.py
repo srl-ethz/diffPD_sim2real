@@ -42,6 +42,10 @@ if __name__ == '__main__':
     for method in forward_times:
         forward_backward_times[method] = np.zeros(len(rel_tols))
 
+    grad_norms = {}
+    for method in grads:
+        grad_norms[method] = [np.linalg.norm(x) for x in grads[method]]
+
     for idx, rel_tol in enumerate(rel_tols):
         print_info('rel_tol: {:3.3e}'.format(rel_tol))
         tabular = PrettyTabular({
@@ -98,4 +102,29 @@ if __name__ == '__main__':
         loc='upper center', ncol=col_num, bbox_to_anchor=(0.5, 0.19))
     fig.savefig(folder / 'benchmark.pdf')
     fig.savefig(folder / 'benchmark.png')
+
+    fig2 = plt.figure(figsize=(15, 7))
+    ax_1 = fig2.add_subplot(121)
+    ax_2 = fig2.add_subplot(122)
+    titles_2 = ['losses', '|grads|']
+    for title, ax, y in zip(titles_2, (ax_1, ax_2), (losses, grad_norms)):
+        ax.set_xlabel('magnitude (/)')
+        ax.set_ylabel('relative error')
+        ax.set_yscale('log')
+        for method in ['newton_pcg', 'newton_cholesky', 'pd']:
+            if 'pd' in method:
+                color = 'tab:green'
+            elif 'pcg' in method:
+                color = 'tab:blue'
+            elif 'cholesky' in method:
+                color = 'tab:red'
+            meth_thread_num = '{}_{}threads'.format(method, thread_cts[-1])
+            ax.plot(y[meth_thread_num], rel_tols, label=method, color=color)
+        ax.grid(True)
+        ax.legend()
+        ax.set_title(title)
+        
+    fig2.savefig(folder / 'benchmark_l_g.pdf')
+    fig2.savefig(folder / 'benchmark_l_g.png')
+    fig2.tight_layout(pad=3.0)
     plt.show()
