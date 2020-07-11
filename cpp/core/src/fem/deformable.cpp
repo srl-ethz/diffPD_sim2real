@@ -8,7 +8,8 @@
 
 template<int vertex_dim, int element_dim>
 Deformable<vertex_dim, element_dim>::Deformable()
-    : mesh_(), density_(0), cell_volume_(0), dx_(0), material_(nullptr), dofs_(0), pd_solver_ready_(false), act_dofs_(0) {}
+    : mesh_(), density_(0), cell_volume_(0), dx_(0), material_(nullptr), dofs_(0), pd_solver_ready_(false), act_dofs_(0),
+    frictional_boundary_(nullptr) {}
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::Initialize(const std::string& binary_file_name, const real density,

@@ -6,6 +6,7 @@
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::GetQuasiStaticState(const std::string& method, const VectorXr& a, const VectorXr& f_ext,
     const std::map<std::string, real>& options, VectorXr& q) const {
+    CheckError(frictional_boundary_vertex_indices_.empty(), "Frictional boundary is not supported in the quasi-static solver.");
     if (BeginsWith(method, "newton")) QuasiStaticStateNewton(method, a, f_ext, options, q);
     else PrintError("Unsupport quasi-static method: " + method);
 }
