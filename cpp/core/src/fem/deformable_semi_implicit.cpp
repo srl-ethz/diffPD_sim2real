@@ -14,6 +14,15 @@ void Deformable<vertex_dim, element_dim>::ForwardSemiImplicit(const VectorXr& q,
     const real h2m = dt * dt / (density_ * cell_volume_);
     q_next = q + dt * v + h2m * (f_ext + ElasticForce(q) + ForwardStateForce(q, v) + PdEnergyForce(q) + ActuationForce(q, a));
     for (const auto& pair : dirichlet_) q_next(pair.first) = pair.second;
+    // Enforce frictional boundary.
+    for (const int idx : frictional_boundary_vertex_indices_) {
+        const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * idx, vertex_dim);
+        const Eigen::Matrix<real, vertex_dim, 1> vi = v.segment(vertex_dim * idx, vertex_dim);
+        real t_hit;
+        if (frictional_boundary_->ForwardIntersect(qi, vi, dt, t_hit)) {
+            q_next.segment(vertex_dim * idx, vertex_dim) = qi + t_hit * vi;
+        }
+    }
     v_next = (q_next - q) / dt;
 }
 
@@ -28,22 +37,41 @@ void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q
 
     // (q, v, a, f_ext) -> (q_next, v_next).
     // q_mid = q + h * v + h2m * f_ext + h2m * f_ela(q) + h2m * f_state(q, v) + h2m * f_pd(q) + h2m * f_act(q, a).
-    // q_next = T(q_mid).
+    // q_next = T(q_mid, q, v).
     // v_next = (q_next - q) / dt.
     const real mass = density_ * cell_volume_;
     const real h2m = dt * dt / mass;
     // (q, v, a, f_ext) -> q_mid.
-    // q_mid -> q_next.
+    // (q_mid, q, v) -> q_next.
     // (q, q_next) -> v_next.
     // Back-propagation v_next first.
     const VectorXr dl_dq_next_agg = dl_dq_next + dl_dv_next / dt;
     dl_dq = -dl_dv_next / dt;
-    // q_mid -> q_next.
-    VectorXr dl_dq_mid = dl_dq_next_agg;
+    // q_mid, q, v -> q_next
+    // To be more precise:
+    // q_mid' = T(q_mid).
+    // q_mid', q, v -> q_next.
+    dl_dv = VectorXr::Zero(dofs_);
+    VectorXr dl_dq_mid_prime = dl_dq_next_agg;
+    for (const int idx : frictional_boundary_vertex_indices_) {
+        const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * idx, vertex_dim);
+        const Eigen::Matrix<real, vertex_dim, 1> vi = v.segment(vertex_dim * idx, vertex_dim);
+        real t_hit;
+        if (frictional_boundary_->ForwardIntersect(qi, vi, dt, t_hit)) {
+            dl_dq_mid_prime.segment(vertex_dim * idx, vertex_dim) = Eigen::Matrix<real, vertex_dim, 1>::Zero();
+            Eigen::Matrix<real, vertex_dim, 1> dqi, dvi;
+            frictional_boundary_->BackwardIntersect(qi, vi, t_hit, dl_dq_next_agg.segment(vertex_dim * idx, vertex_dim),
+                dqi, dvi);
+            dl_dq.segment(vertex_dim * idx, vertex_dim) += dqi;
+            dl_dv.segment(vertex_dim * idx, vertex_dim) += dvi;
+        }
+    }
+
+    VectorXr dl_dq_mid = dl_dq_mid_prime;
     for (const auto& pair : dirichlet_) dl_dq_mid(pair.first) = 0;
     // q_mid = q + h * v + h2m * f_ext + h2m * f_ela(q) + h2m * f_state(q, v) + h2m * f_pd(q) + h2m * f_act(q, a).
     dl_dq += dl_dq_mid;
-    dl_dv = dl_dq_mid * dt;
+    dl_dv += dl_dq_mid * dt;
     dl_df_ext = dl_dq_mid * h2m;
     dl_dq += ElasticForceDifferential(q, dl_dq_mid) * h2m;
     // h2m * f_state(q, v).
