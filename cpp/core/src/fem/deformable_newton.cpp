@@ -30,9 +30,25 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
     const VectorXr rhs = q + dt * v + h2m * (f_ext + ForwardStateForce(q, v));
     VectorXr selected = VectorXr::Ones(dofs_);
     // q_next - h2m * eval_force(q_next) = rhs.
-    VectorXr q_sol = rhs;
+    // We use q as the initial guess --- do not use rhs as it will cause flipped elements when dirichlet_with_friction
+    // changes the shape aggressively.
+    VectorXr q_sol = q;
     // Enforce boundary conditions.
-    for (const auto& pair : dirichlet_) {
+    std::map<int, real> dirichlet_with_friction = dirichlet_;
+    const VectorXr v_pred = v + dt / mass * (f_ext + ElasticForce(q) + ForwardStateForce(q, v)
+        + PdEnergyForce(q) + ActuationForce(q, a));
+    // Enforce frictional constraints.
+    for (const int idx : frictional_boundary_vertex_indices_) {
+        const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * idx, vertex_dim);
+        const Eigen::Matrix<real, vertex_dim, 1> vi = v_pred.segment(vertex_dim * idx, vertex_dim);
+        real t_hit;
+        if (frictional_boundary_->ForwardIntersect(qi, vi, dt, t_hit)) {
+            const Eigen::Matrix<real, vertex_dim, 1> qi_hit = qi + t_hit * vi;
+            for (int i = 0; i < vertex_dim; ++i) dirichlet_with_friction[vertex_dim * idx + i] = qi_hit(i);
+        }
+    }
+
+    for (const auto& pair : dirichlet_with_friction) {
         q_sol(pair.first) = pair.second;
         selected(pair.first) = 0;
     }
@@ -46,22 +62,27 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
         VectorXr new_rhs = rhs - q_sol + h2m * force_sol;
         // Enforce boundary conditions.
-        for (const auto& pair : dirichlet_) {
+        for (const auto& pair : dirichlet_with_friction) {
             const int dof = pair.first;
             new_rhs(dof) = 0;
         }
         VectorXr dq = VectorXr::Zero(dofs_);
         // Solve for the search direction.
         if (method == "newton_pcg") {
-            Eigen::ConjugateGradient<MatrixOp, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
-            MatrixOp op(dofs_, dofs_, [&](const VectorXr& dq){ return NewtonMatrixOp(q_sol, a, h2m, dq); });
+            // Looks like Matrix operators are more accurate and allow for more advanced preconditioners.
+            Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper, Eigen::IncompleteCholesky<real>> cg;
+            SparseMatrix op = NewtonMatrix(q_sol, a, h2m, dirichlet_with_friction);
             cg.compute(op);
             dq = cg.solve(new_rhs);
-            CheckError(cg.info() == Eigen::Success, "CG solver failed.");
+            // For small problems, I noticed advanced preconditioners result in slightly less accurate solutions
+            // and triggers Eigen::NoConvergence, which means the max number of iterations has been used. However,
+            // for larger problems, IncompleteCholesky is a pretty good preconditioner that results in much fewer
+            // number of iterations. So my decision is to include NoConvergence in the test below.
+            CheckError(cg.info() == Eigen::Success || cg.info() == Eigen::NoConvergence, "PCG solver failed.");
         } else if (method == "newton_cholesky") {
             // Cholesky.
             Eigen::SimplicialLDLT<SparseMatrix> cholesky;
-            const SparseMatrix op = NewtonMatrix(q_sol, a, h2m);
+            const SparseMatrix op = NewtonMatrix(q_sol, a, h2m, dirichlet_with_friction);
             cholesky.compute(op);
             dq = cholesky.solve(new_rhs);
             CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
@@ -119,6 +140,7 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     const real abs_tol = options.at("abs_tol");
     const real rel_tol = options.at("rel_tol");
     const int thread_ct = static_cast<int>(options.at("thread_ct"));
+    // TODO: Add dirichlet to backward.
     for (const auto& pair : dirichlet_) CheckError(q_next(pair.first) == pair.second, "Inconsistent q_next.");
 
     omp_set_num_threads(thread_ct);
@@ -143,14 +165,14 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
         // |Ax - b|/|b| <= rel_tol + abs_tol/|b|.
         const real tol = rel_tol + abs_tol / dl_dq_next_agg.norm();
         cg.setTolerance(tol);
-        const SparseMatrix op = NewtonMatrix(q_next, a, h2m);
+        const SparseMatrix op = NewtonMatrix(q_next, a, h2m, dirichlet_);
         cg.compute(op);
         adjoint = cg.solve(dl_dq_next_agg);
         CheckError(cg.info() == Eigen::Success, "CG solver failed.");
     } else if (method == "newton_cholesky") {
         // Note that Cholesky is a direct solver: no tolerance is ever used to terminate the solution.
         Eigen::SimplicialLDLT<SparseMatrix> cholesky;
-        const SparseMatrix op = NewtonMatrix(q_next, a, h2m);
+        const SparseMatrix op = NewtonMatrix(q_next, a, h2m, dirichlet_);
         cholesky.compute(op);
         adjoint = cholesky.solve(dl_dq_next_agg);
         CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
@@ -184,19 +206,19 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
 
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::NewtonMatrixOp(const VectorXr& q_sol, const VectorXr& a,
-    const real h2m, const VectorXr& dq) const {
+    const real h2m, const std::map<int, real>& dirichlet_with_friction, const VectorXr& dq) const {
     VectorXr dq_w_bonudary = dq;
-    for (const auto& pair : dirichlet_) dq_w_bonudary(pair.first) = 0;
+    for (const auto& pair : dirichlet_with_friction) dq_w_bonudary(pair.first) = 0;
     VectorXr ret = dq_w_bonudary - h2m * (ElasticForceDifferential(q_sol, dq_w_bonudary)
         + PdEnergyForceDifferential(q_sol, dq_w_bonudary)
         + ActuationForceDifferential(q_sol, a, dq_w_bonudary, VectorXr::Zero(act_dofs_)));
-    for (const auto& pair : dirichlet_) ret(pair.first) = dq(pair.first);
+    for (const auto& pair : dirichlet_with_friction) ret(pair.first) = dq(pair.first);
     return ret;
 }
 
 template<int vertex_dim, int element_dim>
 const SparseMatrix Deformable<vertex_dim, element_dim>::NewtonMatrix(const VectorXr& q_sol, const VectorXr& a,
-    const real h2m) const {
+    const real h2m, const std::map<int, real>& dirichlet_with_friction) const {
     SparseMatrixElements nonzeros = ElasticForceDifferential(q_sol);
     SparseMatrixElements nonzeros_pd = PdEnergyForceDifferential(q_sol);
     SparseMatrixElements nonzeros_act_dq, nonzeros_act_da;
@@ -208,7 +230,8 @@ const SparseMatrix Deformable<vertex_dim, element_dim>::NewtonMatrix(const Vecto
         const int row = element.row();
         const int col = element.col();
         const real val = element.value();
-        if (dirichlet_.find(row) != dirichlet_.end() || dirichlet_.find(col) != dirichlet_.end()) continue;
+        if (dirichlet_with_friction.find(row) != dirichlet_with_friction.end()
+            || dirichlet_with_friction.find(col) != dirichlet_with_friction.end()) continue;
         nonzeros_new.push_back(Eigen::Triplet<real>(row, col, -h2m * val));
     }
     for (int i = 0; i < dofs_; ++i) nonzeros_new.push_back(Eigen::Triplet<real>(i, i, 1));

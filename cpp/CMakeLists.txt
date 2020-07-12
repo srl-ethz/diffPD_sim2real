@@ -13,9 +13,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}")
 
 # OpenMP.
 find_package(OpenMP REQUIRED)
-#if(OpenMP_CXX_FOUND)
+if(OpenMP_CXX_FOUND)
     add_definitions(-DEIGEN_DONT_PARALLELIZE)
-#endif()
+endif()
 
 # Include directories.
 include_directories("./lib/eigen-3.3.7")

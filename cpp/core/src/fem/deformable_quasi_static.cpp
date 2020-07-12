@@ -53,8 +53,10 @@ void Deformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::stri
         VectorXr dq = VectorXr::Zero(dofs_);
         // Solve for the search direction.
         if (method == "newton_pcg") {
-            Eigen::ConjugateGradient<MatrixOp, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
-            MatrixOp op(dofs_, dofs_, [&](const VectorXr& dq){ return QuasiStaticMatrixOp(q_sol, a, dq); });
+            // Matrix-free operator is only compatible with IdentityPreconditioner and it seems that
+            // matrix operators are more accurate.
+            Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper, Eigen::IncompleteCholesky<real>> cg;
+            const SparseMatrix op = QuasiStaticMatrix(q_sol, a);
             cg.compute(op);
             dq = cg.solve(new_rhs);
             CheckError(cg.info() == Eigen::Success, "CG solver failed.");
@@ -75,7 +77,7 @@ void Deformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::stri
         VectorXr q_sol_next = q_sol + step_size * dq;
         VectorXr force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
         for (int j = 0; j < max_ls_iter; ++j) {
-            if (!force_next.hasNaN()) break;
+            if (!HasFlippedElement(q_sol_next) && !force_next.hasNaN()) break;
             step_size /= 2;
             q_sol_next = q_sol + step_size * dq;
             force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);

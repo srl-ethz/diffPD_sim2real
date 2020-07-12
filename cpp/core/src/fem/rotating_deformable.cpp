@@ -154,7 +154,7 @@ void RotatingDeformable<vertex_dim, element_dim>::ForwardNewton(const std::strin
         VectorXr q_sol_next = q_sol + step_size * dq;
         VectorXr force_next = Deformable<vertex_dim, element_dim>::ElasticForce(q_sol_next);
         for (int j = 0; j < max_ls_iter; ++j) {
-            if (!force_next.hasNaN()) break;
+            if (!Deformable<vertex_dim, element_dim>::HasFlippedElement(q_sol_next) && !force_next.hasNaN()) break;
             step_size /= 2;
             q_sol_next = q_sol + step_size * dq;
             force_next = Deformable<vertex_dim, element_dim>::ElasticForce(q_sol_next);
@@ -323,7 +323,7 @@ void RotatingDeformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const s
         VectorXr q_sol_next = q_sol + step_size * dq;
         VectorXr force_next = Deformable<vertex_dim, element_dim>::ElasticForce(q_sol_next);
         for (int j = 0; j < max_ls_iter; ++j) {
-            if (!force_next.hasNaN()) break;
+            if (!Deformable<vertex_dim, element_dim>::HasFlippedElement(q_sol_next) && !force_next.hasNaN()) break;
             step_size /= 2;
             q_sol_next = q_sol + step_size * dq;
             force_next = Deformable<vertex_dim, element_dim>::ElasticForce(q_sol_next);

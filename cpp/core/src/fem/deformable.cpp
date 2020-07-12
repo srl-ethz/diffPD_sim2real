@@ -383,5 +383,19 @@ const Eigen::Matrix<real, vertex_dim, vertex_dim> Deformable<vertex_dim, element
     return F;
 }
 
+template<int vertex_dim, int element_dim>
+const bool Deformable<vertex_dim, element_dim>::HasFlippedElement(const VectorXr& q) const {
+    CheckError(static_cast<int>(q.size()) == dofs_, "Inconsistent number of elements.");
+    const int sample_num = element_dim;
+    for (int i = 0; i < mesh_.NumOfElements(); ++i) {
+        const auto deformed = ScatterToElement(q, i);
+        for (int j = 0; j < sample_num; ++j) {
+            const auto F = DeformationGradient(deformed, j);
+            if (F.determinant() < std::numeric_limits<real>::epsilon()) return true;
+        }
+    }
+    return false;
+}
+
 template class Deformable<2, 4>;
 template class Deformable<3, 8>;
