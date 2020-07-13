@@ -10,6 +10,7 @@
 #include "pd_energy/pd_vertex_energy.h"
 #include "pd_energy/pd_element_energy.h"
 #include "pd_energy/pd_muscle_energy.h"
+#include "friction/frictional_boundary.h"
 #include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
@@ -41,6 +42,9 @@ public:
     }
     const std::vector<std::pair<std::shared_ptr<PdMuscleEnergy<vertex_dim>>, std::vector<int>>>& pd_muscle_energies() const {
         return pd_muscle_energies_;
+    }
+    const std::vector<int>& frictional_boundary_vertex_indices() const {
+        return frictional_boundary_vertex_indices_;
     }
 
     void SetDirichletBoundaryCondition(const int dof, const real val) {
@@ -80,6 +84,9 @@ public:
     const VectorXr ActuationForce(const VectorXr& q, const VectorXr& a) const;
     const VectorXr ActuationForceDifferential(const VectorXr& q, const VectorXr& a, const VectorXr& dq, const VectorXr& da) const;
     void ActuationForceDifferential(const VectorXr& q, const VectorXr& a, SparseMatrixElements& dq, SparseMatrixElements& da) const;
+
+    // Frictional boundary.
+    void SetFrictionalBoundary(const std::string& boundary_type, const std::vector<real>& params, const std::vector<int> indices);
 
     void Forward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& a,
         const VectorXr& f_ext, const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
@@ -150,13 +157,18 @@ protected:
         const std::map<std::string, real>& options, VectorXr& q) const;
     const VectorXr GetUndeformedShape() const;
 
+    // Check if elements are flipped.
+    const bool HasFlippedElement(const VectorXr& q) const;
+
 private:
     const std::shared_ptr<Material<vertex_dim>> InitializeMaterial(const std::string& material_type,
         const real youngs_modulus, const real poissons_ratio) const;
     const real InitializeCellSize(const Mesh<vertex_dim, element_dim>& mesh) const;
     void InitializeShapeFunction();
-    const VectorXr NewtonMatrixOp(const VectorXr& q_sol, const VectorXr& a, const real h2m, const VectorXr& dq) const;
-    const SparseMatrix NewtonMatrix(const VectorXr& q_sol, const VectorXr& a, const real h2m) const;
+    const VectorXr NewtonMatrixOp(const VectorXr& q_sol, const VectorXr& a, const real h2m,
+        const std::map<int, real>& dirichlet_with_friction, const VectorXr& dq) const;
+    const SparseMatrix NewtonMatrix(const VectorXr& q_sol, const VectorXr& a, const real h2m,
+        const std::map<int, real>& dirichlet_with_friction) const;
     const VectorXr QuasiStaticMatrixOp(const VectorXr& q, const VectorXr& a, const VectorXr& dq) const;
     const SparseMatrix QuasiStaticMatrix(const VectorXr& q, const VectorXr& a) const;
 
@@ -215,6 +227,10 @@ private:
     // Actuation forces.
     std::vector<std::pair<std::shared_ptr<PdMuscleEnergy<vertex_dim>>, std::vector<int>>> pd_muscle_energies_;
     int act_dofs_;
+
+    // Friction.
+    std::shared_ptr<FrictionalBoundary<vertex_dim>> frictional_boundary_;
+    std::vector<int> frictional_boundary_vertex_indices_;
 };
 
 #endif

@@ -8,7 +8,8 @@
 
 template<int vertex_dim, int element_dim>
 Deformable<vertex_dim, element_dim>::Deformable()
-    : mesh_(), density_(0), cell_volume_(0), dx_(0), material_(nullptr), dofs_(0), pd_solver_ready_(false), act_dofs_(0) {}
+    : mesh_(), density_(0), cell_volume_(0), dx_(0), material_(nullptr), dofs_(0), pd_solver_ready_(false), act_dofs_(0),
+    frictional_boundary_(nullptr) {}
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::Initialize(const std::string& binary_file_name, const real density,
@@ -380,6 +381,20 @@ const Eigen::Matrix<real, vertex_dim, vertex_dim> Deformable<vertex_dim, element
     Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Matrix<real, vertex_dim, vertex_dim>::Zero();
     for (int k = 0; k < element_dim; ++k) F += normal_q.col(k) * grad_undeformed_sample_weights_[sample_idx].col(k).transpose();
     return F;
+}
+
+template<int vertex_dim, int element_dim>
+const bool Deformable<vertex_dim, element_dim>::HasFlippedElement(const VectorXr& q) const {
+    CheckError(static_cast<int>(q.size()) == dofs_, "Inconsistent number of elements.");
+    const int sample_num = element_dim;
+    for (int i = 0; i < mesh_.NumOfElements(); ++i) {
+        const auto deformed = ScatterToElement(q, i);
+        for (int j = 0; j < sample_num; ++j) {
+            const auto F = DeformationGradient(deformed, j);
+            if (F.determinant() < std::numeric_limits<real>::epsilon()) return true;
+        }
+    }
+    return false;
 }
 
 template class Deformable<2, 4>;
