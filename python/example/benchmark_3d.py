@@ -34,7 +34,7 @@ def test_benchmark_3d(verbose):
     q0 = env.default_init_position()
     v0 = env.default_init_velocity()
     a0 = np.random.uniform(size=act_dofs)
-    f0 = np.random.normal(scale=0.1, size=dofs)
+    f0 = np.random.normal(scale=0.1, size=dofs) * 1e-3
 
     # Visualization.
     dt = 1e-2
