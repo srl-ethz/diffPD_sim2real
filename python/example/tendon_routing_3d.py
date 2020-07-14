@@ -144,7 +144,7 @@ if __name__ == '__main__':
         atol = 1e-4
         rtol = 1e-2
         for method, opt in zip(methods, opts):
-            check_gradients(lambda x: loss_and_grad(x, method, opt), a0, eps, atol, rtol, True)
+            check_gradients(lambda x: loss_and_grad(x, method, opt), a0, eps, rtol, atol, True)
 
     for method, opt in zip(methods, opts):
         t0 = time.time()

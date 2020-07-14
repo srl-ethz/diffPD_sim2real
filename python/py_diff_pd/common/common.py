@@ -41,10 +41,10 @@ class PrettyTabular(object):
 
 import shutil
 import os
-def create_folder(folder_name):
-    if os.path.isdir(folder_name):
+def create_folder(folder_name, exist_ok=False):
+    if not exist_ok and os.path.isdir(folder_name):
         shutil.rmtree(folder_name)
-    os.makedirs(folder_name)
+    os.makedirs(folder_name, exist_ok=exist_ok)
 
 from py_diff_pd.core.py_diff_pd_core import StdRealVector
 def to_std_real_vector(v):

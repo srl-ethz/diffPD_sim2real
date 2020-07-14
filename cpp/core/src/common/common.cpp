@@ -81,6 +81,7 @@ void Toc(const std::string& message) {
 void CheckError(const bool condition, const std::string& error_message) {
 #if PRINT_LEVEL >= PRINT_ERROR
     if (!condition) {
+        std::cerr << RedHead() << error_message << RedTail() << std::endl;
         throw ExceptionWithCallStack((RedHead() + error_message + RedTail()).c_str());
     }
 #endif

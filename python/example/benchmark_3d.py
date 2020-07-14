@@ -10,192 +10,43 @@ import pickle
 import scipy.optimize
 import numpy as np
 
-from py_diff_pd.core.py_diff_pd_core import Deformable3d, Mesh3d, StdRealVector
 from py_diff_pd.common.common import ndarray, create_folder
 from py_diff_pd.common.common import print_info, PrettyTabular
-from py_diff_pd.common.mesh import generate_hex_mesh
-from py_diff_pd.common.display import render_hex_mesh, export_gif
+from py_diff_pd.env.benchmark_env_3d import BenchmarkEnv3d
 
-if __name__ == '__main__':
-    # Uncomment the following line to try random seeds.
-    #seed = np.random.randint(1e5)
+def test_benchmark_3d(verbose):
     seed = 42
-    print('seed: {}'.format(seed))
-    np.random.seed(seed)
+    folder = Path('benchmark_3d')
+    env = BenchmarkEnv3d(seed, folder, refinement=8)
+    deformable = env.deformable()
 
     # Setting thread number.
     max_threads = int(subprocess.run(['nproc', '--all'], capture_output=True).stdout)
     thread_cts = [4, 8, 16, 32]
 
-    # Hyperparameters.
-    youngs_modulus = 1e6
-    poissons_ratio = 0.45
-    la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
-    mu = youngs_modulus / (2 * (1 + poissons_ratio))
-    density = 1e3
-    cell_nums = (32, 8, 8)
-    origin = np.random.normal(size=3)
-    node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
-    dx = 0.01
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
     opts = ({ 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
         { 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
         { 'max_pd_iter': 5000, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4, 'method': 1, 'bfgs_history_size': 10 })
 
-    # Initialization.
-    folder = Path('benchmark_3d')
-    img_resolution = (400, 400)
-    render_samples = 8
-    bin_file_name = folder / 'cuboid.bin'
-    voxels = np.ones(cell_nums)
-    generate_hex_mesh(voxels, dx, origin, bin_file_name)
-
-    mesh = Mesh3d()
-    mesh.Initialize(str(bin_file_name))
-
-    deformable = Deformable3d()
-    deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
-    # Boundary conditions.
-    for j in range(node_nums[1]):
-        for k in range(node_nums[2]):
-            node_idx = j * node_nums[2] + k
-            vx, vy, vz = mesh.py_vertex(node_idx)
-            deformable.SetDirichletBoundaryCondition(3 * node_idx, vx)
-            deformable.SetDirichletBoundaryCondition(3 * node_idx + 1, vy)
-            deformable.SetDirichletBoundaryCondition(3 * node_idx + 2, vz)
-    # State-based forces.
-    deformable.AddStateForce('gravity', [0, 0, -9.81])
-    # Elasticity.
-    deformable.AddPdEnergy('corotated', [2 * mu,], [])
-    deformable.AddPdEnergy('volume', [la,], [])
-    # Collisions.
-    def to_index(i, j, k):
-        return i * node_nums[1] * node_nums[2] + j * node_nums[2] + k
-    collision_indices = [to_index(cell_nums[0], 0, 0), to_index(cell_nums[0], cell_nums[1], 0)]
-    deformable.AddPdEnergy('planar_collision', [5e3, 0.0, 0.0, 1.0, -origin[2] + 0.5 * dx], collision_indices)
-    # Actuation.
-    act_indices = []
-    for i in range(cell_nums[0]):
-        j = 0
-        k = 0
-        act_indices.append(i * cell_nums[1] * cell_nums[2] + j * cell_nums[2] + k)
-    deformable.AddActuation(1e5, [1.0, 0.0, 0.0], act_indices)
-
-    # Initial state set by rotating the cuboid kinematically.
     dofs = deformable.dofs()
     act_dofs = deformable.act_dofs()
-    vertex_num = mesh.NumOfVertices()
-    q0 = ndarray(mesh.py_vertices())
-    max_theta = np.pi / 6
-    for i in range(1, node_nums[0]):
-        theta = max_theta * i / (node_nums[0] - 1)
-        c, s = np.cos(theta), np.sin(theta)
-        R = ndarray([[1, 0, 0],
-            [0, c, -s],
-            [0, s, c]])
-        center = ndarray([i * dx, cell_nums[1] / 2 * dx, cell_nums[2] / 2 * dx]) + origin
-        for j in range(node_nums[1]):
-            for k in range(node_nums[2]):
-                idx = i * node_nums[1] * node_nums[2] + j * node_nums[2] + k
-                v = ndarray(mesh.py_vertex(idx))
-                q0[3 * idx:3 * idx + 3] = R @ (v - center) + center
-    v0 = np.zeros(dofs)
-    a0 = np.random.uniform(low=0, high=0.2, size=act_dofs)
-    f_ext = np.random.normal(scale=0.1, size=dofs) * density * (dx ** 3)
+    q0 = env.default_init_position()
+    v0 = env.default_init_velocity()
+    a0 = np.random.uniform(size=act_dofs)
+    f0 = np.random.normal(scale=0.1, size=dofs)
 
     # Visualization.
     dt = 1e-2
     frame_num = 25
-    def visualize(qvaf, method, opt):
-        create_folder(folder / method)
-        q_init = ndarray(qvaf[:dofs])
-        v_init = ndarray(qvaf[dofs:2 * dofs])
-        a = ndarray(qvaf[2 * dofs:2 * dofs + act_dofs])
-        f_ext = ndarray(qvaf[2 * dofs + act_dofs:])
-        q = [q_init,]
-        v = [v_init,]
-        for i in range(frame_num):
-            q_cur = q[-1]
-            v_cur = v[-1]
-            deformable.PySaveToMeshFile(q_cur, str(folder / method / '{:04d}.bin'.format(i)))
-            mesh = Mesh3d()
-            mesh.Initialize(str(folder / method / '{:04d}.bin'.format(i)))
-            render_hex_mesh(mesh, file_name=folder / method / '{:04d}.png'.format(i), resolution=img_resolution,
-                sample=render_samples, transforms=[
-                    ('t', -origin),
-                    ('t', (0, 0, 0.5 * dx)),
-                    ('t', (0, cell_nums[0] / 2 * dx, 0)),
-                    ('s', 1.25 / ((cell_nums[0] + 2) * dx)),
-                ])
-            q_next_array = StdRealVector(dofs)
-            v_next_array = StdRealVector(dofs)
-            deformable.PyForward(method, q_cur, v_cur, a, f_ext, dt, opt, q_next_array, v_next_array)
-            q_next = ndarray(q_next_array)
-            v_next = ndarray(v_next_array)
-            q.append(q_next)
-            v.append(v_next)
-
-        export_gif(folder / method, folder/ '{}.gif'.format(method), 5)
-        os.system('eog {}'.format(folder / '{}.gif'.format(method)))
-
-    for method, opt in zip(methods, opts):
-        visualize(np.concatenate([q0, v0, a0, f_ext]), method, opt)
+    if verbose:
+        for method, opt in zip(methods, opts):
+            env.simulate(dt, frame_num, method, opt, q0, v0, [a0 for _ in range(frame_num)],
+                [f0 for _ in range(frame_num)], require_grad=False, vis_folder=method)
+            os.system('eog {}.gif'.format(folder / method))
 
     # Benchmark time.
-    q_next_weight = np.random.normal(size=dofs)
-    v_next_weight = np.random.normal(size=dofs)
-    def loss_and_grad(qvaf, method, opt, compute_grad):
-        t0 = time.time()
-        q_init = ndarray(qvaf[:dofs])
-        v_init = ndarray(qvaf[dofs:2 * dofs])
-        a = ndarray(qvaf[2 * dofs:2 * dofs + act_dofs])
-        f_ext = ndarray(qvaf[2 * dofs + act_dofs:])
-        q = [q_init,]
-        v = [v_init,]
-        for i in range(frame_num):
-            q_cur = q[-1]
-            v_cur = v[-1]
-            q_next_array = StdRealVector(dofs)
-            v_next_array = StdRealVector(dofs)
-            deformable.PyForward(method, q_cur, v_cur, a, f_ext, dt, opt, q_next_array, v_next_array)
-            q_next = ndarray(q_next_array)
-            v_next = ndarray(v_next_array)
-            q.append(q_next)
-            v.append(v_next)
-
-        # Compute loss.
-        loss = q[-1].dot(q_next_weight) + v[-1].dot(v_next_weight)
-        dl_dq_next = np.copy(q_next_weight)
-        dl_dv_next = np.copy(v_next_weight)
-        dl_da = np.zeros(act_dofs)
-        dl_df_ext = np.zeros(dofs)
-
-        t1 = time.time()
-
-        # Compute gradients.
-        if compute_grad:
-            for i in reversed(range(frame_num)):
-                dl_dq = StdRealVector(dofs)
-                dl_dv = StdRealVector(dofs)
-                dl_dai = StdRealVector(act_dofs)
-                dl_df = StdRealVector(dofs)
-                deformable.PyBackward(method, q[i], v[i], a, f_ext, dt, q[i + 1], v[i + 1],
-                    dl_dq_next, dl_dv_next, opt, dl_dq, dl_dv, dl_dai, dl_df)
-                dl_dq_next = ndarray(dl_dq)
-                dl_dv_next = ndarray(dl_dv)
-                dl_da += ndarray(dl_dai)
-                dl_df_ext += ndarray(dl_df)
-
-            grad = np.concatenate([dl_dq_next, dl_dv_next, dl_da, dl_df_ext])
-            t2 = time.time()
-            return loss, grad, t1 - t0, t2 - t1
-        else:
-            return loss, t1 - t0
-
-    # Benchmark time.
-    print('Reporting time cost. DoFs: {:d}, frames: {:d}, dt: {:3.3e}'.format(
-        3 * node_nums[0] * node_nums[1] * node_nums[2], frame_num, dt
-    ))
+    print('Reporting time cost. DoFs: {:d}, frames: {:d}, dt: {:3.3e}'.format(dofs, frame_num, dt))
     rel_tols = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8]
     forward_backward_times = {}
     forward_times = {}
@@ -222,13 +73,21 @@ if __name__ == '__main__':
         })
         print_info(tabular.head_string())
 
-        x0 = np.concatenate([q0, v0, a0, f_ext])
         for method, opt in zip(methods, opts):
             opt['rel_tol'] = rel_tol
             for thread_ct in thread_cts:
                 opt['thread_ct'] = thread_ct
                 meth_thread_num = '{}_{}threads'.format(method, thread_ct)
-                l, g, forward_time, backward_time = loss_and_grad(x0, method, opt, True)
+
+                loss, grad, info = env.simulate(dt, frame_num, method, opt, q0, v0, [a0 for _ in range(frame_num)],
+                    [f0 for _ in range(frame_num)], require_grad=True, vis_folder=None)
+                grad_q, grad_v, grad_a, grad_f = grad
+                grad = np.zeros(q0.size + v0.size + a0.size + f0.size)
+                grad[:dofs] = grad_q
+                grad[dofs:2 * dofs] = grad_v
+                grad[2 * dofs:2 * dofs + act_dofs] = np.sum(ndarray(grad_a), axis=0)
+                grad[2 * dofs + act_dofs:] = np.sum(ndarray(grad_f), axis=0)
+                l, g, forward_time, backward_time = loss, grad, info['forward_time'], info['backward_time']
                 print(tabular.row_string({
                     'method': meth_thread_num,
                     'forward and backward (s)': forward_time + backward_time,
@@ -242,33 +101,7 @@ if __name__ == '__main__':
                 grads[meth_thread_num].append(g)
         pickle.dump((rel_tols, forward_times, backward_times, losses, grads), open(folder / 'table.bin', 'wb'))
 
-    import matplotlib.pyplot as plt
-    fig = plt.figure(figsize=(15, 5))
-    ax_fb = fig.add_subplot(131)
-    ax_f = fig.add_subplot(132)
-    ax_b = fig.add_subplot(133)
-    titles = ['forward + backward', 'forward', 'backward']
-    dash_list =[(5, 0), (5, 2), (2, 5), (4, 10), (3, 3, 2, 2), (5, 2, 20, 2), (5, 5), (5, 2, 1, 2)]
-    for title, ax, t in zip(titles, (ax_fb, ax_f, ax_b), (forward_backward_times, forward_times, backward_times)):
-        ax.set_xlabel('time (s)')
-        ax.set_ylabel('relative error')
-        ax.set_yscale('log')
-        for method in methods:
-            if 'pd' in method:
-                color = 'green'
-            elif 'pcg' in method:
-                color = 'blue'
-            elif 'cholesky' in method:
-                color = 'red'
-            for thread_ct in thread_cts:
-                idx = thread_cts.index(thread_ct)
-                meth_thread_num = '{}_{}threads'.format(method, thread_ct)
-                ax.plot(t[meth_thread_num], rel_tols, label=meth_thread_num,
-                    color=color, dashes=dash_list[idx])
-        ax.grid(True)
-        ax.legend()
-        ax.set_title(title)
 
-    fig.savefig(folder / 'benchmark.pdf')
-    fig.savefig(folder / 'benchmark.png')
-    plt.show()
+if __name__ == '__main__':
+    verbose = True
+    test_benchmark_3d(verbose)

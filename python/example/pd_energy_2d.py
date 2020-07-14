@@ -5,75 +5,48 @@ from pathlib import Path
 import shutil
 import numpy as np
 
-from py_diff_pd.core.py_diff_pd_core import Deformable2d, Mesh2d
 from py_diff_pd.common.common import ndarray, create_folder
 from py_diff_pd.common.common import print_info, print_ok, print_error
-from py_diff_pd.common.mesh import generate_rectangle_mesh
 from py_diff_pd.common.grad_check import check_gradients
+from py_diff_pd.env.benchmark_env_2d import BenchmarkEnv2d
 
 def test_pd_energy_2d(verbose):
-    # Uncomment the following line to try random seeds.
-    #seed = np.random.randint(1e5)
     seed = 42
-    if verbose:
-        print_info('seed: {}'.format(seed))
-    np.random.seed(seed)
-
-    # Hyperparameters.
-    youngs_modulus = 1e5
-    poissons_ratio = 0.45
-    la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
-    mu = youngs_modulus / (2 * (1 + poissons_ratio))
-    density = 1e4
-    cell_nums = (20, 10)
-    dx = 0.2
-
-    # Initialization.
     folder = Path('pd_energy_2d')
-    create_folder(folder)
-    bin_file_name = folder / 'rectangle.bin'
-    generate_rectangle_mesh(cell_nums, dx, (0, 0), bin_file_name)
-
-    mesh = Mesh2d()
-    mesh.Initialize(str(bin_file_name))
-
-    deformable = Deformable2d()
-    deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
-    deformable.AddPdEnergy('corotated', [mu * 2,], [])
-    deformable.AddPdEnergy('volume', [la,], [])
-    deformable.AddPdEnergy('planar_collision', [1e3, 0.0, 1.0, -dx / 2], [0,])
-
-    dofs = deformable.dofs()
-    vertex_num = int(dofs / 2)
-    q0 = ndarray(mesh.py_vertices()) + np.random.normal(scale=0.1 * dx, size=dofs)
+    env = BenchmarkEnv2d(seed, folder, refinement=6)
 
     def loss_and_grad(q):
-        loss = deformable.PyComputePdEnergy(q)
-        grad = -ndarray(deformable.PyPdEnergyForce(q))
+        loss = env.deformable().PyComputePdEnergy(q)
+        grad = -ndarray(env.deformable().PyPdEnergyForce(q))
         return loss, grad
 
     eps = 1e-8
     atol = 1e-4
-    rtol = 1e-2
-    if not check_gradients(loss_and_grad, q0, eps, atol, rtol, verbose):
+    rtol = 5e-2
+    q0 = env.default_init_position()
+    x0 = q0 + np.random.normal(scale=0.01, size=env.deformable().dofs())
+    if not check_gradients(loss_and_grad, x0, eps, rtol, atol, verbose):
         if verbose:
             print_error('ComputePdEnergy and PdEnergyForce mismatch.')
         return False
 
     # Check PdEnergyForceDifferential.
-    dq = np.random.normal(scale=1e-5, size=dofs)
-    df_analytical = ndarray(deformable.PyPdEnergyForceDifferential(q0, dq))
-    K = ndarray(deformable.PyPdEnergyForceDifferential(q0))
+    dq = np.random.uniform(low=-1e-6, high=1e-6, size=env.deformable().dofs())
+    df_analytical = ndarray(env.deformable().PyPdEnergyForceDifferential(x0, dq))
+    K = ndarray(env.deformable().PyPdEnergyForceDifferential(x0))
     df_analytical2 = K @ dq
     if not np.allclose(df_analytical, df_analytical2):
         if verbose:
             print_error('Analytical elastic force differential values do not match.')
         return False
 
-    df_numerical = ndarray(deformable.PyPdEnergyForce(q0 + dq)) - ndarray(deformable.PyPdEnergyForce(q0))
-    if not np.allclose(df_analytical, df_numerical, atol, rtol):
+    df_numerical = ndarray(env.deformable().PyPdEnergyForce(x0 + dq)) - ndarray(env.deformable().PyPdEnergyForce(x0))
+    if not np.allclose(df_analytical, df_numerical, rtol, atol):
         if verbose:
             print_error('Analytical elastic force differential values do not match numerical ones.')
+            for a, b in zip(df_analytical, df_numerical):
+                if not np.isclose(a, b, rtol, atol):
+                    print(a, b, a - b)
         return False
 
     shutil.rmtree(folder)
