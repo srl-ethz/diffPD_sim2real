@@ -173,7 +173,8 @@ private:
     const SparseMatrix QuasiStaticMatrix(const VectorXr& q, const VectorXr& a) const;
 
     void SetupProjectiveDynamicsSolver(const real dt) const;
-    const VectorXr ProjectiveDynamicsLocalStep(const VectorXr& q_cur, const VectorXr& a_cur) const;
+    const VectorXr ProjectiveDynamicsLocalStep(const VectorXr& q_cur, const VectorXr& a_cur,
+        const std::map<int, real>& dirichlet_with_friction) const;
 
     void SetupProjectiveDynamicsLocalStepTransposeDifferential(const VectorXr& q_cur, const VectorXr& a_cur,
         std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>& pd_backward_local_element_matrices,
@@ -183,8 +184,8 @@ private:
         const std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>& pd_backward_local_element_matrices,
         const std::vector<std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>>& pd_backward_local_muscle_matrices,
         const VectorXr& dq_cur) const;
-    const VectorXr PdLhsMatrixOp(const VectorXr& q) const;
-    const VectorXr PdLhsSolve(const VectorXr& rhs) const;
+    const VectorXr PdLhsMatrixOp(const VectorXr& q, const std::map<int, real>& additional_dirichlet_boundary_condition) const;
+    const VectorXr PdLhsSolve(const VectorXr& rhs, const std::map<int, real>& additional_dirichlet_boundary_condition) const;
 
     // Compute deformation gradient.
     const Eigen::Matrix<real, vertex_dim, element_dim> ScatterToElement(const VectorXr& q, const int element_idx) const;

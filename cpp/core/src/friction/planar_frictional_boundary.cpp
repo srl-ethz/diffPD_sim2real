@@ -18,9 +18,12 @@ const bool PlanarFrictionalBoundary<dim>::ForwardIntersect(const Eigen::Matrix<r
     const Eigen::Matrix<real, dim, 1>& v, const real dt, real& t_hit) const {
     const auto q_next = q + dt * v;
     // Check if q_next is below the plane.
+    // If q_next is above the plane, it means the object is separating from the collision surface
+    // and we should allow it regardless whether the current position is above or below the surface.
     const bool q_next_above = normal_.dot(q_next) + offset_ > 0;
     if (q_next_above) return false;
-    // Compute the intersection.
+    // In all other cases, we compute the intersection. For singular cases when v is parallel to
+    // the plane, we set t_hit = 0 and freeze the point in the current position.
     // normal_.dot(q + t_hit * v) + offset_ = 0.
     // normal_.dot(q) + t_hit * normal_.dot(v) + offset_ = 0.
     const real denom = normal_.dot(v);

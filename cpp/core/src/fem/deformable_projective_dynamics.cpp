@@ -109,7 +109,8 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
 
 // Returns \sum w_i (SA)'Bp.
 template<int vertex_dim, int element_dim>
-const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(const VectorXr& q_cur, const VectorXr& a_cur) const {
+const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(const VectorXr& q_cur, const VectorXr& a_cur,
+    const std::map<int, real>& dirichlet_with_friction) const {
     CheckError(!material_, "PD does not support material models.");
     CheckError(act_dofs_ == static_cast<int>(a_cur.size()), "Inconsistent actuation size.");
 
@@ -128,7 +129,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
     const int sample_num = element_dim;
     // Handle dirichlet boundary conditions.
     VectorXr q_boundary = VectorXr::Zero(dofs_);
-    for (const auto& pair : dirichlet_) q_boundary(pair.first) = pair.second;
+    for (const auto& pair : dirichlet_with_friction) q_boundary(pair.first) = pair.second;
 
     std::array<VectorXr, element_dim> pd_rhss;
     for (int i = 0; i < element_dim; ++i) pd_rhss[i] = VectorXr::Zero(dofs_);
@@ -244,10 +245,31 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
     const VectorXr f_state = ForwardStateForce(q, v);
     // rhs := q + h * v + h2m * f_ext + h2m * f_state(q, v).
     const VectorXr rhs = q + dt * v + h2m * (f_ext + f_state);
-    VectorXr q_sol = rhs;   // Initial guess.
+    // We use q as the initial guess --- do not use rhs as it will cause flipped elements when dirichlet_with_friction
+    // changes the shape aggressively.
+    VectorXr q_sol = q;
     VectorXr selected = VectorXr::Ones(dofs_);
     // Enforce boundary conditions.
-    for (const auto& pair : dirichlet_) {
+    std::map<int, real> dirichlet_with_friction = dirichlet_;
+    const VectorXr v_pred = v + dt / mass * (f_ext + ElasticForce(q) + ForwardStateForce(q, v)
+        + PdEnergyForce(q) + ActuationForce(q, a));
+    // Enforce frictional constraints.
+    std::map<int, real> friction_boundary_conditions;
+    for (const int idx : frictional_boundary_vertex_indices_) {
+        const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * idx, vertex_dim);
+        const Eigen::Matrix<real, vertex_dim, 1> vi = v_pred.segment(vertex_dim * idx, vertex_dim);
+        real t_hit;
+        if (frictional_boundary_->ForwardIntersect(qi, vi, dt, t_hit)) {
+            const Eigen::Matrix<real, vertex_dim, 1> qi_hit = qi + t_hit * vi;
+            for (int i = 0; i < vertex_dim; ++i) {
+                dirichlet_with_friction[vertex_dim * idx + i] = qi_hit(i);
+                friction_boundary_conditions[vertex_dim * idx + i] = qi_hit(i);
+            }
+        }
+    }
+    // Now dirichlet_with_friction = dirichlet_ \/ friction_boundary_conditions.
+    // Enforce boundary conditions.
+    for (const auto& pair : dirichlet_with_friction) {
         q_sol(pair.first) = pair.second;
         selected(pair.first) = 0;
     }
@@ -266,23 +288,23 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
         VectorXr q_sol_next = q_sol;
         // Local step.
         if (verbose_level > 1) Tic();
-        VectorXr pd_rhs = rhs + h2m * ProjectiveDynamicsLocalStep(q_sol, a);
-        for (const auto& pair : dirichlet_) pd_rhs(pair.first) = pair.second;
+        VectorXr pd_rhs = rhs + h2m * ProjectiveDynamicsLocalStep(q_sol, a, dirichlet_with_friction);
+        for (const auto& pair : dirichlet_with_friction) pd_rhs(pair.first) = pair.second;
         if (verbose_level > 1) Toc("Local step");
         if (method == 0) {
             // Global step.
             if (verbose_level > 1) Tic();
-            q_sol_next = PdLhsSolve(pd_rhs);
+            q_sol_next = PdLhsSolve(pd_rhs, friction_boundary_conditions);
             if (verbose_level > 1) Toc("Global step");
         } else if (method == 1) {
             // Use q_sol to compute q_sol_next.
             // BFGS-style update.
             // See https://en.wikipedia.org/wiki/Limited-memory_BFGS.
-            VectorXr q = PdLhsMatrixOp(q_sol) - pd_rhs;
+            VectorXr q = PdLhsMatrixOp(q_sol, friction_boundary_conditions) - pd_rhs;
             if (static_cast<int>(xi_history.size()) == 0) {
                 xi_history.push_back(q_sol);
                 gi_history.push_back(q);
-                q_sol_next = PdLhsSolve(pd_rhs);
+                q_sol_next = PdLhsSolve(pd_rhs, friction_boundary_conditions);
             } else {
                 si_history.push_back(q_sol - xi_history.back());
                 yi_history.push_back(q - gi_history.back());
@@ -305,7 +327,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
                     q -= alphai * yi;
                 }
                 // H0k = PdLhsSolve(I);
-                VectorXr z = PdLhsSolve(q);
+                VectorXr z = PdLhsSolve(q, friction_boundary_conditions);
                 auto sit = si_history.cbegin(), yit = yi_history.cbegin();
                 auto rhoit = rhoi_history.cbegin(), alphait = alphai_history.cbegin();
                 for (; sit != si_history.cend(); ++sit, ++yit, ++rhoit, ++alphait) {
@@ -480,6 +502,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next,
     const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext) const {
+    // TODO: add friction.
     CheckError(!material_, "PD does not support material models.");
 
     CheckError(options.find("max_pd_iter") != options.end(), "Missing option max_pd_iter.");
@@ -557,7 +580,8 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
 
         // Check for convergence.
         if (verbose_level > 1) Tic();
-        const VectorXr pd_lhs = PdLhsMatrixOp(adjoint);
+        // TODO: fix std map.
+        const VectorXr pd_lhs = PdLhsMatrixOp(adjoint, std::map<int, real>());
         const real abs_error = VectorXr((pd_lhs - pd_rhs).array() * selected.array()).norm();
         const real rhs_norm = VectorXr(selected.array() * pd_rhs.array()).norm();
         if (verbose_level > 1) Toc("Convergence");
@@ -591,7 +615,8 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
         if (method == 0) {
             // Global step.
             if (verbose_level > 1) Tic();
-            adjoint = PdLhsSolve(pd_rhs);
+            // TODO: fix std map.
+            adjoint = PdLhsSolve(pd_rhs, std::map<int, real>());
             if (verbose_level > 1) Toc("Global step");
         } else if (method == 1) {
             // BFGS-style update.
@@ -600,7 +625,8 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
             if (static_cast<int>(xi_history.size()) == 0) {
                 xi_history.push_back(adjoint);
                 gi_history.push_back(q);
-                adjoint = PdLhsSolve(pd_rhs);
+                // TODO: fix std map.
+                adjoint = PdLhsSolve(pd_rhs, std::map<int, real>());
                 continue;
             }
             si_history.push_back(adjoint - xi_history.back());
@@ -624,7 +650,8 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
                 q -= alphai * yi;
             }
             // H0k = PdLhsSolve(I);
-            VectorXr z = PdLhsSolve(q);
+            // TODO: fix std map.
+            VectorXr z = PdLhsSolve(q, std::map<int, real>());
             auto sit = si_history.cbegin(), yit = yi_history.cbegin();
             auto rhoit = rhoi_history.cbegin(), alphait = alphai_history.cbegin();
             for (; sit != si_history.cend(); ++sit, ++yit, ++rhoit, ++alphait) {
@@ -646,28 +673,75 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
 }
 
 template<int vertex_dim, int element_dim>
-const VectorXr Deformable<vertex_dim, element_dim>::PdLhsMatrixOp(const VectorXr& q) const {
+const VectorXr Deformable<vertex_dim, element_dim>::PdLhsMatrixOp(const VectorXr& q,
+    const std::map<int, real>& additional_dirichlet_boundary_condition) const {
+    // Zero out additional cols in additional_dirichlet_boundary_condition.
+    VectorXr q_additional = q;
+    for (const auto& pair : additional_dirichlet_boundary_condition)
+        q_additional(pair.first) = 0;
+
     const int vertex_num = mesh_.NumOfVertices();
     const Eigen::Matrix<real, vertex_dim, -1> q_reshape = Eigen::Map<
-        const Eigen::Matrix<real, vertex_dim, -1>>(q.data(), vertex_dim, vertex_num);
+        const Eigen::Matrix<real, vertex_dim, -1>>(q_additional.data(), vertex_dim, vertex_num);
     Eigen::Matrix<real, vertex_dim, -1> product = Eigen::Matrix<real, vertex_dim, -1>::Zero(vertex_dim, vertex_num);
     for (int j = 0; j < vertex_dim; ++j) {
         product.row(j) = q_reshape.row(j) * pd_lhs_[j];
     }
-    return Eigen::Map<const VectorXr>(product.data(), product.size());
+
+    // Zero out additional cols in additional_dirichlet_boundary_condition.
+    VectorXr product_flattened = Eigen::Map<const VectorXr>(product.data(), product.size());
+    for (const auto& pair : additional_dirichlet_boundary_condition)
+        product_flattened(pair.first) = q(pair.first);
+    return product_flattened;
 }
 
 template<int vertex_dim, int element_dim>
-const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const VectorXr& rhs) const {
+const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const VectorXr& rhs,
+    const std::map<int, real>& additional_dirichlet_boundary_condition) const {
+    // TODO: zero out additional rows and cols in additional_dirichlet_boundary_conditions.
     const int vertex_num = mesh_.NumOfVertices();
     const Eigen::Matrix<real, vertex_dim, -1> rhs_reshape = Eigen::Map<
         const Eigen::Matrix<real, vertex_dim, -1>>(rhs.data(), vertex_dim, vertex_num);
     Eigen::Matrix<real, vertex_dim, -1> sol = Eigen::Matrix<real, vertex_dim, -1>::Zero(vertex_dim, vertex_num);
     for (int j = 0; j < vertex_dim; ++j) {
+        // Let A be pd_solver_[j].
+        // We now plan to compute B^-1 * rhs instead of A^-1 * rhs.
+        // where B = A with rows and cols in additional_dirichlet_boundary_condition zeroed out.
+        // Let P be a permutation matrix:
+        // - Initialize P with I.
+        // - Swap the i-th row and the j-th row in P: now P(i, j) = P(j, i) = 1.
+        // - Now AP swaps the i-th and j-th col of A and PA swaps the i-th and j-th row of A.
+        // - Moreover, P is symmetric and P^-1 = P.
+        // Let's assume we have a P matrix which reorders the dofs so that additional_dirichlet_boundary_conditions
+        // are at the beginning.
+        // - Now, rewrite PAP as a block matrix:
+        //   PAP = [C  D]
+        //         [E  F]
+        // - Now consider the following U and V matrices:
+        //   U = [I 0]; V = [0 D]
+        //       [0 E]      [I 0]
+        //   U is tall and thin and V is short and fat. Consider UV:
+        //   UV = [0 D]
+        //        [E 0]
+        //   It follows that
+        //   PAP - UV = [C 0]
+        //              [0 F]
+        // - Essentially, we aim to compute y = P * (PAP - UV)^-1 * P * rhs. Once we have y, we replace additional dofs with
+        //   the set value in rhs.
+        // - The only hard part in the equation above is to compute (PAP - UV)^-1 with A^-1 known:
+        //   PAP - UV = P(A - PUVP)P
+        //   y = P * P * (A - PUVP)^-1 * P * P * rhs = (A - PUVP)^-1 * rhs.
+        // - Now let's redefine U = PU and V = VP. We will use the Woodbury matrix identity to compute (A - UV)^-1:
+        //  (A - UV)^-1 = A^-1 + A^-1 * U * (I - V * A^-1 * U)^-1 * V * A^-1.
+        // TODO.
+
         sol.row(j) = pd_solver_[j].solve(VectorXr(rhs_reshape.row(j)));
         CheckError(pd_solver_[j].info() == Eigen::Success, "Cholesky solver failed.");
     }
-    return Eigen::Map<const VectorXr>(sol.data(), sol.size());
+    VectorXr sol_flattened = Eigen::Map<const VectorXr>(sol.data(), sol.size());
+    for (const auto& pair : additional_dirichlet_boundary_condition)
+        sol_flattened(pair.first) = rhs(pair.first);
+    return sol_flattened;
 }
 
 template class Deformable<2, 4>;
