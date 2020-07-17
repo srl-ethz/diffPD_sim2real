@@ -103,13 +103,13 @@ if __name__ == '__main__':
     fig.savefig(folder / 'benchmark.pdf')
     fig.savefig(folder / 'benchmark.png')
 
-    fig2 = plt.figure(figsize=(15, 7))
-    ax_1 = fig2.add_subplot(121)
-    ax_2 = fig2.add_subplot(122)
-    titles_2 = ['losses', '|grad|']
-    for title, ax, y in zip(titles_2, (ax_1, ax_2), (losses, grad_norms)):
+    fig_l_g = plt.figure(figsize=(15, 7))
+    ax_loss = fig_l_g.add_subplot(121)
+    ax_grad = fig_l_g.add_subplot(122)
+    titles_l_g = ['losses', '|grad|']
+    for title, ax, y in zip(titles_l_g, (ax_loss, ax_grad), (losses, grad_norms)):
         ax.set_xlabel('relative error')
-        ax.set_ylabel('magnitude (/)')
+        ax.set_ylabel('magnitude')
         ax.set_xscale('log')
         ax.invert_xaxis()
         if 'grad' in title:
@@ -122,12 +122,11 @@ if __name__ == '__main__':
             elif 'cholesky' in method:
                 color = 'tab:red'
             meth_thread_num = '{}_{}threads'.format(method, thread_cts[-1])
-            ax.plot(rel_tols, y[meth_thread_num], label=method, color=color)
+            ax.plot(rel_tols, y[meth_thread_num], label=method, color=color, linewidth=2)
         ax.grid(True)
         ax.legend()
         ax.set_title(title)
 
-    fig2.savefig(folder / 'benchmark_l_g.pdf')
-    fig2.savefig(folder / 'benchmark_l_g.png')
-    fig2.tight_layout(pad=3.0)
+    fig_l_g.savefig(folder / 'benchmark_loss_grad.pdf')
+    fig_l_g.savefig(folder / 'benchmark_loss_grad.png')
     plt.show()

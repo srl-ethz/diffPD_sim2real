@@ -37,11 +37,10 @@ Navigate to the `python/example` path and run `python [example_name].py` where t
 ### Demos
 - `benchmark_3d` compares and reports the time cost of one forward call and one backward call in Newton-PCG, Newton-Cholesky, and PD. Below is the time cost on a benchmark cantilever beam with 8019 DoFs. We simulated the example for 30 frames with dt = `0.01`. `forward` and `backward` indicates the time cost for forward simulation (25 frames in total) and back propagation respectively.
 ![benchmark](python/example/benchmark_3d/benchmark.png)
+![benchmark_loss_and_grad](python/example/benchmark_3d/benchmark_loss_grad.png)
+- `landscape_3d` compares the PD solver with the semi-implicit time integeration method to demonstrate that the loss and grad landscapes are smoother with full implicit methods.
+![landscape](python/example/landscape_3d/landscape_3d.png)
 - `tendon_routing_3d` implements a simple tendon routing example with forward and backward PD and two Newton baselines. The goal is to let the endpoint of the stick finger reach a target point in the 3D space.
-<<<<<<< HEAD
-- `sticky_finger_3d` optimizes a constant force applied to the nodes of a cuboid whose bottom is fixed on the ground. The goal is to bend the cuboid so that the upper-right corner reaches a target 3D position with zero velocity after 1 second. Optimization results with Newton-PCG, Newton-Cholesky, and PD are reported on the terminal, and a video of the final solution will pop up and play in the end.
-=======
->>>>>>> bf264ef6a616e34f83fa32ae6456265972b56bd8
 
 ## Implementation details of the `Deformable` class
 
