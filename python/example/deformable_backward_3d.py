@@ -165,5 +165,5 @@ def test_deformable_backward_3d(verbose):
     return True
 
 if __name__ == '__main__':
-    verbose = False
+    verbose = True
     test_deformable_backward_3d(verbose)

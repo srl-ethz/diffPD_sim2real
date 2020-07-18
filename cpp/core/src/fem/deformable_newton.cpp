@@ -24,20 +24,15 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
     CheckError(max_ls_iter > 0, "Invalid max_ls_iter: " + std::to_string(max_ls_iter));
 
     omp_set_num_threads(thread_ct);
-    // q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, u)) = q + h * v + h2m * f_ext + h2m * f_state(q, v)
+
+    // Step 1: compute the predicted velocity:
+    // v_pred = v + h / m * (f_ext + f_ela(q) + f_state(q, v) + f_pd(q) + f_act(q, a))
     const real mass = density_ * cell_volume_;
-    const real h2m = dt * dt / mass;
-    const VectorXr rhs = q + dt * v + h2m * (f_ext + ForwardStateForce(q, v));
-    VectorXr selected = VectorXr::Ones(dofs_);
-    // q_next - h2m * eval_force(q_next) = rhs.
-    // We use q as the initial guess --- do not use rhs as it will cause flipped elements when dirichlet_with_friction
-    // changes the shape aggressively.
-    VectorXr q_sol = q;
-    // Enforce boundary conditions.
-    std::map<int, real> dirichlet_with_friction = dirichlet_;
     const VectorXr v_pred = v + dt / mass * (f_ext + ElasticForce(q) + ForwardStateForce(q, v)
         + PdEnergyForce(q) + ActuationForce(q, a));
-    // Enforce frictional constraints.
+
+    // Step 2: update dirichlet boundary conditions.
+    std::map<int, real> dirichlet_with_friction = dirichlet_;
     for (const int idx : frictional_boundary_vertex_indices_) {
         const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * idx, vertex_dim);
         const Eigen::Matrix<real, vertex_dim, 1> vi = v_pred.segment(vertex_dim * idx, vertex_dim);
@@ -48,6 +43,15 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
         }
     }
 
+    // Step 3: use Newton's method to solve the governing equation.
+    // q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, u)) = q + h * v + h2m * f_ext + h2m * f_state(q, v).
+    const real h2m = dt * dt / mass;
+    const VectorXr rhs = q + dt * v + h2m * (f_ext + ForwardStateForce(q, v));
+    VectorXr selected = VectorXr::Ones(dofs_);
+    // q_next - h2m * eval_force(q_next) = rhs.
+    // We use q as the initial guess --- do not use rhs as it will cause flipped elements when dirichlet_with_friction
+    // changes the shape aggressively.
+    VectorXr q_sol = q;
     for (const auto& pair : dirichlet_with_friction) {
         q_sol(pair.first) = pair.second;
         selected(pair.first) = 0;
@@ -62,10 +66,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
         if (verbose_level > 0) PrintInfo("Iteration " + std::to_string(i));
         VectorXr new_rhs = rhs - q_sol + h2m * force_sol;
         // Enforce boundary conditions.
-        for (const auto& pair : dirichlet_with_friction) {
-            const int dof = pair.first;
-            new_rhs(dof) = 0;
-        }
+        for (const auto& pair : dirichlet_with_friction) new_rhs(pair.first) = 0;
         VectorXr dq = VectorXr::Zero(dofs_);
         // Solve for the search direction.
         if (method == "newton_pcg") {
@@ -140,21 +141,41 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     const real abs_tol = options.at("abs_tol");
     const real rel_tol = options.at("rel_tol");
     const int thread_ct = static_cast<int>(options.at("thread_ct"));
-    // TODO: Add dirichlet to backward.
     for (const auto& pair : dirichlet_) CheckError(q_next(pair.first) == pair.second, "Inconsistent q_next.");
 
     omp_set_num_threads(thread_ct);
+    dl_dq = VectorXr::Zero(dofs_);
+    dl_dv = VectorXr::Zero(dofs_);
+    dl_da = VectorXr::Zero(act_dofs_);
+    dl_df_ext = VectorXr::Zero(dofs_);
 
-    // The governing equation:
-    // q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, u)) = q + h * v + h2m * f_ext + h2m * f_state(q, v).
-    // v_next = (q_next - q) / dt.
-    // Back-propagate (q, q_next) -> v_next.
-    const VectorXr dl_dq_next_agg = dl_dq_next + dl_dv_next / dt;
-    dl_dq = -dl_dv_next / dt;
-    // Back-propagate (q, v, u, f_ext) -> q_next.
+    // Backpropagate v_next = (q_next - q) / dt.
+    const real inv_dt = 1 / dt;
+    VectorXr dl_dq_next_agg = dl_dq_next;
+    dl_dq_next_agg += dl_dv_next * inv_dt;
+    dl_dq += -dl_dv_next * inv_dt;
+
+    // Backpropagate q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, u)) = rhs.
+    // and certain q_next DoFs are directly copied from rhs.
     const real mass = density_ * cell_volume_;
+    const VectorXr v_pred = v + dt / mass * (f_ext + ElasticForce(q) + ForwardStateForce(q, v)
+        + PdEnergyForce(q) + ActuationForce(q, a));
+    std::map<int, real> dirichlet_with_friction = dirichlet_;
+    for (const int idx : frictional_boundary_vertex_indices_) {
+        const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * idx, vertex_dim);
+        const Eigen::Matrix<real, vertex_dim, 1> vi = v_pred.segment(vertex_dim * idx, vertex_dim);
+        real t_hit;
+        if (frictional_boundary_->ForwardIntersect(qi, vi, dt, t_hit)) {
+            const Eigen::Matrix<real, vertex_dim, 1> qi_hit = qi + t_hit * vi;
+            for (int i = 0; i < vertex_dim; ++i) dirichlet_with_friction[vertex_dim * idx + i] = qi_hit(i);
+        }
+    }
+    VectorXr dl_drhs = VectorXr::Zero(dofs_);
+    // J * dq_next / drhs = I.
+    // dq_next / drhs = J^{-1}.
+    // J * dl_drhs = dl_dq_next.
+    // This is for DoFs not frozen.
     const real h2m = dt * dt / mass;
-    VectorXr adjoint = VectorXr::Zero(dofs_);
     if (method == "newton_pcg") {
         Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper> cg;
         // Setting up cg termination conditions: here what you set is the upper bound of:
@@ -165,43 +186,82 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
         // |Ax - b|/|b| <= rel_tol + abs_tol/|b|.
         const real tol = rel_tol + abs_tol / dl_dq_next_agg.norm();
         cg.setTolerance(tol);
-        const SparseMatrix op = NewtonMatrix(q_next, a, h2m, dirichlet_);
+        const SparseMatrix op = NewtonMatrix(q_next, a, h2m, dirichlet_with_friction);
         cg.compute(op);
-        adjoint = cg.solve(dl_dq_next_agg);
+        dl_drhs = cg.solve(dl_dq_next_agg);
         CheckError(cg.info() == Eigen::Success, "CG solver failed.");
     } else if (method == "newton_cholesky") {
         // Note that Cholesky is a direct solver: no tolerance is ever used to terminate the solution.
         Eigen::SimplicialLDLT<SparseMatrix> cholesky;
-        const SparseMatrix op = NewtonMatrix(q_next, a, h2m, dirichlet_);
+        const SparseMatrix op = NewtonMatrix(q_next, a, h2m, dirichlet_with_friction);
         cholesky.compute(op);
-        adjoint = cholesky.solve(dl_dq_next_agg);
+        dl_drhs = cholesky.solve(dl_dq_next_agg);
         CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
     } else {
         // Should never happen.
     }
 
-    // q + h * v + h2m * f_ext + h2m * f_state(q, v).
-    for (const auto& pair : dirichlet_) adjoint(pair.first) = 0;
-    dl_dq += adjoint;
-    dl_dv = adjoint * dt;
-    dl_df_ext = adjoint * h2m;
+    // For DoFs that are frozen:
+    // Part I: q_next = dirichlet_, can be skipped.
+    for (const auto& pair : dirichlet_) dl_drhs(pair.first) = 0;
+    // Part II: q_next = rhs, but this has been taken care of by NewtonMatrix.
 
+    // What about u?
+    // q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, a)) = rhs.
+    // J * dq_next / da = h2m * d f_act / da
+    SparseMatrixElements dact_dq, dact_da;
+    ActuationForceDifferential(q_next, a, dact_dq, dact_da);
+    VectorXr adjoint = dl_drhs;
+    for (const auto& pair : dirichlet_with_friction) adjoint(pair.first) = 0;
+    dl_da += adjoint.transpose() * ToSparseMatrix(dofs_, act_dofs_, dact_da) * h2m;
+
+    // Now we can focus on backpropagating rhs.
+    // rhs = q + dt * v + h2m * (f_ext + ForwardStateForce(q, v)).
+    // for dirichlet: rhs = given values so can be skipped.
+    // for friction: rhs = functions on q, v, and a.
+    dl_dq += adjoint;
+    dl_dv += adjoint * dt;
+    dl_df_ext += adjoint * h2m;
     VectorXr dl_dq_single, dl_dv_single;
     // adjoint * df_state/dq = dl_dq_single.
     BackwardStateForce(q, v, ForwardStateForce(q, v), adjoint, dl_dq_single, dl_dv_single);
     dl_dq += dl_dq_single * h2m;
     dl_dv += dl_dv_single * h2m;
 
-    // The gradients w.r.t. u is a bit tricky:
-    // q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, u)) = const.
-    // lhs(q_next, u) = 0.
-    // dlhs/dq_next * dq_next/du + dlhs/du = 0.
-    // dq_next/du = -(dlhs/dq_next)^(-1) * dlhs/du
-    // dl_du = -adjoint * dlhs/du.
-    // Here adjoint is a row vector and dlhs/du is a Jacobian.
-    SparseMatrixElements dact_dq, dact_da;
-    ActuationForceDifferential(q_next, a, dact_dq, dact_da);
-    dl_da = adjoint.transpose() * ToSparseMatrix(dofs_, act_dofs_, dact_da) * h2m;
+    if (!frictional_boundary_vertex_indices_.empty()) {
+        // Backpropagate friction.
+        // v_pred = v + dt / mass * (f_ext + f_ela(q) + ForwardStateForce(q, v) + PdEnergyForce(q) + ActuationForce(q, a)).
+        VectorXr dl_dv_pred = VectorXr::Zero(dofs_);
+        for (const int idx : frictional_boundary_vertex_indices_) {
+            const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * idx, vertex_dim);
+            const Eigen::Matrix<real, vertex_dim, 1> vi_pred = v_pred.segment(vertex_dim * idx, vertex_dim);
+            real t_hit;
+            if (frictional_boundary_->ForwardIntersect(qi, vi_pred, dt, t_hit)) {
+                Eigen::Matrix<real, vertex_dim, 1> dl_dqi, dl_dvi_pred;
+                frictional_boundary_->BackwardIntersect(qi, vi_pred, t_hit,
+                    dl_drhs.segment(vertex_dim * idx, vertex_dim), dl_dqi, dl_dvi_pred);
+                dl_dq.segment(vertex_dim * idx, vertex_dim) += dl_dqi;
+                dl_dv_pred.segment(vertex_dim * idx, vertex_dim) += dl_dvi_pred;
+            }
+        }
+        dl_dv += dl_dv_pred;
+        const real hm = dt / mass;
+        dl_df_ext += dl_dv_pred * hm;
+        // f_ela(q).
+        dl_dq += ElasticForceDifferential(q, dl_dv_pred) * hm;
+        // f_state(q, v).
+        VectorXr dl_dq_from_f_state, dl_dv_from_f_state;
+        BackwardStateForce(q, v, ForwardStateForce(q, v), dl_dv_pred * hm, dl_dq_from_f_state, dl_dv_from_f_state);
+        dl_dq += dl_dq_from_f_state;
+        dl_dv += dl_dv_from_f_state;
+        // f_pd(q).
+        dl_dq += PdEnergyForceDifferential(q, dl_dv_pred) * hm;
+        // f_act(q, a).
+        SparseMatrixElements nonzeros_dq, nonzeros_da;
+        ActuationForceDifferential(q, a, nonzeros_dq, nonzeros_da);
+        dl_dq += dl_dv_pred.transpose() * ToSparseMatrix(dofs_, dofs_, nonzeros_dq) * hm;
+        dl_da += dl_dv_pred.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_da) * hm;
+    }
 }
 
 template<int vertex_dim, int element_dim>
