@@ -43,7 +43,7 @@ public:
     const std::vector<std::pair<std::shared_ptr<PdMuscleEnergy<vertex_dim>>, std::vector<int>>>& pd_muscle_energies() const {
         return pd_muscle_energies_;
     }
-    const std::vector<int>& frictional_boundary_vertex_indices() const {
+    const std::map<int, int>& frictional_boundary_vertex_indices() const {
         return frictional_boundary_vertex_indices_;
     }
 
@@ -231,7 +231,10 @@ private:
 
     // Friction.
     std::shared_ptr<FrictionalBoundary<vertex_dim>> frictional_boundary_;
-    std::vector<int> frictional_boundary_vertex_indices_;
+    std::map<int, int> frictional_boundary_vertex_indices_;
+    // See the paper for the definition of the data members below.
+    mutable std::array<MatrixXr, vertex_dim> Acc_;
+    mutable std::array<MatrixXr, vertex_dim> AinvIc_;
 };
 
 #endif

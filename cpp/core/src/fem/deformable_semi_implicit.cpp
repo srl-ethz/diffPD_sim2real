@@ -20,7 +20,8 @@ void Deformable<vertex_dim, element_dim>::ForwardSemiImplicit(const VectorXr& q,
     for (const auto& pair : dirichlet_) q_next(pair.first) = pair.second;
     // Step 4: detect for each contact point whether it is in contact with the collision surface.
     // Keep in mind that we assume node_idx and dirichlet are disjoint sets.
-    for (const auto& node_idx : frictional_boundary_vertex_indices_) {
+    for (const auto& pair : frictional_boundary_vertex_indices_) {
+        const int node_idx = pair.first;
         const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * node_idx, vertex_dim);
         const Eigen::Matrix<real, vertex_dim, 1> vi_pred = v_pred.segment(vertex_dim * node_idx, vertex_dim);
         real t_hit;
@@ -59,7 +60,8 @@ void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q
     const real mass = density_ * cell_volume_;
     const VectorXr v_pred = v + dt / mass * (f_ext + ElasticForce(q) + ForwardStateForce(q, v)
         + PdEnergyForce(q) + ActuationForce(q, a));
-    for (const auto& node_idx : frictional_boundary_vertex_indices_) {
+    for (const auto& pair : frictional_boundary_vertex_indices_) {
+        const int node_idx = pair.first;
         const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * node_idx, vertex_dim);
         const Eigen::Matrix<real, vertex_dim, 1> vi_pred = v_pred.segment(vertex_dim * node_idx, vertex_dim);
         real t_hit;

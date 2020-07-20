@@ -20,7 +20,8 @@ def test_pd_forward(verbose):
 
     methods = ('newton_pcg', 'pd')
     opts = ({ 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-8, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_pd_iter': 100, 'abs_tol': 1e-8, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': 4, 'method': 1, 'bfgs_history_size': 10 })
+        { 'max_pd_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-8, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': 4,
+            'method': 1, 'bfgs_history_size': 10 })
 
     # Forward simulation.
     dt = 0.01

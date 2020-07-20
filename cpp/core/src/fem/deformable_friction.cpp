@@ -5,6 +5,7 @@
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::SetFrictionalBoundary(const std::string& boundary_type,
     const std::vector<real>& params, const std::vector<int> indices) {
+    pd_solver_ready_ = false;
     if (boundary_type == "planar") {
         CheckError(static_cast<int>(params.size()) == vertex_dim + 1, "Incompatible parameter number.");
         Eigen::Matrix<real, vertex_dim, 1> normal;
@@ -15,10 +16,17 @@ void Deformable<vertex_dim, element_dim>::SetFrictionalBoundary(const std::strin
         frictional_boundary_ = planar;
 
         // Check if there are duplicated elements in indices;
-        frictional_boundary_vertex_indices_ = indices;
         std::set<int> unique_indices;
-        for (const int idx : indices)
-            CheckError(unique_indices.find(idx) == unique_indices.end(), "Duplicated vertex elements.");
+        for (const int idx : indices) {
+            unique_indices.insert(idx);
+        }
+        CheckError(unique_indices.size() == indices.size(), "Duplicated vertex elements.");
+        frictional_boundary_vertex_indices_.clear();
+        int cnt = 0;
+        for (const int idx : unique_indices) {
+            frictional_boundary_vertex_indices_[idx] = cnt;
+            ++cnt;
+        }
     } else {
         CheckError(false, "Unsupported frictional boundary type: " + boundary_type);
     }

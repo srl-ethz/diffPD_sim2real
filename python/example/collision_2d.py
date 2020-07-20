@@ -20,10 +20,11 @@ def test_collision_2d(verbose):
     deformable = env.deformable()
 
     # Temporarily disable pd as it has not been implemented yet.
-    methods = ('newton_pcg', 'newton_cholesky',)# 'pd')
+    methods = ('newton_pcg', 'newton_cholesky', 'pd')
     opts = ({ 'max_newton_iter': 200, 'max_ls_iter': 10, 'abs_tol': 1e-10, 'rel_tol': 1e-10, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_newton_iter': 200, 'max_ls_iter': 10, 'abs_tol': 1e-10, 'rel_tol': 1e-10, 'verbose': 0, 'thread_ct': 4 },)
-        #{ 'max_pd_iter': 200, 'abs_tol': 1e-10, 'rel_tol': 1e-10, 'verbose': 0, 'thread_ct': 4, 'method': 1, 'bfgs_history_size': 10 })
+        { 'max_newton_iter': 200, 'max_ls_iter': 10, 'abs_tol': 1e-10, 'rel_tol': 1e-10, 'verbose': 0, 'thread_ct': 4 },
+        { 'max_pd_iter': 200, 'max_ls_iter': 10, 'abs_tol': 1e-10, 'rel_tol': 1e-10, 'verbose': 0, 'thread_ct': 4,
+            'method': 1, 'bfgs_history_size': 10 })
 
     dofs = deformable.dofs()
     act_dofs = deformable.act_dofs()
@@ -35,11 +36,27 @@ def test_collision_2d(verbose):
     dt = 5e-3
     frame_num = 100
 
-    if verbose:
-        for method, opt in zip(methods, opts):
-            env.simulate(dt, frame_num, method, opt, q0, v0, [a0 for _ in range(frame_num)],
-                [f0 for _ in range(frame_num)], require_grad=False, vis_folder=method)
+    # Compare forward.
+    losses = {}
+    qs = {}
+    for method, opt in zip(methods, opts):
+        loss, info = env.simulate(dt, frame_num, method, opt, q0, v0, [a0 for _ in range(frame_num)],
+            [f0 for _ in range(frame_num)], require_grad=False, vis_folder=method if verbose else None)
+        losses[method] = loss
+        qs[method] = info['q']
+        if verbose:
             os.system('eog {}.gif'.format(folder / method))
+
+    for method in methods:
+        if not np.isclose(losses['newton_pcg'], losses[method]):
+            if verbose:
+                print_info('Losses are inconsistent between newton_pcg and {}'.format(method))
+            return False
+        for q, qm in zip(qs['newton_pcg'], qs[method]):
+            if not np.allclose(q, qm):
+                if verbose:
+                    print_info('states are inconsistent between newton_pcg and {}'.format(method))
+                return False
 
     eps = 1e-8
     atol = 1e-4

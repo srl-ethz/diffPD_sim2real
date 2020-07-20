@@ -40,6 +40,7 @@ using real = double;
 using Vector2i = Eigen::Matrix<int, 2, 1>;
 using Vector3i = Eigen::Matrix<int, 3, 1>;
 using Vector4i = Eigen::Matrix<int, 4, 1>;
+using VectorXi = Eigen::Matrix<int, -1, 1>;
 using Vector2r = Eigen::Matrix<real, 2, 1>;
 using Vector3r = Eigen::Matrix<real, 3, 1>;
 using Vector4r = Eigen::Matrix<real, 4, 1>;

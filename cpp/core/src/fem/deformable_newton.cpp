@@ -47,7 +47,8 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
     // Step 4: merge friction: q, v_pred, rhs_dirichlet -> rhs_friction.
     VectorXr rhs_friction = rhs_dirichlet;
     std::map<int, real> dirichlet_with_friction = dirichlet_;
-    for (const int idx : frictional_boundary_vertex_indices_) {
+    for (const auto& pair : frictional_boundary_vertex_indices_) {
+        const int idx = pair.first;
         const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * idx, vertex_dim);
         const Eigen::Matrix<real, vertex_dim, 1> vi = v_pred.segment(vertex_dim * idx, vertex_dim);
         real t_hit;
@@ -192,7 +193,8 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
 
     VectorXr rhs_friction = rhs_dirichlet;
     std::map<int, real> dirichlet_with_friction = dirichlet_;
-    for (const int idx : frictional_boundary_vertex_indices_) {
+    for (const auto& pair : frictional_boundary_vertex_indices_) {
+        const int idx = pair.first;
         const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * idx, vertex_dim);
         const Eigen::Matrix<real, vertex_dim, 1> vi = v_pred.segment(vertex_dim * idx, vertex_dim);
         real t_hit;
@@ -251,7 +253,8 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     // Step 4: q, v_pred, rhs_dirichlet -> rhs_friction.
     VectorXr dl_drhs_dirichlet = dl_drhs_friction;
     VectorXr dl_dv_pred = VectorXr::Zero(dofs_);
-    for (const int idx : frictional_boundary_vertex_indices_) {
+    for (const auto& pair : frictional_boundary_vertex_indices_) {
+        const int idx = pair.first;
         const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * idx, vertex_dim);
         const Eigen::Matrix<real, vertex_dim, 1> vi_pred = v_pred.segment(vertex_dim * idx, vertex_dim);
         real t_hit;
