@@ -40,8 +40,8 @@ if __name__ == '__main__':
         losses = all_losses[method]
         ax_loss_sample.plot([], [], color=color, label=method)
         for loss in losses[:5]:
-            ax_loss_sample.plot(ss * rel_scale, (loss - 1) * 100, color=color, linewidth=2)
-    ax_loss_sample.set_xlabel('step size')
+            ax_loss_sample.plot((ss * rel_scale) * 100, (loss - 1) * 100, color=color, linewidth=2)
+    ax_loss_sample.set_xlabel('step size (%)')
     ax_loss_sample.set_ylabel('relative change (%)')
     ax_loss_sample.set_ylim([-500, 500])
     ax_loss_sample.grid(True)
@@ -53,11 +53,10 @@ if __name__ == '__main__':
         ax_loss_all.plot([], [], color=color, label=method)
         loss_mean = np.mean(ndarray(losses), axis=0)
         loss_std = np.std(ndarray(losses), axis=0)
-        ax_loss_all.plot(ss * rel_scale, (loss_mean - 1) * 100, color=color, linewidth=2)
-        ax_loss_all.fill_between(ss * rel_scale, (loss_mean - 1 - loss_std) * 100,
+        ax_loss_all.plot((ss * rel_scale) * 100, (loss_mean - 1) * 100, color=color, linewidth=2)
+        ax_loss_all.fill_between((ss * rel_scale) * 100, (loss_mean - 1 - loss_std) * 100,
             (loss_mean - 1 + loss_std) * 100, color=color, alpha=0.3, linewidth=0)
-
-    ax_loss_all.set_xlabel('step size')
+    ax_loss_all.set_xlabel('step size (%)')
     ax_loss_all.set_ylim([-500, 500])
     ax_loss_all.grid(True)
     ax_loss_all.legend()
@@ -68,8 +67,8 @@ if __name__ == '__main__':
         ax_grad_sample.plot([], [], color=color, label=method)
         for grad in grads[:5]:
             g = [np.linalg.norm(g[0]) for g in grad]
-            ax_grad_sample.plot(ss * rel_scale, (g / np.linalg.norm(grad_base[method]) - 1) * 100, color=color, linewidth=2)
-    ax_grad_sample.set_xlabel('step size')
+            ax_grad_sample.plot((ss * rel_scale) * 100, (g / np.linalg.norm(grad_base[method]) - 1) * 100, color=color, linewidth=2)
+    ax_grad_sample.set_xlabel('step size (%)')
     ax_grad_sample.set_ylabel('relative change (%)')
     ax_grad_sample.set_ylim([-2.5, 2.5])
     ax_grad_sample.grid(True)
@@ -82,11 +81,10 @@ if __name__ == '__main__':
         g = ndarray([[np.linalg.norm(g[0]) for g in grad] for grad in grads]) / np.linalg.norm(grad_base[method])
         g_mean = np.mean(g, axis=0)
         g_std = np.std(g, axis=0)
-        ax_grad_all.plot(ss * rel_scale, (g_mean - 1) * 100, color=color, linewidth=2)
-        ax_grad_all.fill_between(ss * rel_scale, (g_mean - 1 - g_std) * 100,
+        ax_grad_all.plot((ss * rel_scale) * 100, (g_mean - 1) * 100, color=color, linewidth=2)
+        ax_grad_all.fill_between((ss * rel_scale) * 100, (g_mean - 1 - g_std) * 100,
             (g_mean - 1 + g_std) * 100, color=color, alpha=0.3, linewidth=0)
-
-    ax_grad_all.set_xlabel('step size')
+    ax_grad_all.set_xlabel('step size (%)')
     ax_grad_all.set_ylim([-2.5, 2.5])
     ax_grad_all.grid(True)
     ax_grad_all.legend()
