@@ -121,9 +121,9 @@ def test_deformable_backward_3d(verbose):
             os.system('eog {}.gif'.format(folder / method))
 
     # Check gradients.
-    eps = 1e-8
+    eps = 1e-6
     atol = 1e-4
-    rtol = 1e-6
+    rtol = 1e-2
     def skip_var(dof):
         return env.is_dirichlet_dof(dof)
 

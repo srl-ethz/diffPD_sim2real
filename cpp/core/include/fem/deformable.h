@@ -176,11 +176,11 @@ private:
     const VectorXr ProjectiveDynamicsLocalStep(const VectorXr& q_cur, const VectorXr& a_cur,
         const std::map<int, real>& dirichlet_with_friction) const;
 
-    void SetupProjectiveDynamicsLocalStepTransposeDifferential(const VectorXr& q_cur, const VectorXr& a_cur,
+    void SetupProjectiveDynamicsLocalStepDifferential(const VectorXr& q_cur, const VectorXr& a_cur,
         std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>& pd_backward_local_element_matrices,
         std::vector<std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>>& pd_backward_local_muscle_matrices
     ) const;
-    const VectorXr ApplyProjectiveDynamicsLocalStepTransposeDifferential(const VectorXr& q_cur, const VectorXr& a_cur,
+    const VectorXr ApplyProjectiveDynamicsLocalStepDifferential(const VectorXr& q_cur, const VectorXr& a_cur,
         const std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>& pd_backward_local_element_matrices,
         const std::vector<std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>>& pd_backward_local_muscle_matrices,
         const VectorXr& dq_cur) const;
