@@ -17,7 +17,7 @@ from py_diff_pd.env.benchmark_env_3d import BenchmarkEnv3d
 def test_deformable_backward_3d(verbose):
     seed = 42
     folder = Path('deformable_backward_3d')
-    env = BenchmarkEnv3d(seed, folder, refinement=1)
+    env = BenchmarkEnv3d(seed, folder, { 'refinement': 1 })
     deformable = env.deformable()
 
     methods = ('newton_pcg', 'newton_cholesky', 'pd')

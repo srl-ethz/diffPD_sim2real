@@ -128,7 +128,7 @@ template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& a,
     const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next,
     const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
-    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext) const {
+    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const {
     CheckError(!material_, "PD does not support material models.");
 
     CheckError(options.find("max_pd_iter") != options.end(), "Missing option max_pd_iter.");
@@ -169,6 +169,8 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     dl_dv = VectorXr::Zero(dofs_);
     dl_da = VectorXr::Zero(act_dofs_);
     dl_df_ext = VectorXr::Zero(dofs_);
+    const int w_dofs = static_cast<int>(pd_element_energies_.size());
+    dl_dw = VectorXr::Zero(w_dofs);
 
     // Step 6: compute v_next: q, q_next -> v_next.
     // v_next = (q_next - q) / dt.
@@ -181,7 +183,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     dl_dq_next_agg += dl_dv_next * inv_dt;
     dl_dq += -dl_dv_next * inv_dt;
 
-    // Step 5: compute q_next: a, rhs_friction -> q_next.   --- TODO.
+    // Step 5: compute q_next: a, rhs_friction -> q_next.
     // q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, a)) = rhs_friction.
     // and certain q_next DoFs are directly copied from rhs_friction.
     // Let n be the dim of q_next. Let m be the dim of frozen DoFs.
@@ -340,13 +342,16 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     for (const auto& pair : dirichlet_with_friction)
         dl_drhs_friction(pair.first) += dl_drhs_friction_fixed(pair.first);
 
-    /////////////////////////////////////////////////////////////////////
-
     // Backpropagate a -> q_next.
     // dlhs/dq_next_free * dq_next_free + dlhs/da * da = 0.
     SparseMatrixElements nonzeros_q, nonzeros_a;
     ActuationForceDifferential(q_next, a, nonzeros_q, nonzeros_a);
     dl_da += adjoint_with_zero.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_a) * h2m;
+
+    // Backpropagate w -> q_next.
+    SparseMatrixElements nonzeros_w;
+    PdEnergyForceDifferential(q_next, nonzeros_q, nonzeros_w);
+    dl_dw += VectorXr(adjoint_with_zero.transpose() * ToSparseMatrix(dofs_, w_dofs, nonzeros_w) * h2m);
 
     // Step 4: q, v_pred, rhs_dirichlet -> rhs_friction.
     VectorXr dl_drhs_dirichlet = dl_drhs_friction;
@@ -388,7 +393,9 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     BackwardStateForce(q, v, forward_state_force, dl_dv_pred * hm, dl_dq_single, dl_dv_single);
     dl_dq += dl_dq_single;
     dl_dv += dl_dv_single;
-    dl_dq += PdEnergyForceDifferential(q, dl_dv_pred) * hm;
+    PdEnergyForceDifferential(q, nonzeros_q, nonzeros_w);
+    dl_dq += VectorXr(dl_dv_pred.transpose() * ToSparseMatrix(dofs_, dofs_, nonzeros_q) * hm);
+    dl_dw += VectorXr(dl_dv_pred.transpose() * ToSparseMatrix(dofs_, w_dofs, nonzeros_w) * hm);
     ActuationForceDifferential(q, a, nonzeros_q, nonzeros_a);
     dl_dq += dl_dv_pred.transpose() * ToSparseMatrix(dofs_, dofs_, nonzeros_q) * hm;
     dl_da += dl_dv_pred.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_a) * hm;

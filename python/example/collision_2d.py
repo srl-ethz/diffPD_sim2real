@@ -16,7 +16,7 @@ from py_diff_pd.env.hopper_env_2d import HopperEnv2d
 def test_collision_2d(verbose):
     seed = 42
     folder = Path('collision_2d')
-    env = HopperEnv2d(seed, folder, refinement=1)
+    env = HopperEnv2d(seed, folder, { 'refinement': 1 })
     deformable = env.deformable()
 
     # Temporarily disable pd as it has not been implemented yet.

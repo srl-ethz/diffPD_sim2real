@@ -147,7 +147,7 @@ template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v,
     const VectorXr& a, const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next,
     const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
-    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext) const {
+    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const {
     CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
@@ -162,6 +162,8 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     dl_dv = VectorXr::Zero(dofs_);
     dl_da = VectorXr::Zero(act_dofs_);
     dl_df_ext = VectorXr::Zero(dofs_);
+    const int w_dofs = static_cast<int>(pd_element_energies_.size());
+    dl_dw = VectorXr::Zero(w_dofs);
 
     // Step 6: compute v_next: q, q_next -> v_next.
     // v_next = (q_next - q) / dt.
@@ -248,7 +250,12 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     // dlhs/dq_next_free * dq_next_free + dlhs/da * da = 0.
     SparseMatrixElements nonzeros_q, nonzeros_a;
     ActuationForceDifferential(q_next, a, nonzeros_q, nonzeros_a);
-    dl_da += adjoint_with_zero.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_a) * h2m;
+    dl_da += VectorXr(adjoint_with_zero.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_a) * h2m);
+
+    // Backpropagate w -> q_next.
+    SparseMatrixElements nonzeros_w;
+    PdEnergyForceDifferential(q_next, nonzeros_q, nonzeros_w);
+    dl_dw += VectorXr(adjoint_with_zero.transpose() * ToSparseMatrix(dofs_, w_dofs, nonzeros_w) * h2m);
 
     // Step 4: q, v_pred, rhs_dirichlet -> rhs_friction.
     VectorXr dl_drhs_dirichlet = dl_drhs_friction;
@@ -291,7 +298,9 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     BackwardStateForce(q, v, forward_state_force, dl_dv_pred * hm, dl_dq_single, dl_dv_single);
     dl_dq += dl_dq_single;
     dl_dv += dl_dv_single;
-    dl_dq += PdEnergyForceDifferential(q, dl_dv_pred) * hm;
+    PdEnergyForceDifferential(q, nonzeros_q, nonzeros_w);
+    dl_dq += VectorXr(dl_dv_pred.transpose() * ToSparseMatrix(dofs_, dofs_, nonzeros_q) * hm);
+    dl_dw += VectorXr(dl_dv_pred.transpose() * ToSparseMatrix(dofs_, w_dofs, nonzeros_w) * hm);
     ActuationForceDifferential(q, a, nonzeros_q, nonzeros_a);
     dl_dq += dl_dv_pred.transpose() * ToSparseMatrix(dofs_, dofs_, nonzeros_q) * hm;
     dl_da += dl_dv_pred.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_a) * hm;
@@ -302,8 +311,9 @@ const VectorXr Deformable<vertex_dim, element_dim>::NewtonMatrixOp(const VectorX
     const real h2m, const std::map<int, real>& dirichlet_with_friction, const VectorXr& dq) const {
     VectorXr dq_w_bonudary = dq;
     for (const auto& pair : dirichlet_with_friction) dq_w_bonudary(pair.first) = 0;
+    const int w_dofs = static_cast<int>(pd_element_energies_.size());
     VectorXr ret = dq_w_bonudary - h2m * (ElasticForceDifferential(q_sol, dq_w_bonudary)
-        + PdEnergyForceDifferential(q_sol, dq_w_bonudary)
+        + PdEnergyForceDifferential(q_sol, dq_w_bonudary, VectorXr::Zero(w_dofs))
         + ActuationForceDifferential(q_sol, a, dq_w_bonudary, VectorXr::Zero(act_dofs_)));
     for (const auto& pair : dirichlet_with_friction) ret(pair.first) = dq(pair.first);
     return ret;
@@ -313,7 +323,8 @@ template<int vertex_dim, int element_dim>
 const SparseMatrix Deformable<vertex_dim, element_dim>::NewtonMatrix(const VectorXr& q_sol, const VectorXr& a,
     const real h2m, const std::map<int, real>& dirichlet_with_friction) const {
     SparseMatrixElements nonzeros = ElasticForceDifferential(q_sol);
-    SparseMatrixElements nonzeros_pd = PdEnergyForceDifferential(q_sol);
+    SparseMatrixElements nonzeros_pd, nonzeros_dummy;
+    PdEnergyForceDifferential(q_sol, nonzeros_pd, nonzeros_dummy);
     SparseMatrixElements nonzeros_act_dq, nonzeros_act_da;
     ActuationForceDifferential(q_sol, a, nonzeros_act_dq, nonzeros_act_da);
     nonzeros.insert(nonzeros.end(), nonzeros_pd.begin(), nonzeros_pd.end());

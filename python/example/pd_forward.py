@@ -16,7 +16,7 @@ from py_diff_pd.env.benchmark_env_2d import BenchmarkEnv2d
 def test_pd_forward(verbose):
     seed = 42
     folder = Path('pd_forward')
-    env = BenchmarkEnv2d(seed, folder, refinement=6)
+    env = BenchmarkEnv2d(seed, folder, { 'refinement': 6 })
 
     methods = ('newton_pcg', 'pd')
     opts = ({ 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-8, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': 4 },

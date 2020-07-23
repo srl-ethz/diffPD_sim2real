@@ -14,7 +14,7 @@ from py_diff_pd.env.benchmark_env_2d import BenchmarkEnv2d
 def test_actuation_2d(verbose):
     seed = 42
     folder = Path('actuation_2d')
-    env = BenchmarkEnv2d(seed, folder, refinement=6)
+    env = BenchmarkEnv2d(seed, folder, { 'refinement': 6 })
 
     dofs = env.deformable().dofs()
     act_dofs = env.deformable().act_dofs()

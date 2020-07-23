@@ -2,7 +2,6 @@
 %{
 #include "../include/mesh/mesh.h"
 #include "../include/fem/deformable.h"
-#include "../include/fem/rotating_deformable.h"
 #include "../include/fem/state_force.h"
 #include "../include/fem/gravitational_state_force.h"
 #include "../include/fem/planar_collision_state_force.h"
@@ -28,7 +27,6 @@
 %include "../include/common/config.h"
 %include "../include/mesh/mesh.h"
 %include "../include/fem/deformable.h"
-%include "../include/fem/rotating_deformable.h"
 %include "../include/fem/state_force.h"
 %include "../include/fem/gravitational_state_force.h"
 %include "../include/fem/planar_collision_state_force.h"
@@ -49,8 +47,6 @@ namespace std {
 %template(Mesh3d) Mesh<3, 8>;
 %template(Deformable2d) Deformable<2, 4>;
 %template(Deformable3d) Deformable<3, 8>;
-%template(RotatingDeformable2d) RotatingDeformable<2, 4>;
-%template(RotatingDeformable3d) RotatingDeformable<3, 8>;
 
 %template(StateForce2d) StateForce<2>;
 %template(StateForce3d) StateForce<3>;
