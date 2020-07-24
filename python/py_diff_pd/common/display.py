@@ -4,6 +4,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import collections as mc
+from matplotlib.patches import FancyArrowPatch
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.proj3d import proj_transform
+import matplotlib.animation as animation
 from py_diff_pd.core.py_diff_pd_core import Mesh2d
 from py_diff_pd.common.common import ndarray
 
@@ -99,6 +103,8 @@ def display_hex_mesh(hex_mesh, xlim=None, ylim=None, zlim=None, title=None, file
             (0, 4), (1, 5), (2, 6), (3, 7)]
         for i, j in lines:
             ax.plot([v[i, 0], v[j, 0]], [v[i, 1], v[j, 1]], [v[i, 2], v[j, 2]], color='tab:red')
+        # center = np.mean(v, 0)
+        # ax.scatter(*center, marker=f'${e}$', s=200)
 
     padding = 0.5
     x_min = np.min(v[:, 0]) - padding
@@ -259,16 +265,19 @@ def render_hex_mesh_no_floor(hex_mesh, file_name,
     from py_diff_pd.common.project_path import root_path
     from py_diff_pd.common.mesh import hex2obj
 
+    file_root = file_name.parent
+
     file_name = str(file_name)
     assert file_name.endswith('.png') or file_name.endswith('.exr')
     file_name_only = file_name[:-4]
 
+
     root = Path(root_path)
     # Create a pbrt script.
-    pbrt_script = '.tmp.pbrt'
-    obj_file_name = '.tmp.obj'
-    error_file_name = '.tmp.error'
-    scene_file_name = '.scene.pbrt'
+    pbrt_script = str(file_root / '.tmp.pbrt')
+    obj_file_name = str(file_root / '.tmp.obj')
+    error_file_name = str(file_root / '.tmp.error')
+    scene_file_name = str(file_root / '.scene.pbrt')
     hex2obj(hex_mesh, obj_file_name)
     os.system('{} {} {} 2>{}'.format(str(root / 'external/pbrt_build/obj2pbrt'), obj_file_name, scene_file_name, error_file_name))
 
@@ -342,3 +351,31 @@ def render_hex_mesh_no_floor(hex_mesh, file_name,
     os.remove(error_file_name)
     os.remove(obj_file_name)
     os.remove(pbrt_script)
+
+
+class Arrow3D(FancyArrowPatch):
+    def __init__(self, xyz, dxdydz, *args, **kwargs):
+        super(Arrow3D, self).__init__((0, 0), (0, 0), *args, **kwargs)
+        self._xyz = xyz
+        self._dxdydz = dxdydz
+
+    def set_positions(self, xyz, dxdydz): # pylint: disable=arguments-differ
+        self._xyz = xyz
+        self._dxdydz = dxdydz
+
+    def draw(self, renderer):
+        x1, y1, z1 = self._xyz
+        dx, dy, dz = self._dxdydz
+        x2, y2, z2 = (x1 + dx, y1 + dy, z1 + dz)
+
+        xs, ys, zs = proj_transform((x1, x2), (y1, y2), (z1, z2), renderer.M)
+        super(Arrow3D, self).set_positions((xs[0], ys[0]), (xs[1], ys[1]))
+        super(Arrow3D, self).draw(renderer)
+
+
+def _arrow3D(ax, xyz, dxdydz, *args, **kwargs):
+    '''Add an 3d arrow to an `Axes3D` instance.'''
+    arrow = Arrow3D(xyz, dxdydz, *args, **kwargs)
+    ax.add_artist(arrow)
+    return arrow
+setattr(Axes3D, 'arrow3D', _arrow3D)

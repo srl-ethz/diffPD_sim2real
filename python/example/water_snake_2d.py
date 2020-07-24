@@ -40,7 +40,7 @@ def main():
     origin = np.random.normal(size=2)
     bin_file_name = str(folder / 'water_snake.bin')
     voxels = np.ones(cell_nums)
-    generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name)
+    voxel_indices, vertex_indices = generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name)
     mesh = Mesh2d()
     mesh.Initialize(bin_file_name)
 
@@ -48,10 +48,12 @@ def main():
     youngs_modulus = 5e5
     poissons_ratio = 0.45
     density = 1e3
-    methods = ('newton_pcg', 'newton_cholesky', 'pd')
-    opts = ({ 'max_newton_iter': 1000, 'max_ls_iter': 10, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4 },
+    methods = ('pd', 'newton_pcg', 'newton_cholesky')
+    opts = (
+        { 'max_pd_iter': 1000, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4, 'method': 1, 'bfgs_history_size': 10},
         { 'max_newton_iter': 1000, 'max_ls_iter': 10, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_pd_iter': 1000, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4 })
+        { 'max_newton_iter': 1000, 'max_ls_iter': 10, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4 },
+    )
 
     deformable = Deformable2d()
     deformable.Initialize(bin_file_name, density, 'none', youngs_modulus, poissons_ratio)
@@ -80,8 +82,7 @@ def main():
     shared_muscles = []
     muscle_pair = []
     for i in [0, cell_nums[1] - 1]:
-        indices = [i + cell_nums[1] * j for j in range(cell_nums[0])]
-        indices.reverse()
+        indices = voxel_indices[::-1, i].tolist()
         deformable.AddActuation(1e5, [1.0, 0.0], indices)
         muscle_pair.append(indices)
     shared_muscles.append(muscle_pair)
@@ -100,10 +101,9 @@ def main():
     q0 = torch.as_tensor(ndarray(mesh.py_vertices())).requires_grad_(False)
     v0 = torch.zeros(dofs).requires_grad_(False)
     mid_y = math.floor(node_nums[1] / 2)
-    q0_mid_y = q0.view(*node_nums, 2)[:, mid_y, 1]
+    indices_mid_y = vertex_indices[:, mid_y]
 
     sim = Sim(deformable)
-    # controller = SharedOpenController(deformable, ctrl_num)
     controller = SnakeAdaOpenController(deformable, ctrl_num)
     controller.reset_parameters()
 
@@ -125,8 +125,8 @@ def main():
             for j in range(skip_frame):
                 a = controller(i, a)
                 q, v = sim(dofs, act_dofs, method, q, v, a, f_ext, dt, opt)
-                loss += (-v.view(*node_nums, 2)[:, mid_y, 0] +
-                    0.5 * (q.view(*node_nums, 2)[:, mid_y, 1] - q0_mid_y).pow(2))[::4].mean()
+                loss += (-v.view(-1, 2)[indices_mid_y, 0] +
+                    0.0 * v.view(-1, 2)[indices_mid_y, 1].pow(2))[::4].mean()
 
         loss = loss.sum() / frame_num
 

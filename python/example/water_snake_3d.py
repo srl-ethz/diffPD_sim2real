@@ -17,7 +17,7 @@ import torch.optim as optim
 
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
-from py_diff_pd.common.mesh import generate_hex_mesh, get_boundary_edge
+from py_diff_pd.common.mesh import generate_hex_mesh, get_boundary_face
 from py_diff_pd.common.display import render_hex_mesh_no_floor, export_gif
 from py_diff_pd.common.sim import Sim
 from py_diff_pd.common.controller import SharedOpenController, AdaOpenController
@@ -42,17 +42,17 @@ def main():
     origin = np.random.normal(size=3)
     bin_file_name = str(folder / 'water_snake.bin')
     voxels = np.ones(cell_nums)
-    generate_hex_mesh(voxels, dx, origin, bin_file_name)
+    voxel_indices, vertex_indices = generate_hex_mesh(voxels, dx, origin, bin_file_name)
     mesh = Mesh3d()
     mesh.Initialize(bin_file_name)
 
     # FEM parameters.
-    youngs_modulus = 5e5
+    youngs_modulus = 1e6
     poissons_ratio = 0.45
     density = 1e3
     methods = ('pd', 'newton_pcg', 'newton_cholesky')
     opts = (
-        { 'max_pd_iter': 1000, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4 },
+        { 'max_pd_iter': 1000, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4, 'method': 1, 'bfgs_history_size': 10},
         { 'max_newton_iter': 1000, 'max_ls_iter': 10, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4 },
         { 'max_newton_iter': 1000, 'max_ls_iter': 10, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0, 'thread_ct': 4 },
     )
@@ -71,7 +71,7 @@ def main():
     # The current Cd and Ct are similar to Figure 2 in SoftCon.
     # surface_faces is a list of (v0, v1) where v0 and v1 are the vertex indices of the two endpoints of a boundary edge.
     # The order of (v0, v1) is determined so that following all v0 -> v1 forms a ccw contour of the deformable body.
-    surface_faces = get_boundary_edge(mesh)
+    surface_faces = get_boundary_face(mesh)
     deformable.AddStateForce('hydrodynamics', np.concatenate([[rho,], v_water, Cd_points.ravel(), Ct_points.ravel(),
         ndarray(surface_faces).ravel()]))
     # Add actuation.
@@ -85,7 +85,7 @@ def main():
     for i in [0, cell_nums[2] - 1]:
         muscle_pair = []
         for j in [0, cell_nums[1] - 1]:
-            indices = [i + cell_nums[2] * j + cell_nums[1] * cell_nums[2] * k for k in range(cell_nums[0])]
+            indices = voxel_indices[:, j, i].tolist()
             deformable.AddActuation(1e5, [1.0, 0.0, 0.0], indices)
             muscle_pair.append(indices)
         shared_muscles.append(muscle_pair)
@@ -97,7 +97,6 @@ def main():
     ctrl_num = 200
     skip_frame = 1
     frame_num = ctrl_num * skip_frame
-
     dofs = deformable.dofs()
     act_dofs = deformable.act_dofs()
 
@@ -105,8 +104,7 @@ def main():
     v0 = torch.zeros(dofs).requires_grad_(False)
     mid_y = math.floor(node_nums[1] / 2)
     mid_z = math.floor(node_nums[2] / 2)
-    q0_mid_y = q0.view(*node_nums, 3)[:, mid_y, mid_z, 1]
-    q0_mid_z = q0.view(*node_nums, 3)[:, mid_y, mid_z, 2]
+    indices_mid_yz = vertex_indices[:, mid_y, mid_z]
 
     sim = Sim(deformable)
     # controller = SharedOpenController(deformable, ctrl_num)
@@ -117,7 +115,7 @@ def main():
     # optimizer = optim.LBFGS(controller.parameters(), lr=1.0)
     optimizer = optim.Adam(controller.parameters(), lr=0.1)
 
-    num_epochs = 50
+    num_epochs = 40
     lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, num_epochs)
 
     def closure(method, opt, epoch):
@@ -131,9 +129,9 @@ def main():
             for j in range(skip_frame):
                 a = controller(i, a)
                 q, v = sim(dofs, act_dofs, method, q, v, a, f_ext, dt, opt)
-                loss += (v.view(*node_nums, 3)[:, mid_y, mid_z, 0] +
-                    0.1 * (q.view(*node_nums, 3)[:, mid_y, mid_z, 1] - q0_mid_y).pow(2)+
-                    0.1 * (q.view(*node_nums, 3)[:, mid_y, mid_z, 2] - q0_mid_z).pow(2))[::4].mean()
+                loss += (v.view(-1, 3)[indices_mid_yz, 0] +
+                    0.1 * v.view(-1, 3)[indices_mid_yz, 1].pow(2)+
+                    0.1 * v.view(-1, 3)[indices_mid_yz, 2].pow(2))[::4].mean()
 
         loss = loss.sum() / frame_num
 
