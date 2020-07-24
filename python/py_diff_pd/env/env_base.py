@@ -15,6 +15,8 @@ class EnvBase:
         self._f_ext = np.zeros(0)
         self._youngs_modulus = 0
         self._poissons_ratio = 0
+        self._stepwise_loss = False
+
         self.__folder = Path(folder)
 
     # Returns a 2 x 2 Jacobian:
@@ -54,7 +56,6 @@ class EnvBase:
     def _display_mesh(self, mesh_file, file_name):
         raise NotImplementedError
 
-    # We assume loss is defined on the final q and v.
     # Return: loss, grad_q, grad_v.
     def _loss_and_grad(self, q, v):
         raise NotImplementedError
@@ -117,12 +118,18 @@ class EnvBase:
         q = [sim_q0,]
         v = [sim_v0,]
         dofs = self._deformable.dofs()
+        loss = 0
+        grad_q = np.zeros(dofs)
+        grad_v = np.zeros(dofs)
         for i in range(frame_num):
             q_next_array = StdRealVector(dofs)
             v_next_array = StdRealVector(dofs)
             self._deformable.PyForward(method, q[-1], v[-1], sim_act[i], sim_f_ext[i], dt, opt, q_next_array, v_next_array)
             q_next = ndarray(q_next_array)
             v_next = ndarray(v_next_array)
+            if self._stepwise_loss or i == frame_num - 1:
+                l, grad_q, grad_v = self._loss_and_grad(q_next, v_next)
+                loss += l
             q.append(q_next)
             v.append(v_next)
 
@@ -132,7 +139,6 @@ class EnvBase:
         info['v'] = v
 
         # Compute loss.
-        loss, grad_q, grad_v = self._loss_and_grad(q[-1], v[-1])
         t_loss = time.time() - t_begin
         info['forward_time'] = t_loss
 
@@ -168,6 +174,10 @@ class EnvBase:
                     q[i + 1], v[i + 1], dl_dq_next, dl_dv_next, opt, dl_dq, dl_dv, dl_da, dl_df, dl_dwi)
                 dl_dq_next = ndarray(dl_dq)
                 dl_dv_next = ndarray(dl_dv)
+                if self._stepwise_loss and i != 0:
+                    _, dqi, dvi = self._loss_and_grad(q[i], v[i])
+                    dl_dq_next += ndarray(dqi)
+                    dl_dv_next += ndarray(dvi)
                 dl_act[i] = ndarray(dl_da)
                 dl_df_ext[i] = ndarray(dl_df)
                 dl_dw += ndarray(dl_dwi)
