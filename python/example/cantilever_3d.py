@@ -5,6 +5,7 @@ from pathlib import Path
 import time
 import numpy as np
 import scipy.optimize
+import pickle
 
 from py_diff_pd.common.common import ndarray, create_folder
 from py_diff_pd.common.common import print_info, print_ok, print_error
@@ -25,10 +26,11 @@ if __name__ == '__main__':
 
     # Optimization parameters.
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
+    thread_ct = 4
     opts = (
-        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4,
+        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct },
+        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct },
+        { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
             'method': 1, 'bfgs_history_size': 10 }
     )
 
@@ -59,7 +61,9 @@ if __name__ == '__main__':
     x_ub = ndarray([np.log(5e6), np.log(0.49)])
     x_init = np.random.uniform(low=x_lb, high=x_ub)
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
+    data = {}
     for method, opt in zip(methods, opts):
+        data[method] = []
         def loss_and_grad(x):
             E = np.exp(x[0])
             nu = np.exp(x[1])
@@ -70,6 +74,14 @@ if __name__ == '__main__':
             grad = grad * np.exp(x)
             print('loss: {:8.3f}, |grad|: {:8.3f}, E: {:8.3e}, nu: {:4.3f}, forward time: {:6.3f}s, backward time: {:6.3f}s'.format(
                 loss, np.linalg.norm(grad), E, nu, info['forward_time'], info['backward_time']))
+            single_data = {}
+            single_data['loss'] = loss
+            single_data['grad'] = np.copy(grad)
+            single_data['E'] = E
+            single_data['nu'] = nu
+            single_data['forward_time'] = info['forward_time']
+            single_data['backward_time'] = info['backward_time']
+            data[method].append(single_data)
             return loss, grad
         t0 = time.time()
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
@@ -78,6 +90,7 @@ if __name__ == '__main__':
         assert result.success
         x_final = result.x
         print_info('Optimizing with {} finished in {:6.3f} seconds'.format(method, t1 - t0))
+        pickle.dump(data, open(folder / 'data_{:04d}_threads.bin'.format(thread_ct), 'wb'))
 
         # Visualize results.
         E = np.exp(x_final[0])
