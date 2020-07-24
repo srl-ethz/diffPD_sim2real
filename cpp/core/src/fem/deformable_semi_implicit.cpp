@@ -37,7 +37,7 @@ template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& a,
     const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next,
     const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
-    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext) const {
+    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const {
     CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
     const int thread_ct = static_cast<int>(options.at("thread_ct"));
     omp_set_num_threads(thread_ct);
@@ -46,6 +46,8 @@ void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q
     dl_dv = VectorXr::Zero(dofs_);
     dl_da = VectorXr::Zero(act_dofs_);
     dl_df_ext = VectorXr::Zero(dofs_);
+    const int w_dofs = static_cast<int>(pd_element_energies_.size());
+    dl_dw = VectorXr::Zero(w_dofs);
 
     // Step 5: v_next = (q_next_after_collision - q) / dt;
     const real inv_dt = 1 / dt;
@@ -94,15 +96,18 @@ void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q
     BackwardStateForce(q, v, ForwardStateForce(q, v), dl_dv_pred * hm, dl_dq_from_f_state, dl_dv_from_f_state);
     dl_dq += dl_dq_from_f_state;
     dl_dv += dl_dv_from_f_state;
-    // f_pd(q).
-    dl_dq += PdEnergyForceDifferential(q, dl_dv_pred) * hm;
+    // f_pd(q, w).
+    SparseMatrixElements dpd_dq, dpd_dw;
+    PdEnergyForceDifferential(q, false, true, dpd_dq, dpd_dw);
+    dl_dq += PdEnergyForceDifferential(q, dl_dv_pred * hm, VectorXr::Zero(w_dofs));
+    dl_dw += VectorXr(dl_dv_pred.transpose() * ToSparseMatrix(dofs_, w_dofs, dpd_dw) * hm);
     // f_act(q, a).
     SparseMatrixElements nonzeros_dq, nonzeros_da;
     ActuationForceDifferential(q, a, nonzeros_dq, nonzeros_da);
     const SparseMatrix dact_dq = ToSparseMatrix(dofs_, dofs_, nonzeros_dq);
     const SparseMatrix dact_da = ToSparseMatrix(dofs_, act_dofs_, nonzeros_da);
-    dl_dq += dl_dv_pred.transpose() * dact_dq * hm;
-    dl_da += dl_dv_pred.transpose() * dact_da * hm;
+    dl_dq += VectorXr(dl_dv_pred.transpose() * dact_dq * hm);
+    dl_da += VectorXr(dl_dv_pred.transpose() * dact_da * hm);
 }
 
 template class Deformable<2, 4>;

@@ -42,6 +42,7 @@ Navigate to the `python/example` path and run `python [example_name].py` where t
 - `landscape_3d` compares the PD solver with the semi-implicit time integeration method to demonstrate that the loss and grad landscapes are smoother with full implicit methods.
 ![landscape](python/example/landscape_3d/landscape_3d.png)
 - `tendon_routing_3d` implements a simple tendon routing example with forward and backward PD and two Newton baselines. The goal is to let the endpoint of the stick finger reach a target point in the 3D space.
+- `cantilever_3d` shows a system identification demo.
 
 ## Implementation details of the `Deformable` class
 

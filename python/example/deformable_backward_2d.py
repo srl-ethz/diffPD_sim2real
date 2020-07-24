@@ -16,7 +16,13 @@ from py_diff_pd.env.benchmark_env_2d import BenchmarkEnv2d
 def test_deformable_backward_2d(verbose):
     seed = 42
     folder = Path('deformable_backward_2d')
-    env = BenchmarkEnv2d(seed, folder, refinement=2)
+    refinement = 2
+    youngs_modulus = 1e6
+    poissons_ratio = 0.45
+    env = BenchmarkEnv2d(seed, folder, {
+        'refinement': refinement,
+        'youngs_modulus': youngs_modulus,
+        'poissons_ratio': poissons_ratio })
     deformable = env.deformable()
 
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
@@ -40,9 +46,38 @@ def test_deformable_backward_2d(verbose):
     def skip_var(dof):
         return env.is_dirichlet_dof(dof)
 
+    material_params = ndarray([youngs_modulus, poissons_ratio])
+    material_rel_eps = 1e-4
     for method, opt in zip(methods, opts):
         if verbose:
             print_info('Checking gradients in {} method.'.format(method))
+
+        # Check gradients with youngs modulus and poissons ratio.
+        act = [a0 for _ in range(frame_num)]
+        f_ext = [f0 for _ in range(frame_num)]
+        _, _, info = env.simulate(dt, frame_num, method, opt, q0, v0, act, f_ext, require_grad=True, vis_folder=None)
+        material_grad = info['material_parameter_gradients']
+        for i in range(2):
+            material_eps = material_params[i] * material_rel_eps
+            material_params_pos = np.copy(material_params)
+            material_params_pos[i] += material_eps
+            material_params_neg = np.copy(material_params)
+            material_params_neg[i] -= material_eps
+            env_pos = BenchmarkEnv2d(seed, folder, { 'refinement': refinement,
+                'youngs_modulus': material_params_pos[0],
+                'poissons_ratio': material_params_pos[1] })
+            env_neg = BenchmarkEnv2d(seed, folder, { 'refinement': refinement,
+                'youngs_modulus': material_params_neg[0],
+                'poissons_ratio': material_params_neg[1] })
+            loss_pos, _ = env_pos.simulate(dt, frame_num, method, opt, q0, v0, act, f_ext, require_grad=False, vis_folder=None)
+            loss_neg, _ = env_neg.simulate(dt, frame_num, method, opt, q0, v0, act, f_ext, require_grad=False, vis_folder=None)
+            grad_numerical = (loss_pos - loss_neg) / 2 / material_eps
+            grad_analytical = material_grad[i]
+            if not np.isclose(grad_analytical, grad_numerical):
+                if verbose:
+                    print_error('Material parameter gradient {} is incorrect: {}, {}'.format(i, grad_analytical, grad_numerical))
+                return False
+
         t0 = time.time()
         x0 = np.concatenate([q0, v0, a0, f0])
 

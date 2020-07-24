@@ -74,8 +74,9 @@ public:
     void AddPdEnergy(const std::string& energy_type, const std::vector<real>& params, const std::vector<int>& indices);
     const real ComputePdEnergy(const VectorXr& q) const;
     const VectorXr PdEnergyForce(const VectorXr& q) const;
-    const VectorXr PdEnergyForceDifferential(const VectorXr& q, const VectorXr& dq) const;
-    const SparseMatrixElements PdEnergyForceDifferential(const VectorXr& q) const;
+    const VectorXr PdEnergyForceDifferential(const VectorXr& q, const VectorXr& dq, const VectorXr& dw) const;
+    void PdEnergyForceDifferential(const VectorXr& q, const bool require_dq, const bool require_dw,
+        SparseMatrixElements& dq, SparseMatrixElements& dw) const;
 
     // Actuation.
     void AddActuation(const real stiffness, const std::array<real, vertex_dim>& fiber_direction,
@@ -93,7 +94,7 @@ public:
     void Backward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& a,
         const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next,
         const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
-        VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext) const;
+        VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const;
     void GetQuasiStaticState(const std::string& method, const VectorXr& a, const VectorXr& f_ext,
         const std::map<std::string, real>& options, VectorXr& q) const;
     void SaveToMeshFile(const VectorXr& q, const std::string& file_name) const;
@@ -106,7 +107,8 @@ public:
         const std::vector<real>& f_ext, const real dt, const std::vector<real>& q_next, const std::vector<real>& v_next,
         const std::vector<real>& dl_dq_next, const std::vector<real>& dl_dv_next,
         const std::map<std::string, real>& options,
-        std::vector<real>& dl_dq, std::vector<real>& dl_dv, std::vector<real>& dl_da, std::vector<real>& dl_df_ext) const;
+        std::vector<real>& dl_dq, std::vector<real>& dl_dv, std::vector<real>& dl_da, std::vector<real>& dl_df_ext,
+        std::vector<real>& dl_dw) const;
     void PyGetQuasiStaticState(const std::string& method, const std::vector<real>& a, const std::vector<real>& f_ext,
         const std::map<std::string, real>& options, std::vector<real>& q) const;
     void PySaveToMeshFile(const std::vector<real>& q, const std::string& file_name) const;
@@ -122,8 +124,10 @@ public:
 
     const real PyComputePdEnergy(const std::vector<real>& q) const;
     const std::vector<real> PyPdEnergyForce(const std::vector<real>& q) const;
-    const std::vector<real> PyPdEnergyForceDifferential(const std::vector<real>& q, const std::vector<real>& dq) const;
-    const std::vector<std::vector<real>> PyPdEnergyForceDifferential(const std::vector<real>& q) const;
+    const std::vector<real> PyPdEnergyForceDifferential(const std::vector<real>& q, const std::vector<real>& dq,
+        const std::vector<real>& dw) const;
+    void PyPdEnergyForceDifferential(const std::vector<real>& q, const bool require_dq, const bool require_dw,
+        std::vector<std::vector<real>>& dq, std::vector<std::vector<real>>& dw) const;
 
     const real PyActuationEnergy(const std::vector<real>& q, const std::vector<real>& a) const;
     const std::vector<real> PyActuationForce(const std::vector<real>& q, const std::vector<real>& a) const;
@@ -143,15 +147,15 @@ protected:
     virtual void BackwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext, const real dt,
         const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options,
-        VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext) const;
+        VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const;
     virtual void BackwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext,
         const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options,
-        VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext) const;
+        VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const;
     virtual void BackwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext, const real dt,
         const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options,
-        VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext) const;
+        VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const;
 
     virtual void QuasiStaticStateNewton(const std::string& method, const VectorXr& a, const VectorXr& f_ext,
         const std::map<std::string, real>& options, VectorXr& q) const;

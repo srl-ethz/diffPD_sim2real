@@ -43,7 +43,7 @@ const std::shared_ptr<Material<vertex_dim>> Deformable<vertex_dim, element_dim>:
     std::shared_ptr<Material<vertex_dim>> material(nullptr);
     if (material_type == "linear") {
         material = std::make_shared<LinearMaterial<vertex_dim>>();
-        material->Initialize(youngs_modulus, poissons_ratio); 
+        material->Initialize(youngs_modulus, poissons_ratio);
     } else if (material_type == "corotated") {
         material = std::make_shared<CorotatedMaterial<vertex_dim>>();
         material->Initialize(youngs_modulus, poissons_ratio);
@@ -143,16 +143,16 @@ template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::Backward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& a,
     const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next,
     const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
-    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext) const {
+    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const {
     if (method == "semi_implicit")
         BackwardSemiImplicit(q, v, a, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
-            dl_dq, dl_dv, dl_da, dl_df_ext);
+            dl_dq, dl_dv, dl_da, dl_df_ext, dl_dw);
     else if (method == "pd")
         BackwardProjectiveDynamics(q, v, a, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
-            dl_dq, dl_dv, dl_da, dl_df_ext);
+            dl_dq, dl_dv, dl_da, dl_df_ext, dl_dw);
     else if (BeginsWith(method, "newton"))
         BackwardNewton(method, q, v, a, f_ext, dt, q_next, v_next, dl_dq_next, dl_dv_next, options,
-            dl_dq, dl_dv, dl_da, dl_df_ext);
+            dl_dq, dl_dv, dl_da, dl_df_ext, dl_dw);
     else
         PrintError("Unsupported backward method: " + method);
 }
@@ -182,15 +182,17 @@ void Deformable<vertex_dim, element_dim>::PyBackward(const std::string& method, 
     const std::vector<real>& a, const std::vector<real>& f_ext, const real dt, const std::vector<real>& q_next,
     const std::vector<real>& v_next, const std::vector<real>& dl_dq_next, const std::vector<real>& dl_dv_next,
     const std::map<std::string, real>& options,
-    std::vector<real>& dl_dq, std::vector<real>& dl_dv, std::vector<real>& dl_da, std::vector<real>& dl_df_ext) const {
-    VectorXr dl_dq_eig, dl_dv_eig, dl_da_eig, dl_df_ext_eig;
+    std::vector<real>& dl_dq, std::vector<real>& dl_dv, std::vector<real>& dl_da, std::vector<real>& dl_df_ext,
+    std::vector<real>& dl_dw) const {
+    VectorXr dl_dq_eig, dl_dv_eig, dl_da_eig, dl_df_ext_eig, dl_dw_eig;
     Backward(method, ToEigenVector(q), ToEigenVector(v), ToEigenVector(a), ToEigenVector(f_ext), dt, ToEigenVector(q_next),
         ToEigenVector(v_next), ToEigenVector(dl_dq_next), ToEigenVector(dl_dv_next), options,
-        dl_dq_eig, dl_dv_eig, dl_da_eig, dl_df_ext_eig);
+        dl_dq_eig, dl_dv_eig, dl_da_eig, dl_df_ext_eig, dl_dw_eig);
     dl_dq = ToStdVector(dl_dq_eig);
     dl_dv = ToStdVector(dl_dv_eig);
     dl_da = ToStdVector(dl_da_eig);
     dl_df_ext = ToStdVector(dl_df_ext_eig);
+    dl_dw = ToStdVector(dl_dw_eig);
 }
 
 template<int vertex_dim, int element_dim>

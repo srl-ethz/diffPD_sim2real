@@ -115,7 +115,8 @@ template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::QuasiStaticMatrixOp(const VectorXr& q, const VectorXr& a, const VectorXr& dq) const {
     VectorXr dq_w_bonudary = dq;
     for (const auto& pair : dirichlet_) dq_w_bonudary(pair.first) = 0;
-    VectorXr ret = ElasticForceDifferential(q, dq_w_bonudary) + PdEnergyForceDifferential(q, dq_w_bonudary)
+    const int w_dofs = static_cast<int>(pd_element_energies_.size());
+    VectorXr ret = ElasticForceDifferential(q, dq_w_bonudary) + PdEnergyForceDifferential(q, dq_w_bonudary, VectorXr::Zero(w_dofs))
         + ActuationForceDifferential(q, a, dq_w_bonudary, VectorXr::Zero(act_dofs_));
     for (const auto& pair : dirichlet_) ret(pair.first) = dq(pair.first);
     return ret;
@@ -124,7 +125,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::QuasiStaticMatrixOp(const Ve
 template<int vertex_dim, int element_dim>
 const SparseMatrix Deformable<vertex_dim, element_dim>::QuasiStaticMatrix(const VectorXr& q, const VectorXr& a) const {
     SparseMatrixElements nonzeros = ElasticForceDifferential(q);
-    SparseMatrixElements nonzeros_pd = PdEnergyForceDifferential(q);
+    SparseMatrixElements nonzeros_pd, nonzeros_dummy;
+    PdEnergyForceDifferential(q, true, false, nonzeros_pd, nonzeros_dummy);
     SparseMatrixElements nonzeros_act_dq, nonzeros_act_da;
     ActuationForceDifferential(q, a, nonzeros_act_dq, nonzeros_act_da);
     nonzeros.insert(nonzeros.end(), nonzeros_pd.begin(), nonzeros_pd.end());

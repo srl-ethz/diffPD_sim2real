@@ -9,8 +9,8 @@ from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.display import render_hex_mesh, export_gif
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 
-class BenchmarkEnv3d(EnvBase):
-    # Refinement is an integer controlling the resolution of the mesh. We use 8 for benchmark_3d.
+class CantileverEnv3d(EnvBase):
+    # Refinement is an integer controlling the resolution of the mesh.
     def __init__(self, seed, folder, options):
         EnvBase.__init__(self, folder)
 
@@ -26,7 +26,7 @@ class BenchmarkEnv3d(EnvBase):
         mu = youngs_modulus / (2 * (1 + poissons_ratio))
         density = 1e3
         cell_nums = (4 * refinement, refinement, refinement)
-        origin = ndarray([0, 0, 0])
+        origin = ndarray([0, 0.12, 0.20])
         node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
         dx = 0.08 / refinement
         bin_file_name = folder / 'mesh.bin'
@@ -50,18 +50,6 @@ class BenchmarkEnv3d(EnvBase):
         # Elasticity.
         deformable.AddPdEnergy('corotated', [2 * mu,], [])
         deformable.AddPdEnergy('volume', [la,], [])
-        # Collisions.
-        def to_index(i, j, k):
-            return i * node_nums[1] * node_nums[2] + j * node_nums[2] + k
-        collision_indices = [to_index(cell_nums[0], 0, 0), to_index(cell_nums[0], cell_nums[1], 0)]
-        deformable.AddPdEnergy('planar_collision', [5e3, 0.0, 0.0, 1.0, 0.005], collision_indices)
-        # Actuation.
-        act_indices = []
-        for i in range(cell_nums[0]):
-            j = 0
-            k = 0
-            act_indices.append(i * cell_nums[1] * cell_nums[2] + j * cell_nums[2] + k)
-        deformable.AddActuation(1e5, [1.0, 0.0, 0.0], act_indices)
 
         # Initial state set by rotating the cuboid kinematically.
         dofs = deformable.dofs()
@@ -91,7 +79,7 @@ class BenchmarkEnv3d(EnvBase):
         self._f_ext = f_ext
         self._youngs_modulus = youngs_modulus
         self._poissons_ratio = poissons_ratio
-        self._stepwise_loss = False
+        self._stepwise_loss = True
         self.__loss_q_grad = np.random.normal(size=dofs)
         self.__loss_v_grad = np.random.normal(size=dofs)
         self.__node_nums = node_nums
@@ -112,11 +100,16 @@ class BenchmarkEnv3d(EnvBase):
         mesh.Initialize(mesh_file)
         render_hex_mesh(mesh, file_name=file_name,
             resolution=(400, 400), sample=4, transforms=[
-                ('t', (0, 0, 0.005)),
-                ('t', (0, 0.16, 0)),
-                ('s', 4)
+                ('s', 3)
             ])
 
-    def _loss_and_grad(self, q, v):
-        loss = q.dot(self.__loss_q_grad) + v.dot(self.__loss_v_grad)
-        return loss, np.copy(self.__loss_q_grad), np.copy(self.__loss_v_grad)
+    def _stepwise_loss_and_grad(self, q, v, i):
+        mesh_file = self._folder / 'groundtruth' / '{:04d}.bin'.format(i)
+        if not mesh_file.exists(): return 0, np.zeros(q.size), np.zeros(q.size)
+
+        mesh = Mesh3d()
+        mesh.Initialize(str(mesh_file))
+        q_ref = ndarray(mesh.py_vertices())
+        grad = q - q_ref
+        loss = 0.5 * grad.dot(grad)
+        return loss, grad, np.zeros(q.size)
