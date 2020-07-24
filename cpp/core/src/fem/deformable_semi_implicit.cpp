@@ -98,8 +98,8 @@ void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q
     dl_dv += dl_dv_from_f_state;
     // f_pd(q, w).
     SparseMatrixElements dpd_dq, dpd_dw;
-    PdEnergyForceDifferential(q, dpd_dq, dpd_dw);
-    dl_dq += VectorXr(dl_dv_pred.transpose() * ToSparseMatrix(dofs_, dofs_, dpd_dq) * hm);
+    PdEnergyForceDifferential(q, false, true, dpd_dq, dpd_dw);
+    dl_dq += PdEnergyForceDifferential(q, dl_dv_pred * hm, VectorXr::Zero(w_dofs));
     dl_dw += VectorXr(dl_dv_pred.transpose() * ToSparseMatrix(dofs_, w_dofs, dpd_dw) * hm);
     // f_act(q, a).
     SparseMatrixElements nonzeros_dq, nonzeros_da;

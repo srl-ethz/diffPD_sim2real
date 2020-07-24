@@ -17,7 +17,7 @@ class EnvBase:
         self._poissons_ratio = 0
         self._stepwise_loss = False
 
-        self.__folder = Path(folder)
+        self._folder = Path(folder)
 
     # Returns a 2 x 2 Jacobian:
     # Cols: youngs modulus, poissons ratio.
@@ -60,6 +60,9 @@ class EnvBase:
     def _loss_and_grad(self, q, v):
         raise NotImplementedError
 
+    def _stepwise_loss_and_grad(self, q, v, i):
+        raise NotImplementedError
+
     # Input arguments:
     # dt: time step.
     # frame_num: number of frames.
@@ -69,7 +72,7 @@ class EnvBase:
     # act: either None or a list of size frame_num.
     # f_ext: either None or a list of size frame_num whose element is of size dofs.
     # requires_grad: True if you want to compute gradients.
-    # vis_folder: if not None, `vis_folder.gif` will be generated under self.__folder.
+    # vis_folder: if not None, `vis_folder.gif` will be generated under self._folder.
     #
     # Return value:
     # If require_grad=True: loss, info;
@@ -110,7 +113,7 @@ class EnvBase:
             assert f.size == self._deformable.dofs()
 
         if vis_folder is not None:
-            create_folder(self.__folder / vis_folder, exist_ok=False)
+            create_folder(self._folder / vis_folder, exist_ok=False)
 
         # Forward simulation.
         t_begin = time.time()
@@ -127,7 +130,10 @@ class EnvBase:
             self._deformable.PyForward(method, q[-1], v[-1], sim_act[i], sim_f_ext[i], dt, opt, q_next_array, v_next_array)
             q_next = ndarray(q_next_array)
             v_next = ndarray(v_next_array)
-            if self._stepwise_loss or i == frame_num - 1:
+            if self._stepwise_loss:
+                l, grad_q, grad_v = self._stepwise_loss_and_grad(q_next, v_next, i + 1)
+                loss += l
+            elif i == frame_num - 1:
                 l, grad_q, grad_v = self._loss_and_grad(q_next, v_next)
                 loss += l
             q.append(q_next)
@@ -145,10 +151,10 @@ class EnvBase:
         if vis_folder is not None:
             t_begin = time.time()
             for i, qi in enumerate(q):
-                mesh_file = str(self.__folder / vis_folder / '{:04d}.bin'.format(i))
+                mesh_file = str(self._folder / vis_folder / '{:04d}.bin'.format(i))
                 self._deformable.PySaveToMeshFile(qi, mesh_file)
-                self._display_mesh(mesh_file, self.__folder / vis_folder / '{:04d}.png'.format(i))
-            export_gif(self.__folder / vis_folder, self.__folder / '{}.gif'.format(vis_folder), 5)
+                self._display_mesh(mesh_file, self._folder / vis_folder / '{:04d}.png'.format(i))
+            export_gif(self._folder / vis_folder, self._folder / '{}.gif'.format(vis_folder), 5)
 
             t_vis = time.time() - t_begin
             info['visualize_time'] = t_vis
@@ -175,7 +181,7 @@ class EnvBase:
                 dl_dq_next = ndarray(dl_dq)
                 dl_dv_next = ndarray(dl_dv)
                 if self._stepwise_loss and i != 0:
-                    _, dqi, dvi = self._loss_and_grad(q[i], v[i])
+                    _, dqi, dvi = self._stepwise_loss_and_grad(q[i], v[i], i)
                     dl_dq_next += ndarray(dqi)
                     dl_dv_next += ndarray(dvi)
                 dl_act[i] = ndarray(dl_da)

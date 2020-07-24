@@ -26,7 +26,7 @@ class CantileverEnv3d(EnvBase):
         mu = youngs_modulus / (2 * (1 + poissons_ratio))
         density = 1e3
         cell_nums = (4 * refinement, refinement, refinement)
-        origin = ndarray([0, 0.12, 0.12])
+        origin = ndarray([0, 0.12, 0.20])
         node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
         dx = 0.08 / refinement
         bin_file_name = folder / 'mesh.bin'
@@ -79,7 +79,7 @@ class CantileverEnv3d(EnvBase):
         self._f_ext = f_ext
         self._youngs_modulus = youngs_modulus
         self._poissons_ratio = poissons_ratio
-        self._stepwise_loss = False
+        self._stepwise_loss = True
         self.__loss_q_grad = np.random.normal(size=dofs)
         self.__loss_v_grad = np.random.normal(size=dofs)
         self.__node_nums = node_nums
@@ -103,6 +103,13 @@ class CantileverEnv3d(EnvBase):
                 ('s', 3)
             ])
 
-    def _loss_and_grad(self, q, v):
-        loss = q.dot(self.__loss_q_grad) + v.dot(self.__loss_v_grad)
-        return loss, np.copy(self.__loss_q_grad), np.copy(self.__loss_v_grad)
+    def _stepwise_loss_and_grad(self, q, v, i):
+        mesh_file = self._folder / 'groundtruth' / '{:04d}.bin'.format(i)
+        if not mesh_file.exists(): return 0, np.zeros(q.size), np.zeros(q.size)
+
+        mesh = Mesh3d()
+        mesh.Initialize(str(mesh_file))
+        q_ref = ndarray(mesh.py_vertices())
+        grad = q - q_ref
+        loss = 0.5 * grad.dot(grad)
+        return loss, grad, np.zeros(q.size)

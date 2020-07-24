@@ -75,7 +75,8 @@ public:
     const real ComputePdEnergy(const VectorXr& q) const;
     const VectorXr PdEnergyForce(const VectorXr& q) const;
     const VectorXr PdEnergyForceDifferential(const VectorXr& q, const VectorXr& dq, const VectorXr& dw) const;
-    void PdEnergyForceDifferential(const VectorXr& q, SparseMatrixElements& dq, SparseMatrixElements& dw) const;
+    void PdEnergyForceDifferential(const VectorXr& q, const bool require_dq, const bool require_dw,
+        SparseMatrixElements& dq, SparseMatrixElements& dw) const;
 
     // Actuation.
     void AddActuation(const real stiffness, const std::array<real, vertex_dim>& fiber_direction,
@@ -125,7 +126,7 @@ public:
     const std::vector<real> PyPdEnergyForce(const std::vector<real>& q) const;
     const std::vector<real> PyPdEnergyForceDifferential(const std::vector<real>& q, const std::vector<real>& dq,
         const std::vector<real>& dw) const;
-    void PyPdEnergyForceDifferential(const std::vector<real>& q,
+    void PyPdEnergyForceDifferential(const std::vector<real>& q, const bool require_dq, const bool require_dw,
         std::vector<std::vector<real>>& dq, std::vector<std::vector<real>>& dw) const;
 
     const real PyActuationEnergy(const std::vector<real>& q, const std::vector<real>& a) const;

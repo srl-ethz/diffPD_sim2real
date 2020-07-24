@@ -159,8 +159,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdEnergyForceDifferential(co
 }
 
 template<int vertex_dim, int element_dim>
-void Deformable<vertex_dim, element_dim>::PdEnergyForceDifferential(const VectorXr& q, SparseMatrixElements& dq,
-    SparseMatrixElements& dw) const {
+void Deformable<vertex_dim, element_dim>::PdEnergyForceDifferential(const VectorXr& q, const bool require_dq,
+    const bool require_dw, SparseMatrixElements& dq, SparseMatrixElements& dw) const {
     dq.clear();
     dw.clear();
     for (const auto& pair : pd_vertex_energies_) {
@@ -176,42 +176,62 @@ void Deformable<vertex_dim, element_dim>::PdEnergyForceDifferential(const Vector
 
     const int element_num = mesh_.NumOfElements();
     const int sample_num = element_dim;
-    int energy_cnt = 0;
-    for (const auto& energy : pd_element_energies_) {
-        const real inv_w = 1 / energy->stiffness();
-        // TODO: should this be parallelized with OpenMP?
-        for (int i = 0; i < element_num; ++i) {
-            const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
-            const auto deformed = ScatterToElement(q, i);
-            for (int j = 0; j < sample_num; ++j) {
-                const auto F = DeformationGradient(deformed, j);
-                MatrixXr dF(vertex_dim * vertex_dim, element_dim * vertex_dim); dF.setZero();
-                for (int s = 0; s < element_dim; ++s)
-                    for (int t = 0; t < vertex_dim; ++t) {
-                        const Eigen::Matrix<real, vertex_dim, vertex_dim> dF_single =
-                            Eigen::Matrix<real, vertex_dim, 1>::Unit(t) / dx_ * grad_undeformed_sample_weights_[j].col(s).transpose();
-                        dF.col(s * vertex_dim + t) += Flatten(dF_single);
+    if (require_dq) {
+        for (const auto& energy : pd_element_energies_) {
+            for (int i = 0; i < element_num; ++i) {
+                const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+                const auto deformed = ScatterToElement(q, i);
+                for (int j = 0; j < sample_num; ++j) {
+                    const auto F = DeformationGradient(deformed, j);
+                    MatrixXr dF(vertex_dim * vertex_dim, element_dim * vertex_dim); dF.setZero();
+                    for (int s = 0; s < element_dim; ++s)
+                        for (int t = 0; t < vertex_dim; ++t) {
+                            const Eigen::Matrix<real, vertex_dim, vertex_dim> dF_single =
+                                Eigen::Matrix<real, vertex_dim, 1>::Unit(t) / dx_ * grad_undeformed_sample_weights_[j].col(s).transpose();
+                            dF.col(s * vertex_dim + t) += Flatten(dF_single);
+                    }
+                    // Gradients w.r.t. F.
+                    const auto dP_from_dF = energy->StressTensorDifferential(F) * dF;
+                    const Eigen::Matrix<real, element_dim * vertex_dim, element_dim * vertex_dim> df_kd_from_dF
+                        = dF_dxkd_flattened_[j] * dP_from_dF;
+                    for (int k = 0; k < element_dim; ++k)
+                        for (int d = 0; d < vertex_dim; ++d)
+                            for (int s = 0; s < element_dim; ++s)
+                                for (int t = 0; t < vertex_dim; ++t)
+                                    dq.push_back(Eigen::Triplet<real>(vertex_dim * vi(k) + d,
+                                        vertex_dim * vi(s) + t, df_kd_from_dF(k * vertex_dim + d, s * vertex_dim + t)));
                 }
-                // Gradients w.r.t. F.
-                const auto dP_from_dF = energy->StressTensorDifferential(F) * dF;
-                const Eigen::Matrix<real, element_dim * vertex_dim, element_dim * vertex_dim> df_kd_from_dF
-                    = dF_dxkd_flattened_[j] * dP_from_dF;
-                for (int k = 0; k < element_dim; ++k)
-                    for (int d = 0; d < vertex_dim; ++d)
-                        for (int s = 0; s < element_dim; ++s)
-                            for (int t = 0; t < vertex_dim; ++t)
-                                dq.push_back(Eigen::Triplet<real>(vertex_dim * vi(k) + d,
-                                    vertex_dim * vi(s) + t, df_kd_from_dF(k * vertex_dim + d, s * vertex_dim + t)));
-                // Gradients w.r.t. stiffness.
-                const auto dP_from_dw = Flatten(energy->StressTensor(F)) * inv_w;
-                const Eigen::Matrix<real, element_dim * vertex_dim, 1> df_kd_from_dw
-                    = dF_dxkd_flattened_[j] * dP_from_dw;
-                for (int k = 0; k < element_dim; ++k)
-                    for (int d = 0; d < vertex_dim; ++d)
-                            dw.push_back(Eigen::Triplet<real>(vertex_dim * vi(k) + d, energy_cnt, df_kd_from_dw(k * vertex_dim + d)));
             }
         }
-        ++energy_cnt;
+    }
+
+    if (require_dw) {
+        int energy_cnt = 0;
+        dw.resize(pd_element_energies_.size() * element_num * sample_num * element_dim * vertex_dim);
+        for (const auto& energy : pd_element_energies_) {
+            const real inv_w = 1 / energy->stiffness();
+            const int offset = energy_cnt * element_num * sample_num * element_dim * vertex_dim;
+            #pragma omp parallel for
+            for (int i = 0; i < element_num; ++i) {
+                const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+                const auto deformed = ScatterToElement(q, i);
+                for (int j = 0; j < sample_num; ++j) {
+                    const auto F = DeformationGradient(deformed, j);
+                    // Gradients w.r.t. stiffness.
+                    const auto dP_from_dw = Flatten(energy->StressTensor(F)) * inv_w;
+                    const Eigen::Matrix<real, element_dim * vertex_dim, 1> df_kd_from_dw
+                        = dF_dxkd_flattened_[j] * dP_from_dw;
+                    for (int k = 0; k < element_dim; ++k)
+                        for (int d = 0; d < vertex_dim; ++d) {
+                            const int idx = offset + i * sample_num * element_dim * vertex_dim
+                                + j * element_dim * vertex_dim + k * vertex_dim + d;
+                            dw[idx] = Eigen::Triplet<real>(vertex_dim * vi(k) + d,
+                                energy_cnt, df_kd_from_dw(k * vertex_dim + d));
+                        }
+                }
+            }
+            ++energy_cnt;
+        }
     }
 }
 
@@ -233,10 +253,11 @@ const std::vector<real> Deformable<vertex_dim, element_dim>::PyPdEnergyForceDiff
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::PyPdEnergyForceDifferential(
-    const std::vector<real>& q, std::vector<std::vector<real>>& dq, std::vector<std::vector<real>>& dw) const {
+    const std::vector<real>& q, const bool require_dq, const bool require_dw,
+    std::vector<std::vector<real>>& dq, std::vector<std::vector<real>>& dw) const {
     PrintWarning("PyPdEnergyForceDifferential should only be used for small-scale problems and for testing purposes.");
     SparseMatrixElements nonzeros_q, nonzeros_w;
-    PdEnergyForceDifferential(ToEigenVector(q), nonzeros_q, nonzeros_w);
+    PdEnergyForceDifferential(ToEigenVector(q), require_dq, require_dw, nonzeros_q, nonzeros_w);
     dq.resize(dofs_);
     dw.resize(dofs_);
     const int w_dofs = static_cast<int>(pd_element_energies_.size());
@@ -244,11 +265,15 @@ void Deformable<vertex_dim, element_dim>::PyPdEnergyForceDifferential(
         dq[i].resize(dofs_);
         dw[i].resize(w_dofs);
     }
-    for (const auto& triplet : nonzeros_q) {
-        dq[triplet.row()][triplet.col()] += triplet.value();
+    if (require_dq) {
+        for (const auto& triplet : nonzeros_q) {
+            dq[triplet.row()][triplet.col()] += triplet.value();
+        }
     }
-    for (const auto& triplet : nonzeros_w) {
-        dw[triplet.row()][triplet.col()] += triplet.value();
+    if (require_dw) {
+        for (const auto& triplet : nonzeros_w) {
+            dw[triplet.row()][triplet.col()] += triplet.value();
+        }
     }
 }
 

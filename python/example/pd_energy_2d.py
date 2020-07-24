@@ -43,7 +43,7 @@ def test_pd_energy_2d(verbose):
     df_analytical = ndarray(deformable.PyPdEnergyForceDifferential(x0, dq, dw))
     Kq = StdRealMatrix()
     Kw = StdRealMatrix()
-    deformable.PyPdEnergyForceDifferential(x0, Kq, Kw)
+    deformable.PyPdEnergyForceDifferential(x0, True, True, Kq, Kw)
     Kq = ndarray(Kq)
     Kw = ndarray(Kw)
     df_analytical2 = Kq @ dq

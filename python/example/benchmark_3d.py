@@ -17,7 +17,7 @@ from py_diff_pd.env.benchmark_env_3d import BenchmarkEnv3d
 def test_benchmark_3d(verbose):
     seed = 42
     folder = Path('benchmark_3d')
-    env = BenchmarkEnv3d(seed, folder, refinement=8)
+    env = BenchmarkEnv3d(seed, folder, { 'refinement': 8 })
     deformable = env.deformable()
 
     # Setting thread number.

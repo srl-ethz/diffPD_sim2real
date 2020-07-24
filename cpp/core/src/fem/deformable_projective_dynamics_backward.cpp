@@ -192,6 +192,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     // dlhs/dq_next_free * dq_next_free + dlhs/drhs_friction_fixed * drhs_friction_fixed
     // + dlhs/da * da = drhs_friction_free.
     // q_next_fixed = rhs_friction_fixed.
+    if (verbose_level > 1) Tic();
     const VectorXr forward_state_force = ForwardStateForce(q, v);
     const VectorXr v_pred = v + hm * (f_ext + forward_state_force + PdEnergyForce(q) + ActuationForce(q, a));
 
@@ -216,11 +217,13 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
             }
         }
     }
+    if (verbose_level > 1) Toc("Step 5: compute collision");
 
     // Backpropagate rhs_friction -> q_next.
     // dlhs/dq_next_free * dq_next_free + dlhs/drhs_friction_fixed * drhs_friction_fixed
     // + dlhs/da * da = drhs_friction_free.
     // q_next_fixed = rhs_friction_fixed.
+    if (verbose_level > 1) Tic();
     std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>> pd_backward_local_element_matrices;
     std::vector<std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>> pd_backward_local_muscle_matrices;
     SetupProjectiveDynamicsLocalStepDifferential(q_next, a, pd_backward_local_element_matrices, pd_backward_local_muscle_matrices);
@@ -341,19 +344,25 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     VectorXr dl_drhs_friction = adjoint;
     for (const auto& pair : dirichlet_with_friction)
         dl_drhs_friction(pair.first) += dl_drhs_friction_fixed(pair.first);
+    if (verbose_level > 1) Toc("Step 5: backpropagate q_next to q");
 
     // Backpropagate a -> q_next.
     // dlhs/dq_next_free * dq_next_free + dlhs/da * da = 0.
+    if (verbose_level > 1) Tic();
     SparseMatrixElements nonzeros_q, nonzeros_a;
     ActuationForceDifferential(q_next, a, nonzeros_q, nonzeros_a);
     dl_da += adjoint_with_zero.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_a) * h2m;
+    if (verbose_level > 1) Toc("Step 5: backpropagate q_next to a");
 
     // Backpropagate w -> q_next.
+    if (verbose_level > 1) Tic();
     SparseMatrixElements nonzeros_w;
-    PdEnergyForceDifferential(q_next, nonzeros_q, nonzeros_w);
+    PdEnergyForceDifferential(q_next, false, true, nonzeros_q, nonzeros_w);
     dl_dw += VectorXr(adjoint_with_zero.transpose() * ToSparseMatrix(dofs_, w_dofs, nonzeros_w) * h2m);
+    if (verbose_level > 1) Toc("Step 5: backpropagate q_next to w");
 
     // Step 4: q, v_pred, rhs_dirichlet -> rhs_friction.
+    if (verbose_level > 1) Tic();
     VectorXr dl_drhs_dirichlet = dl_drhs_friction;
     VectorXr dl_dv_pred = VectorXr::Zero(dofs_);
     for (const auto& pair : frictional_boundary_vertex_indices_) {
@@ -370,6 +379,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
             dl_dv_pred.segment(vertex_dim * idx, vertex_dim) += dl_dvi_pred;
         }
     }
+    if (verbose_level > 1) Toc("Step 4: backpropagate rhs_friction");
 
     // Step 3: merge dirichlet: rhs -> rhs_dirichlet.
     // rhs_dirichlet = rhs \/ dirichlet_.
@@ -378,6 +388,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
 
     // Step 2: compute rhs: q, v, f_ext -> rhs.
     // rhs = q + h * v + h2m * f_ext + h2m * f_state(q, v).
+    if (verbose_level > 1) Tic();
     dl_dq += dl_drhs;
     dl_dv += dl_drhs * h;
     dl_df_ext += dl_drhs * h2m;
@@ -385,20 +396,23 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     BackwardStateForce(q, v, forward_state_force, dl_drhs * h2m, dl_dq_single, dl_dv_single);
     dl_dq += dl_dq_single;
     dl_dv += dl_dv_single;
+    if (verbose_level > 1) Toc("Step 2: backpropagate rhs");
 
     // Step 1: compute predicted velocity: q, v, a, f_ext -> v_pred.
     // v_pred = v + h / m * (f_ext + f_state(q, v) + f_pd(q) + f_act(q, a)).
+    if (verbose_level > 1) Tic();
     dl_dv += dl_dv_pred;
     dl_df_ext += dl_dv_pred * hm;
     BackwardStateForce(q, v, forward_state_force, dl_dv_pred * hm, dl_dq_single, dl_dv_single);
     dl_dq += dl_dq_single;
     dl_dv += dl_dv_single;
-    PdEnergyForceDifferential(q, nonzeros_q, nonzeros_w);
-    dl_dq += VectorXr(dl_dv_pred.transpose() * ToSparseMatrix(dofs_, dofs_, nonzeros_q) * hm);
+    PdEnergyForceDifferential(q, false, true, nonzeros_q, nonzeros_w);
+    dl_dq += PdEnergyForceDifferential(q, dl_dv_pred * hm, VectorXr::Zero(w_dofs));
     dl_dw += VectorXr(dl_dv_pred.transpose() * ToSparseMatrix(dofs_, w_dofs, nonzeros_w) * hm);
     ActuationForceDifferential(q, a, nonzeros_q, nonzeros_a);
     dl_dq += dl_dv_pred.transpose() * ToSparseMatrix(dofs_, dofs_, nonzeros_q) * hm;
     dl_da += dl_dv_pred.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_a) * hm;
+    if (verbose_level > 1) Toc("Step 1: backpropagate v_pred");
 }
 
 template class Deformable<2, 4>;
