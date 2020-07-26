@@ -95,7 +95,7 @@ def generate_hex_mesh(voxels, dx, origin, bin_file_name):
 # Given a hex mesh, return the following:
 # - vertices: an n x 3 double array.
 # - faces: an m x 4 integer array.
-def hex2obj(hex_mesh, obj_file_name=None):
+def hex2obj(hex_mesh, obj_file_name=None, obj_type='quad'):
     vertex_num = hex_mesh.NumOfVertices()
     element_num = hex_mesh.NumOfElements()
 
@@ -132,8 +132,15 @@ def hex2obj(hex_mesh, obj_file_name=None):
         with open(obj_file_name, 'w') as f_obj:
             for vv in v:
                 f_obj.write('v {} {} {}\n'.format(vv[0], vv[1], vv[2]))
-            for ff in f:
-                f_obj.write('f {} {} {} {}\n'.format(ff[0] + 1, ff[1] + 1, ff[2] + 1, ff[3] + 1))
+            if obj_type == 'quad':
+                for ff in f:
+                    f_obj.write('f {} {} {} {}\n'.format(ff[0] + 1, ff[1] + 1, ff[2] + 1, ff[3] + 1))
+            elif obj_type == 'tri':
+                for ff in f:
+                    f_obj.write('f {} {} {}\n'.format(ff[0] + 1, ff[1] + 1, ff[2] + 1))
+                    f_obj.write('f {} {} {}\n'.format(ff[2] + 1, ff[0] + 1, ff[3] + 1))
+            else:
+                raise NotImplementedError
 
     return v, f
 
