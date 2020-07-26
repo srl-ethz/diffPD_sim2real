@@ -11,15 +11,15 @@ from py_diff_pd.common.common import ndarray, create_folder
 from py_diff_pd.common.common import print_info, print_ok, print_error
 from py_diff_pd.common.grad_check import check_gradients
 from py_diff_pd.core.py_diff_pd_core import StdRealVector
-from py_diff_pd.env.rolling_jelly_env_3d import RollingJellyEnv3d
+from py_diff_pd.env.bouncing_ball_env_3d import BouncingBallEnv3d
 
 if __name__ == '__main__':
     seed = 42
-    folder = Path('rolling_jelly_env_3d')
+    folder = Path('bouncing_ball_3d')
     refinement = 8
     youngs_modulus = 1e6
     poissons_ratio = 0.49
-    env = RollingJellyEnv3d(seed, folder, { 'refinement': refinement,
+    env = BouncingBallEnv3d(seed, folder, { 'refinement': refinement,
         'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio })
     deformable = env.deformable()
@@ -64,7 +64,7 @@ if __name__ == '__main__':
         def loss_and_grad(x):
             E = np.exp(x[0])
             nu = np.exp(x[1])
-            env_opt = RollingJellyEnv3d(seed, folder, { 'refinement': refinement, 'youngs_modulus': E,
+            env_opt = BouncingBallEnv3d(seed, folder, { 'refinement': refinement, 'youngs_modulus': E,
                 'poissons_ratio': nu })
             loss, _, info = env_opt.simulate(dt, frame_num, method, opt, q0, v0, a0, f0, require_grad=True, vis_folder=None)
             grad = info['material_parameter_gradients']
@@ -92,6 +92,6 @@ if __name__ == '__main__':
         # Visualize results.
         E = np.exp(x_final[0])
         nu = np.exp(x_final[1])
-        env_opt = RollingJellyEnv3d(seed, folder, { 'refinement': refinement, 'youngs_modulus': E,
+        env_opt = BouncingBallEnv3d(seed, folder, { 'refinement': refinement, 'youngs_modulus': E,
             'poissons_ratio': nu })
         env_opt.simulate(dt, frame_num, method, opt, q0, v0, a0, f0, require_grad=False, vis_folder=method)
