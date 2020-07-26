@@ -75,7 +75,7 @@ if __name__ == '__main__':
             ax.grid(True)
         ax.set_xlabel('iterations')
         for method, method_ref_name, color in zip(['newton_pcg', 'newton_cholesky', 'pd'],
-            ['Newton-PCG', 'Newton-Cholesky', 'DiffPd (Ours)'], ['tab:blue', 'tab:red', 'tab:green']):
+            ['Newton-PCG', 'Newton-Cholesky', 'DiffPD (Ours)'], ['tab:blue', 'tab:red', 'tab:green']):
             ax.plot(y[method], color=color, label=method_ref_name, linewidth=2)
         ax.set_title(title)
         handles, labels = ax.get_legend_handles_labels()
