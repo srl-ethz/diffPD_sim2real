@@ -72,6 +72,7 @@ if __name__ == '__main__':
             ax.grid(True, which='both')
         else:
             ax.set_ylabel("loss")
+            ax.set_yscale('log')
             ax.grid(True)
         ax.set_xlabel('iterations')
         for method, method_ref_name, color in zip(['newton_pcg', 'newton_cholesky', 'pd'],

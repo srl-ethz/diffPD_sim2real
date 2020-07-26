@@ -54,7 +54,7 @@ if __name__ == '__main__':
 
     ax_nu = fig.add_subplot(132)
     ax_nu.set_position((0.41, 0.29, 0.25, 0.6))
-    ax_nu.plot([0.45 for _ in range(opt_iters)], linestyle='--', label='Ground truth', color='tab:orange', linewidth=2)
+    ax_nu.plot([0.49 for _ in range(opt_iters)], linestyle='--', label='Ground truth', color='tab:orange', linewidth=2)
 
     ax_loss = fig.add_subplot(133)
     ax_loss.set_position((0.71, 0.29, 0.25, 0.6))
@@ -72,6 +72,7 @@ if __name__ == '__main__':
             ax.grid(True, which='both')
         else:
             ax.set_ylabel("loss")
+            ax.set_yscale('log')
             ax.grid(True)
         ax.set_xlabel('iterations')
         for method, method_ref_name, color in zip(['newton_pcg', 'newton_cholesky', 'pd'],
