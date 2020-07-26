@@ -9,6 +9,7 @@ import numpy as np
 from py_diff_pd.common.common import print_info
 
 if __name__ == '__main__':
+    folder = Path('cantilever_3d')
     for thread_ct in [2, 4, 8]:
         data_file = Path('cantilever_3d') / 'data_{:04d}_threads.bin'.format(thread_ct)
         if data_file.exists():
@@ -72,6 +73,6 @@ if __name__ == '__main__':
 
     fig.tight_layout()
 
-    fig.savefig(folder / 'parameter_estimation.pdf')
-    fig.savefig(folder / 'parameter_estimation.png')
+    fig.savefig(folder / 'parameter_est_cantilever.pdf')
+    fig.savefig(folder / 'parameter_est_cantilever.png')
     plt.show()
