@@ -9,7 +9,7 @@ from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.display import render_hex_mesh, export_gif
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 
-class RollingJellyEnv3d(EnvBase):
+class BouncingBallEnv3d(EnvBase):
     # Refinement is an integer controlling the resolution of the mesh.
     def __init__(self, seed, folder, options):
         EnvBase.__init__(self, folder)
