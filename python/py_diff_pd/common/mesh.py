@@ -138,7 +138,7 @@ def hex2obj(hex_mesh, obj_file_name=None, obj_type='quad'):
             elif obj_type == 'tri':
                 for ff in f:
                     f_obj.write('f {} {} {}\n'.format(ff[0] + 1, ff[1] + 1, ff[2] + 1))
-                    f_obj.write('f {} {} {}\n'.format(ff[2] + 1, ff[0] + 1, ff[3] + 1))
+                    f_obj.write('f {} {} {}\n'.format(ff[0] + 1, ff[2] + 1, ff[3] + 1))
             else:
                 raise NotImplementedError
 
