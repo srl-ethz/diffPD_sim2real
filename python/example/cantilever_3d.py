@@ -17,11 +17,13 @@ if __name__ == '__main__':
     seed = 42
     folder = Path('cantilever_3d')
     refinement = 4
-    youngs_modulus = 1e6
+    youngs_modulus = 1e7
     poissons_ratio = 0.45
+    twist_angle = 0
     env = CantileverEnv3d(seed, folder, { 'refinement': refinement,
         'youngs_modulus': youngs_modulus,
-        'poissons_ratio': poissons_ratio })
+        'poissons_ratio': poissons_ratio,
+        'twist_angle': twist_angle })
     deformable = env.deformable()
 
     # Optimization parameters.
@@ -44,11 +46,21 @@ if __name__ == '__main__':
     a0 = [np.zeros(act_dofs) for _ in range(frame_num)]
     vertex_num = int(dofs // 3)
     f0 = np.zeros((vertex_num, 3))
-    f0[:, 2] = 1.0
+    f0[:, 2] = 1
     f0 = f0.ravel()
     f0 = [f0 for _ in range(frame_num)]
-    _, info = env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a0, f0, require_grad=False, vis_folder=None)
+    _, info = env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a0, f0, require_grad=False, vis_folder="initial_condition")
+    # Pick the frame where the center of mass is the highest.    
     q0 = info['q'][-1]
+    max_com_height = -np.inf
+    max_i = -1
+    for i, q in enumerate(info['q']):
+        com_height = np.mean(np.copy(q).reshape((-1, 3))[:, 2])
+        if com_height > max_com_height:
+            max_com_height = com_height
+            q0 = np.copy(q)
+            max_i = i
+    print_info('Initial frames are chosen from frame {}'.format(max_i))
     v0 = np.zeros(dofs)
     f0 = [np.zeros(dofs) for _ in range(frame_num)]
 
@@ -57,8 +69,8 @@ if __name__ == '__main__':
 
     # Optimization.
     # Decision variables: log(E), log(nu).
-    x_lb = ndarray([np.log(5e5), np.log(0.35)])
-    x_ub = ndarray([np.log(5e6), np.log(0.49)])
+    x_lb = ndarray([np.log(5e6), np.log(0.25)])
+    x_ub = ndarray([np.log(5e7), np.log(0.49)])
     x_init = np.random.uniform(low=x_lb, high=x_ub)
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
     data = {}
@@ -68,7 +80,7 @@ if __name__ == '__main__':
             E = np.exp(x[0])
             nu = np.exp(x[1])
             env_opt = CantileverEnv3d(seed, folder, { 'refinement': refinement, 'youngs_modulus': E,
-                'poissons_ratio': nu })
+                'poissons_ratio': nu, 'twist_angle': twist_angle })
             loss, _, info = env_opt.simulate(dt, frame_num, method, opt, q0, v0, a0, f0, require_grad=True, vis_folder=None)
             grad = info['material_parameter_gradients']
             grad = grad * np.exp(x)
@@ -96,5 +108,5 @@ if __name__ == '__main__':
         E = np.exp(x_final[0])
         nu = np.exp(x_final[1])
         env_opt = CantileverEnv3d(seed, folder, { 'refinement': refinement, 'youngs_modulus': E,
-            'poissons_ratio': nu })
+            'poissons_ratio': nu, 'twist_angle': twist_angle })
         env_opt.simulate(dt, frame_num, method, opt, q0, v0, a0, f0, require_grad=False, vis_folder=method)

@@ -20,11 +20,12 @@ class CantileverEnv3d(EnvBase):
         refinement = options['refinement'] if 'refinement' in options else 2
         youngs_modulus = options['youngs_modulus'] if 'youngs_modulus' in options else 1e6
         poissons_ratio = options['poissons_ratio'] if 'poissons_ratio' in options else 0.45
+        twist_angle = options['twist_angle'] if 'twist_angle' in options else 0
 
         # Mesh parameters.
         la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
         mu = youngs_modulus / (2 * (1 + poissons_ratio))
-        density = 1e3
+        density = 5e3
         cell_nums = (4 * refinement, refinement, refinement)
         origin = ndarray([0, 0.12, 0.20])
         node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
@@ -56,7 +57,7 @@ class CantileverEnv3d(EnvBase):
         act_dofs = deformable.act_dofs()
         vertex_num = mesh.NumOfVertices()
         q0 = ndarray(mesh.py_vertices())
-        max_theta = np.pi / 6
+        max_theta = twist_angle
         for i in range(1, node_nums[0]):
             theta = max_theta * i / (node_nums[0] - 1)
             c, s = np.cos(theta), np.sin(theta)
