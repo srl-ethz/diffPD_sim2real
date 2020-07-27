@@ -16,11 +16,13 @@ if __name__ == '__main__':
     seed = 42
     folder = Path('cantilever_3d')
     refinement = 4
-    E = 1e6
-    nu = 0.45
+    youngs_modulus = 1e7
+    poissons_ratio = 0.45
+    twist_angle = 0
     env = CantileverEnv3d(seed, folder, { 'refinement': refinement,
-        'youngs_modulus': E,
-        'poissons_ratio': nu })
+        'youngs_modulus': youngs_modulus,
+        'poissons_ratio': poissons_ratio,
+        'twist_angle': twist_angle })
     deformable = env.deformable()
 
     # Optimization parameters.
@@ -38,11 +40,21 @@ if __name__ == '__main__':
     a0 = [np.zeros(act_dofs) for _ in range(frame_num)]
     vertex_num = int(dofs // 3)
     f0 = np.zeros((vertex_num, 3))
-    f0[:, 2] = 1.0
+    f0[:, 2] = 1
     f0 = f0.ravel()
     f0 = [f0 for _ in range(frame_num)]
-    _, info = env.simulate(dt, frame_num, method, opt, q0, v0, a0, f0, require_grad=False, vis_folder=None)
+    _, info = env.simulate(dt, frame_num, method, opt, q0, v0, a0, f0, require_grad=False, vis_folder="initial_condition")
+    # Pick the frame where the center of mass is the highest.    
     q0 = info['q'][-1]
+    max_com_height = -np.inf
+    max_i = -1
+    for i, q in enumerate(info['q']):
+        com_height = np.mean(np.copy(q).reshape((-1, 3))[:, 2])
+        if com_height > max_com_height:
+            max_com_height = com_height
+            q0 = np.copy(q)
+            max_i = i
+    print_info('Initial frames are chosen from frame {}'.format(max_i))
     v0 = np.zeros(dofs)
     f0 = [np.zeros(dofs) for _ in range(frame_num)]
 
@@ -51,7 +63,7 @@ if __name__ == '__main__':
 
     # Load results.
     folder = Path('cantilever_3d')
-    thread_ct = 8
+    thread_ct = 2
     data_file = folder / 'data_{:04d}_threads.bin'.format(thread_ct)
     data = pickle.load(open(data_file, 'rb'))
 
@@ -83,6 +95,7 @@ if __name__ == '__main__':
             mesh.Initialize(str(mesh_file))
             hex2obj(mesh, obj_file_name=folder / mesh_folder / '{:04d}.obj'.format(i), obj_type='tri')
 
+    generate_mesh('initial_condition', 'initial_condition_mesh')
     generate_mesh('groundtruth', 'groundtruth_mesh')
     generate_mesh('init', 'init_mesh')
     generate_mesh('final', 'final_mesh')

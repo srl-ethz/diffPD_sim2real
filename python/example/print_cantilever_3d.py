@@ -50,7 +50,7 @@ if __name__ == '__main__':
     opt_iters = len(Es['pd'])
     ax_E = fig.add_subplot(131)
     ax_E.set_position((0.07, 0.29, 0.25, 0.6))
-    ax_E.plot([1e6 for _ in range(opt_iters)], linestyle='--', label='Ground truth', color='tab:orange', linewidth=2)
+    ax_E.plot([1e7 for _ in range(opt_iters)], linestyle='--', label='Ground truth', color='tab:orange', linewidth=2)
 
     ax_nu = fig.add_subplot(132)
     ax_nu.set_position((0.41, 0.29, 0.25, 0.6))
