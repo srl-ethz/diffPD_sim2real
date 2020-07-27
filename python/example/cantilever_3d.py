@@ -69,9 +69,9 @@ if __name__ == '__main__':
 
     # Optimization.
     # Decision variables: log(E), log(nu).
-    x_lb = ndarray([np.log(5e6), np.log(0.40)])
+    x_lb = ndarray([np.log(5e4), np.log(0.25)])
     x_ub = ndarray([np.log(5e7), np.log(0.49)])
-    x_init = np.random.uniform(low=x_lb, high=x_ub)
+    x_init = ndarray([np.log(1e5), np.log(0.4)])
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
     data = {}
     for method, opt in zip(methods, opts):
