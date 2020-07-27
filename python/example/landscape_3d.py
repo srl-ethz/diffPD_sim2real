@@ -12,12 +12,12 @@ from py_diff_pd.env.benchmark_env_3d import BenchmarkEnv3d
 if __name__ == '__main__':
     seed = 42
     folder = Path('landscape_3d')
-    env = BenchmarkEnv3d(seed, folder, refinement=3)
+    env = BenchmarkEnv3d(seed, folder, { 'refinement': 3 })
     deformable = env.deformable()
 
     opts = {}
     opts['semi_implicit'] = { 'thread_ct': 4 }
-    opts['pd'] = { 'max_pd_iter': 5000, 'abs_tol': 1e-9, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': 4,
+    opts['pd'] = { 'max_pd_iter': 5000, 'max_ls_iter': 1, 'abs_tol': 1e-9, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': 4,
         'method': 1, 'bfgs_history_size': 10 }
 
     dofs = deformable.dofs()

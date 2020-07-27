@@ -34,23 +34,22 @@ if __name__ == '__main__':
         for grad in all_grads[method]:
             assert np.allclose(grad_base[method], grad[len(grad) // 2][0])
 
-    fig = plt.figure(figsize=(16, 12))
+    fig = plt.figure(figsize=(16, 14))
     ax_loss_sample = fig.add_subplot(221)
-    for method, color in zip(['semi_implicit', 'pd'], ['tab:orange', 'tab:green']):
+    for method, method_ref_name, color in zip(['semi_implicit', 'pd'], ['Semi-Implicit', 'DiffPD (Ours)'], ['tab:cyan', 'tab:green']):
         losses = all_losses[method]
-        ax_loss_sample.plot([], [], color=color, label=method)
+        ax_loss_sample.plot([], [], color=color, label=method_ref_name)
         for loss in losses[:5]:
             ax_loss_sample.plot((ss * rel_scale) * 100, (loss - 1) * 100, color=color, linewidth=2)
     ax_loss_sample.set_xlabel('step size (%)')
     ax_loss_sample.set_ylabel('relative change (%)')
     ax_loss_sample.set_ylim([-500, 500])
     ax_loss_sample.grid(True)
-    ax_loss_sample.legend()
 
     ax_loss_all = fig.add_subplot(222)
-    for method, color in zip(['semi_implicit', 'pd'], ['tab:orange', 'tab:green']):
+    for method, method_ref_name, color in zip(['semi_implicit', 'pd'], ['Semi-Implicit', 'DiffPD (Ours)'], ['tab:cyan', 'tab:green']):
         losses = all_losses[method]
-        ax_loss_all.plot([], [], color=color, label=method)
+        ax_loss_all.plot([], [], color=color, label=method_ref_name)
         loss_mean = np.mean(ndarray(losses), axis=0)
         loss_std = np.std(ndarray(losses), axis=0)
         ax_loss_all.plot((ss * rel_scale) * 100, (loss_mean - 1) * 100, color=color, linewidth=2)
@@ -59,12 +58,11 @@ if __name__ == '__main__':
     ax_loss_all.set_xlabel('step size (%)')
     ax_loss_all.set_ylim([-500, 500])
     ax_loss_all.grid(True)
-    ax_loss_all.legend()
 
     ax_grad_sample = fig.add_subplot(223)
-    for method, color in zip(['semi_implicit', 'pd'], ['tab:orange', 'tab:green']):
+    for method, method_ref_name, color in zip(['semi_implicit', 'pd'], ['Semi-Implicit', 'DiffPD (Ours)'], ['tab:cyan', 'tab:green']):
         grads = all_grads[method]
-        ax_grad_sample.plot([], [], color=color, label=method)
+        ax_grad_sample.plot([], [], color=color, label=method_ref_name)
         for grad in grads[:5]:
             g = [np.linalg.norm(g[0]) for g in grad]
             ax_grad_sample.plot((ss * rel_scale) * 100, (g / np.linalg.norm(grad_base[method]) - 1) * 100, color=color, linewidth=2)
@@ -72,12 +70,11 @@ if __name__ == '__main__':
     ax_grad_sample.set_ylabel('relative change (%)')
     ax_grad_sample.set_ylim([-2.5, 2.5])
     ax_grad_sample.grid(True)
-    ax_grad_sample.legend()
 
     ax_grad_all = fig.add_subplot(224)
-    for method, color in zip(['semi_implicit', 'pd'], ['tab:orange', 'tab:green']):
+    for method, method_ref_name, color in zip(['semi_implicit', 'pd'], ['Semi-Implicit', 'DiffPD (Ours)'], ['tab:cyan', 'tab:green']):
         grads = all_grads[method]
-        ax_grad_all.plot([], [], color=color, label=method)
+        ax_grad_all.plot([], [], color=color, label=method_ref_name)
         g = ndarray([[np.linalg.norm(g[0]) for g in grad] for grad in grads]) / np.linalg.norm(grad_base[method])
         g_mean = np.mean(g, axis=0)
         g_std = np.std(g, axis=0)
@@ -87,7 +84,8 @@ if __name__ == '__main__':
     ax_grad_all.set_xlabel('step size (%)')
     ax_grad_all.set_ylim([-2.5, 2.5])
     ax_grad_all.grid(True)
-    ax_grad_all.legend()
+    handles, labels = ax_grad_all.get_legend_handles_labels()
+    fig.legend(handles, labels, loc='upper center', ncol=2, bbox_to_anchor=(0.52, 0.08))
 
     fig.savefig(folder / 'landscape_3d.pdf')
     fig.savefig(folder / 'landscape_3d.png')
