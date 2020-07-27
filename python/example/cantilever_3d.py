@@ -28,7 +28,7 @@ if __name__ == '__main__':
 
     # Optimization parameters.
     methods = ('newton_pcg', 'newton_cholesky', 'pd')
-    thread_ct = 4
+    thread_ct = 8
     opts = (
         { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct },
         { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct },
@@ -71,7 +71,7 @@ if __name__ == '__main__':
     # Decision variables: log(E), log(nu).
     x_lb = ndarray([np.log(5e4), np.log(0.25)])
     x_ub = ndarray([np.log(5e7), np.log(0.49)])
-    x_init = ndarray([np.log(1e5), np.log(0.4)])
+    x_init = ndarray([np.log(1e6), np.log(0.4)])
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
     data = {}
     for method, opt in zip(methods, opts):
