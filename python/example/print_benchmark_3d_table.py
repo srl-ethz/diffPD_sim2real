@@ -30,14 +30,10 @@ if __name__ == '__main__':
     folder = Path('benchmark_3d')
     rel_tols, forward_times, backward_times, losses, grads = pickle.load(open(folder / 'table.bin', 'rb'))
 
-    # Parse thread cnt.
-    thread_cts = []
-    for method in forward_times:
-        if 'pd' in method:
-            # Extract thread number from pd_XXthreads.
-            thread_cts.append(int(method[3:-7]))
-    thread_cts = sorted(thread_cts)
+    # Load additional PD data w/o speedup.
+    _, pd_wo_speedup_forward_times, pd_wo_speedup_backward_times, _, _ = pickle.load(open(folder / 'table_pd_wo_bfgs.bin', 'rb'))
 
+    thread_cts = [2, 4, 8]
     forward_backward_times = {}
     for method in forward_times:
         forward_backward_times[method] = np.zeros(len(rel_tols))
@@ -70,16 +66,17 @@ if __name__ == '__main__':
     ax_f = fig.add_subplot(132)
     ax_b = fig.add_subplot(133)
     titles = ['forward + backward', 'forward', 'backward']
-    ax_poses = [(0.07, 0.29, 0.25, 0.6),
-        (0.39, 0.29, 0.25, 0.6),
-        (0.71, 0.29, 0.25, 0.6)]
+    ax_poses = [(0.07, 0.33, 0.25, 0.6),
+        (0.39, 0.33, 0.25, 0.6),
+        (0.71, 0.33, 0.25, 0.6)]
     dash_list =[(5, 0), (5, 2), (2, 5), (4, 10), (3, 3, 2, 2), (5, 2, 20, 2), (5, 5), (5, 2, 1, 2)]
     for ax_pos, title, ax, t in zip(ax_poses, titles, (ax_fb, ax_f, ax_b), (forward_backward_times, forward_times, backward_times)):
         ax.set_position(ax_pos)
         ax.set_xlabel('time (s)')
         ax.set_ylabel('relative error')
         ax.set_yscale('log')
-        for method in ['newton_pcg', 'newton_cholesky', 'pd']:
+        for method, method_ref_name in zip(['newton_pcg', 'newton_cholesky', 'pd'],
+            ['Newton-PCG', 'Newton-Cholesky', 'DiffPD (Ours)']):
             if 'pd' in method:
                 color = 'tab:green'
             elif 'pcg' in method:
@@ -88,33 +85,41 @@ if __name__ == '__main__':
                 color = 'tab:red'
             for thread_ct in thread_cts:
                 idx = thread_cts.index(thread_ct)
-                meth_thread_num = '{}_{}threads'.format(method, thread_ct)
-                ax.plot(t[meth_thread_num], rel_tols, label=meth_thread_num,
+                meth_thread_num = '{} ({} threads)'.format(method_ref_name, thread_ct)
+                ax.plot(t['{}_{}threads'.format(method, thread_ct)], rel_tols, label=meth_thread_num,
                     color=color, dashes=dash_list[idx], linewidth=2)
+        if title == 'backward':
+            for idx, thread_ct in enumerate(thread_cts):
+                pd_wo_speedup_backward_time = pd_wo_speedup_backward_times['pd_{}threads'.format(thread_ct)]
+                ax.plot(pd_wo_speedup_backward_time, rel_tols[:len(pd_wo_speedup_backward_time)],
+                    label='DiffPD w/o quasi-Newton ({} threads)'.format(thread_ct),
+                    color='tab:olive', dashes=dash_list[idx], linewidth=2)
         ax.grid(True)
         ax.set_title(title)
         handles, labels = ax.get_legend_handles_labels()
 
     # Share legends.
-    row_num = 3
+    row_num = 4
     col_num = len(thread_cts)
     fig.legend(transpose_list(handles, row_num, col_num), transpose_list(labels, row_num, col_num),
-        loc='upper center', ncol=col_num, bbox_to_anchor=(0.5, 0.19))
+        loc='upper center', ncol=col_num, bbox_to_anchor=(0.5, 0.23))
     fig.savefig(folder / 'benchmark.pdf')
     fig.savefig(folder / 'benchmark.png')
 
-    fig_l_g = plt.figure(figsize=(15, 7))
+    fig_l_g = plt.figure(figsize=(12, 8))
     ax_loss = fig_l_g.add_subplot(121)
     ax_grad = fig_l_g.add_subplot(122)
-    titles_l_g = ['losses', '|grad|']
+    ax_loss.set_position((0.09, 0.2, 0.37, 0.6))
+    ax_grad.set_position((0.53, 0.2, 0.37, 0.6))
+    titles_l_g = ['loss', '|grad|']
     for title, ax, y in zip(titles_l_g, (ax_loss, ax_grad), (losses, grad_norms)):
-        ax.set_xlabel('relative error')
+        ax.set_xlabel('convergence threshold')
         ax.set_ylabel('magnitude')
         ax.set_xscale('log')
         ax.invert_xaxis()
         if 'grad' in title:
             ax.set_yscale('log')
-        for method in ['newton_pcg', 'newton_cholesky', 'pd']:
+        for method, method_ref_name in zip(['newton_pcg', 'newton_cholesky', 'pd'], ['Newton-PCG', 'Newton-Cholesky', 'DiffPD (Ours)']):
             if 'pd' in method:
                 color = 'tab:green'
             elif 'pcg' in method:
@@ -122,11 +127,12 @@ if __name__ == '__main__':
             elif 'cholesky' in method:
                 color = 'tab:red'
             meth_thread_num = '{}_{}threads'.format(method, thread_cts[-1])
-            ax.plot(rel_tols, y[meth_thread_num], label=method, color=color, linewidth=2)
+            ax.plot(rel_tols, y[meth_thread_num], label=method_ref_name, color=color, linewidth=2)
         ax.grid(True)
-        ax.legend()
         ax.set_title(title)
+        handles, labels = ax.get_legend_handles_labels()
 
+    fig_l_g.legend(handles, labels, loc='upper center', ncol=3, bbox_to_anchor=(0.5, 0.1))
     fig_l_g.savefig(folder / 'benchmark_loss_grad.pdf')
     fig_l_g.savefig(folder / 'benchmark_loss_grad.png')
     plt.show()
