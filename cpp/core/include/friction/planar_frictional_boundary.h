@@ -11,6 +11,8 @@ public:
 
     void Initialize(const Eigen::Matrix<real, dim, 1>& normal, const real offset);
 
+    const Eigen::Matrix<real, dim, dim> GetLocalFrame(const Eigen::Matrix<real, dim, 1>& q) const;
+    const real GetDistance(const Eigen::Matrix<real, dim, 1>& q) const;
     const bool ForwardIntersect(const Eigen::Matrix<real, dim, 1>& q, const Eigen::Matrix<real, dim, 1>& v,
         const real dt, real& t_hit) const override;
     // q_hit = q + t_hit * v.

@@ -13,6 +13,37 @@ void PlanarFrictionalBoundary<dim>::Initialize(const Eigen::Matrix<real, dim, 1>
     offset_ = offset / norm;
 }
 
+template<>
+const Matrix2r PlanarFrictionalBoundary<2>::GetLocalFrame(const Vector2r& q) const {
+    Matrix2r local;
+    local.col(1) = normal_;
+    local(0, 0) = normal_.y();
+    local(1, 0) = -normal_.x();
+    return local;
+}
+
+template<>
+const Matrix3r PlanarFrictionalBoundary<3>::GetLocalFrame(const Vector3r& q) const {
+    Matrix3r local;
+    local.col(2) = normal_;
+    Vector3r unit_x = Vector3r::Zero();
+    for (int i = 0; i < 3; ++i) {
+        const Vector3r x = normal_.cross(Vector3r::Unit(i));
+        if (x.squaredNorm() > unit_x.squaredNorm()) unit_x = x;
+    }
+    unit_x /= unit_x.norm();
+    local.col(0) = unit_x;
+    Vector3r unit_y = normal_.cross(unit_x);
+    unit_y /= unit_y.norm();
+    local.col(1) = unit_y;
+    return local;
+}
+
+template<int dim>
+const real PlanarFrictionalBoundary<dim>::GetDistance(const Eigen::Matrix<real, dim, 1>& q) const {
+    return q.dot(normal_) + offset_;
+}
+
 template<int dim>
 const bool PlanarFrictionalBoundary<dim>::ForwardIntersect(const Eigen::Matrix<real, dim, 1>& q,
     const Eigen::Matrix<real, dim, 1>& v, const real dt, real& t_hit) const {
