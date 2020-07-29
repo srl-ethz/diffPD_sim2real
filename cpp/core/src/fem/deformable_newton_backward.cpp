@@ -5,9 +5,11 @@
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v,
-    const VectorXr& a, const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next,
+    const VectorXr& a, const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next,
+    const std::vector<int>& active_contact_idx, const VectorXr& dl_dq_next,
     const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const {
+    // TODO: update this function.
     CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");

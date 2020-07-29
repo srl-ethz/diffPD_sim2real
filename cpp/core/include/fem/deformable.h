@@ -90,9 +90,11 @@ public:
     void SetFrictionalBoundary(const std::string& boundary_type, const std::vector<real>& params, const std::vector<int> indices);
 
     void Forward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& a,
-        const VectorXr& f_ext, const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
+        const VectorXr& f_ext, const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next,
+        std::vector<int>& active_contact_idx) const;
     void Backward(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& a,
-        const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next,
+        const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next,
+        const std::vector<int>& active_contact_idx, const VectorXr& dl_dq_next,
         const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const;
     void GetQuasiStaticState(const std::string& method, const VectorXr& a, const VectorXr& f_ext,
@@ -102,9 +104,10 @@ public:
     // For Python binding.
     void PyForward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v, const std::vector<real>& a,
         const std::vector<real>& f_ext, const real dt, const std::map<std::string, real>& options,
-        std::vector<real>& q_next, std::vector<real>& v_next) const;
+        std::vector<real>& q_next, std::vector<real>& v_next, std::vector<int>& active_contact_idx) const;
     void PyBackward(const std::string& method, const std::vector<real>& q, const std::vector<real>& v, const std::vector<real>& a,
         const std::vector<real>& f_ext, const real dt, const std::vector<real>& q_next, const std::vector<real>& v_next,
+        const std::vector<int>& active_contact_idx,
         const std::vector<real>& dl_dq_next, const std::vector<real>& dl_dv_next,
         const std::map<std::string, real>& options,
         std::vector<real>& dl_dq, std::vector<real>& dl_dv, std::vector<real>& dl_da, std::vector<real>& dl_df_ext,
@@ -138,22 +141,27 @@ public:
 
 protected:
     virtual void ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext,
-        const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
+        const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next,
+        std::vector<int>& active_contact_idx) const;
     virtual void ForwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext,
-        const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
+        const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next,
+        std::vector<int>& active_contact_idx) const;
     virtual void ForwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext,
-        const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const;
+        const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next,
+        std::vector<int>& active_contact_idx) const;
 
     virtual void BackwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext, const real dt,
-        const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
-        const std::map<std::string, real>& options,
+        const VectorXr& q_next, const VectorXr& v_next, const std::vector<int>& active_contact_idx,
+        const VectorXr& dl_dq_next, const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const;
     virtual void BackwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext,
-        const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
+        const real dt, const VectorXr& q_next, const VectorXr& v_next, const std::vector<int>& active_contact_idx,
+        const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const;
     virtual void BackwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext, const real dt,
-        const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
+        const VectorXr& q_next, const VectorXr& v_next, const std::vector<int>& active_contact_idx,
+        const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const;
 

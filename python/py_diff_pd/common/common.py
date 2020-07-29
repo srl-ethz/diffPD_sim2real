@@ -55,6 +55,13 @@ def to_std_real_vector(v):
         v_array[i] = v[i]
     return v_array
 
+from py_diff_pd.core.py_diff_pd_core import StdIntVector
+def copy_std_int_vector(v):
+    v2 = StdIntVector(v.size())
+    for i, a in enumerate(v):
+        v2[i] = a
+    return v2
+
 from py_diff_pd.core.py_diff_pd_core import StdMap
 def to_std_map(opt):
     opt_map = StdMap()

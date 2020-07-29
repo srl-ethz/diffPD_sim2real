@@ -231,7 +231,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& a,
-    const VectorXr& f_ext, const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
+    const VectorXr& f_ext, const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next,
+    std::vector<int>& active_contact_idx) const {
     CheckError(!material_, "PD does not support material models.");
 
     CheckError(options.find("max_pd_iter") != options.end(), "Missing option max_pd_iter.");
@@ -267,6 +268,9 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
     omp_set_num_threads(thread_ct);
     // Pre-factorize the matrix -- it will be skipped if the matrix has already been factorized.
     SetupProjectiveDynamicsSolver(dt);
+
+    // TODO: implement the new contact algorithm.
+    active_contact_idx.clear();
 
     const real mass = density_ * cell_volume_;
     const real hm = dt / mass;

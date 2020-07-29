@@ -3,7 +3,9 @@
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::ForwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& a,
-    const VectorXr& f_ext, const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
+    const VectorXr& f_ext, const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next,
+    std::vector<int>& active_contact_idx) const {
+    CheckError(!frictional_boundary_, "Semi-implicit methods do not support collisions.");
     CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
     const int thread_ct = static_cast<int>(options.at("thread_ct"));
     omp_set_num_threads(thread_ct);
@@ -18,24 +20,14 @@ void Deformable<vertex_dim, element_dim>::ForwardSemiImplicit(const VectorXr& q,
     q_next = q + v_pred * dt;
     // Step 3: enforce dirichlet boundary conditions.
     for (const auto& pair : dirichlet_) q_next(pair.first) = pair.second;
-    // Step 4: detect for each contact point whether it is in contact with the collision surface.
-    // Keep in mind that we assume node_idx and dirichlet are disjoint sets.
-    for (const auto& pair : frictional_boundary_vertex_indices_) {
-        const int node_idx = pair.first;
-        const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * node_idx, vertex_dim);
-        const Eigen::Matrix<real, vertex_dim, 1> vi_pred = v_pred.segment(vertex_dim * node_idx, vertex_dim);
-        real t_hit;
-        if (frictional_boundary_->ForwardIntersect(qi, vi_pred, dt, t_hit)) {
-            q_next.segment(vertex_dim * node_idx, vertex_dim) = qi + t_hit * vi_pred;
-        }
-    }
-    // Step 5: compute v_next.
+    // Step 4: compute v_next.
     v_next = (q_next - q) / dt;
 }
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& a,
-    const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next,
+    const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next,
+    const std::vector<int>& active_contact_idx, const VectorXr& dl_dq_next,
     const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const {
     CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
@@ -49,36 +41,18 @@ void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q
     const int w_dofs = static_cast<int>(pd_element_energies_.size());
     dl_dw = VectorXr::Zero(w_dofs);
 
-    // Step 5: v_next = (q_next_after_collision - q) / dt;
+    // Step 4: v_next = (q_next_after_collision - q) / dt;
     const real inv_dt = 1 / dt;
     const VectorXr dl_dq_next_after_collision = dl_dq_next + dl_dv_next * inv_dt;
     dl_dq += -dl_dv_next * inv_dt;
 
-    // Step 4: collision detection.
-    // q_next_after_collision = q_next_after_dirichlet;
-    // q_next_after_collision() = a function of q and v_pred).
     VectorXr dl_dv_pred = VectorXr::Zero(dofs_);
-    VectorXr dl_dq_next_after_dirichlet = dl_dq_next_after_collision;
     const real mass = density_ * cell_volume_;
     const VectorXr v_pred = v + dt / mass * (f_ext + ElasticForce(q) + ForwardStateForce(q, v)
         + PdEnergyForce(q) + ActuationForce(q, a));
-    for (const auto& pair : frictional_boundary_vertex_indices_) {
-        const int node_idx = pair.first;
-        const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * node_idx, vertex_dim);
-        const Eigen::Matrix<real, vertex_dim, 1> vi_pred = v_pred.segment(vertex_dim * node_idx, vertex_dim);
-        real t_hit;
-        if (frictional_boundary_->ForwardIntersect(qi, vi_pred, dt, t_hit)) {
-            dl_dq_next_after_dirichlet.segment(vertex_dim * node_idx, vertex_dim) = Eigen::Matrix<real, vertex_dim, 1>::Zero();
-            Eigen::Matrix<real, vertex_dim, 1> dl_dqi, dl_dvi_pred;
-            frictional_boundary_->BackwardIntersect(qi, vi_pred, t_hit,
-                dl_dq_next_after_collision.segment(vertex_dim * node_idx, vertex_dim), dl_dqi, dl_dvi_pred);
-            dl_dq.segment(vertex_dim * node_idx, vertex_dim) += dl_dqi;
-            dl_dv_pred.segment(vertex_dim * node_idx, vertex_dim) += dl_dvi_pred;
-        }
-    }
 
     // Step 3: dirichlet boundaries.
-    VectorXr dl_dq_next_pred = dl_dq_next_after_dirichlet;
+    VectorXr dl_dq_next_pred = dl_dq_next_after_collision;
     for (const auto& pair : dirichlet_) dl_dq_next_pred(pair.first) = 0;
 
     // Step 2: q_next_pred = q + v_pred * dt.

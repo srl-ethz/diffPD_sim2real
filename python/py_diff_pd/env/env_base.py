@@ -3,8 +3,8 @@ import time
 
 import numpy as np
 
-from py_diff_pd.core.py_diff_pd_core import StdRealVector
-from py_diff_pd.common.common import ndarray, create_folder
+from py_diff_pd.core.py_diff_pd_core import StdRealVector, StdIntVector
+from py_diff_pd.common.common import ndarray, create_folder, copy_std_int_vector
 from py_diff_pd.common.display import export_gif
 
 class EnvBase:
@@ -124,12 +124,16 @@ class EnvBase:
         loss = 0
         grad_q = np.zeros(dofs)
         grad_v = np.zeros(dofs)
+        active_contact_indices = [StdIntVector(0),]
         for i in range(frame_num):
             q_next_array = StdRealVector(dofs)
             v_next_array = StdRealVector(dofs)
-            self._deformable.PyForward(method, q[-1], v[-1], sim_act[i], sim_f_ext[i], dt, opt, q_next_array, v_next_array)
+            active_contact_idx = copy_std_int_vector(active_contact_indices[-1])
+            self._deformable.PyForward(method, q[-1], v[-1], sim_act[i], sim_f_ext[i], dt, opt,
+                q_next_array, v_next_array, active_contact_idx)
             q_next = ndarray(q_next_array)
             v_next = ndarray(v_next_array)
+            active_contact_indices.append(active_contact_idx)
             if self._stepwise_loss:
                 l, grad_q, grad_v = self._stepwise_loss_and_grad(q_next, v_next, i + 1)
                 loss += l
@@ -143,6 +147,7 @@ class EnvBase:
         info = {}
         info['q'] = q
         info['v'] = v
+        info['active_contact_indices'] = active_contact_indices
 
         # Compute loss.
         t_loss = time.time() - t_begin
@@ -177,7 +182,7 @@ class EnvBase:
                 dl_df = StdRealVector(dofs)
                 dl_dwi = StdRealVector(2)
                 self._deformable.PyBackward(method, q[i], v[i], sim_act[i], sim_f_ext[i], dt,
-                    q[i + 1], v[i + 1], dl_dq_next, dl_dv_next, opt, dl_dq, dl_dv, dl_da, dl_df, dl_dwi)
+                    q[i + 1], v[i + 1], active_contact_indices[i + 1], dl_dq_next, dl_dv_next, opt, dl_dq, dl_dv, dl_da, dl_df, dl_dwi)
                 dl_dq_next = ndarray(dl_dq)
                 dl_dv_next = ndarray(dl_dv)
                 if self._stepwise_loss and i != 0:

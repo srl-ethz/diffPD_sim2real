@@ -126,9 +126,10 @@ const VectorXr Deformable<vertex_dim, element_dim>::ApplyProjectiveDynamicsLocal
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& a,
-    const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const VectorXr& dl_dq_next,
-    const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
+    const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const std::vector<int>& active_contact_idx,
+    const VectorXr& dl_dq_next, const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const {
+    // TODO: fix the contact model.
     CheckError(!material_, "PD does not support material models.");
 
     CheckError(options.find("max_pd_iter") != options.end(), "Missing option max_pd_iter.");

@@ -6,7 +6,7 @@
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& method,
     const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext, const real dt,
-    const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next) const {
+    const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next, std::vector<int>& active_contact_idx) const {
     CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
     CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
@@ -30,12 +30,11 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
     const real h = dt;
     const real h2m = dt * dt / (cell_volume_ * density_);
     const VectorXr rhs = q + h * v + h2m * f_ext + h2m * ForwardStateForce(q, v);
-    std::set<int> active_contact_nodes;
     const int max_contact_iter = 20;
     for (int contact_iter = 0; contact_iter < max_contact_iter; ++contact_iter) {
         // Fix dirichlet_ + active_contact_nodes.
         std::map<int, real> augmented_dirichlet = dirichlet_;
-        for (const int idx : active_contact_nodes) {
+        for (const int idx : active_contact_idx) {
             for (int i = 0; i < vertex_dim; ++i)
                 augmented_dirichlet[idx * vertex_dim + i] = q(idx * vertex_dim + i);
         }
@@ -125,8 +124,9 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
         CheckError(success, "Newton's method fails to converge.");
 
         // Now verify the contact conditions.
-        auto past_active_contact_nodes = active_contact_nodes;
-        active_contact_nodes.clear();
+        std::set<int> past_active_contact_idx;
+        for (const int idx : active_contact_idx) past_active_contact_idx.insert(idx);
+        active_contact_idx.clear();
         const VectorXr ext_forces = q_sol - h2m * force_sol - rhs;
         bool good = true;
         for (const auto& pair : frictional_boundary_vertex_indices_) {
@@ -134,13 +134,13 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
             const auto node_q = q_sol.segment(node_idx * vertex_dim, vertex_dim);
             const real dist = frictional_boundary_->GetDistance(node_q);
             const auto node_f = ext_forces.segment(node_idx * vertex_dim, vertex_dim);
-            if (past_active_contact_nodes.find(node_idx) != past_active_contact_nodes.end()) {
-                if (node_f(vertex_dim - 1) >= 0) active_contact_nodes.insert(node_idx);
+            if (past_active_contact_idx.find(node_idx) != past_active_contact_idx.end()) {
+                if (node_f(vertex_dim - 1) >= 0) active_contact_idx.push_back(node_idx);
                 else good = false;
             } else {
                 // Check if distance is above the collision plane.
                 if (dist < 0) {
-                    active_contact_nodes.insert(node_idx);
+                    active_contact_idx.push_back(node_idx);
                     good = false;
                 }
             }
