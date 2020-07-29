@@ -30,146 +30,128 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
     const real h = dt;
     const real h2m = dt * dt / (cell_volume_ * density_);
     const VectorXr rhs = q + h * v + h2m * f_ext + h2m * ForwardStateForce(q, v);
-    VectorXr q_sol = q;
-    // Enforce dirichlet boundary.
-    VectorXr selected = VectorXr::Ones(dofs_);
-    for (const auto& pair : dirichlet_) {
-        q_sol(pair.first) = pair.second;
-        selected(pair.first) = 0;
-    }
-    VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
-    // Collect local frames from each contact nodes.
-    std::map<int, MatrixXr> contact_local_frames;
-    for (const auto& pair : frictional_boundary_vertex_indices_) {
-        const int node_idx = pair.first;
-        MatrixXr local_frame = MatrixXr::Zero(dofs_, vertex_dim);
-        local_frame.middleRows(node_idx * vertex_dim, vertex_dim) = frictional_boundary_->GetLocalFrame(
-            q.segment(node_idx * vertex_dim, vertex_dim)
-        );
-        contact_local_frames[node_idx] = local_frame;
-    }
-    // Newton's method starts here.
-    if (verbose_level > 0) std::cout << "Newton forward." << std::endl;
-    for (int i = 0; i < max_newton_iter; ++i) {
-        if (verbose_level > 0) std::cout << "Iteration: " << i << std::endl;
-        // Current guess: q_sol, f_sol.
-        // Goal: solve delta q.
-        // Linearize lhs at q_sol.
-        SparseMatrix op = NewtonMatrix(q_sol, a, h2m, dirichlet_);
-        // q_sol + dq - h2m * (force_sol + J * dq) = rhs.
-        // op * dq = -q_sol + h2m * force_sol + rhs.
-        const VectorXr new_rhs = (rhs - q_sol + h2m * force_sol).array() * selected.array();
-        // Handle contacts:
-        // op * dq = new_rhs + contact forces.
-        Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper, Eigen::IncompleteCholesky<real>> cg_solver;
-        Eigen::SimplicialLDLT<SparseMatrix> cholesky_solver;
-        if (method == "newton_pcg") cg_solver.compute(op);
-        else cholesky_solver.compute(op);
-        // Compute op * dq = new_rhs.
-        VectorXr dq_basic = VectorXr::Zero(dofs_);
-        if (method == "newton_pcg") dq_basic = cg_solver.solve(new_rhs).array() * selected.array();
-        else dq_basic = cholesky_solver.solve(new_rhs).array() * selected.array();
-        // Compute the influence of each contact node.
-        // Dirichlet boundary conditions and contact nodes cannot overlap.
-        std::map<int, MatrixXr> contact_dq;
-        std::map<int, Eigen::Matrix<real, vertex_dim, 1>> contact_forces;
-        for (const auto& pair : contact_local_frames) {
-            const int node_idx = pair.first;
-            if (method == "newton_pcg") contact_dq[node_idx] = cg_solver.solve(pair.second);
-            else contact_dq[node_idx] = cholesky_solver.solve(pair.second);
-            contact_forces[node_idx] = Eigen::Matrix<real, vertex_dim, 1>::Zero();
+    std::set<int> active_contact_nodes;
+    const int max_contact_iter = 20;
+    for (int contact_iter = 0; contact_iter < max_contact_iter; ++contact_iter) {
+        // Fix dirichlet_ + active_contact_nodes.
+        std::map<int, real> augmented_dirichlet = dirichlet_;
+        for (const int idx : active_contact_nodes) {
+            for (int i = 0; i < vertex_dim; ++i)
+                augmented_dirichlet[idx * vertex_dim + i] = q(idx * vertex_dim + i);
         }
-        // Now resolve contact nodes in a Gauss-Seidel pattern.
-        VectorXr dq = dq_basic;
-        std::set<int> active_contact_nodes;
-        while (true) {
-            bool all_good = true;
-            // We always ensure:
-            // - Only active_contact_nodes are fixed and have nonzero contact_forces.
-            // - dq == dq_basic + contact_dq * contact_forces;
-            for (const auto& pair : contact_forces) {
-                const int node_idx = pair.first;
-                const auto& node_force = pair.second;
-                const auto node_q_pred = q_sol.segment(node_idx * vertex_dim, vertex_dim)
-                    + dq.segment(node_idx * vertex_dim, vertex_dim);
-                const real dist = frictional_boundary_->GetDistance(node_q_pred);
-                if (dist < 0) {
-                    all_good = false;
-                    active_contact_nodes.insert(node_idx);
-                } else if (node_force(vertex_dim - 1) < 0) {
-                    all_good = false;
-                    active_contact_nodes.erase(node_idx);
-                }
-            }
-            if (all_good) break;
-            // Now try to fix active_contact_nodes and solve for the external forces.
-            // For any idx in active_contact_nodes:
-            // q_sol + dq_basic + contact_dq * contact_forces = q.
-            const int active_contact_node_num = static_cast<int>(active_contact_nodes.size());
-            const int active_dofs = vertex_dim * active_contact_node_num;
-            MatrixXr A = MatrixXr::Zero(active_dofs, active_dofs);
-            VectorXr b = VectorXr::Zero(active_dofs);
-            int cnt = 0;
-            for (const int idx : active_contact_nodes) {
-                int cnt_j = 0;
-                for (const int idx_j : active_contact_nodes) {
-                    A.block(cnt_j, cnt, vertex_dim, vertex_dim) = contact_dq[idx].middleRows(idx_j * vertex_dim, vertex_dim);
-                    cnt_j += vertex_dim;
-                }
-                const int begin = idx * vertex_dim;
-                b.segment(cnt, vertex_dim) = q.segment(begin, vertex_dim) - q_sol.segment(begin, vertex_dim)
-                    - dq_basic.segment(begin, vertex_dim);
-                cnt += vertex_dim;
-            }
-            const VectorXr x = A.colPivHouseholderQr().solve(b);
-            // Update dq and contact_forces.
-            cnt = 0;
-            dq = dq_basic;
-            for (auto& pair : contact_forces) pair.second.setZero();
-            for (const int idx : active_contact_nodes) {
-                const Eigen::Matrix<real, vertex_dim, 1> node_f = x.segment(cnt, vertex_dim);
-                dq += contact_dq[idx] * node_f;
-                contact_forces[idx] = node_f;
-                cnt += vertex_dim;
-            }
+        // Initial guess.
+        VectorXr q_sol = q;
+        VectorXr selected = VectorXr::Ones(dofs_);
+        for (const auto& pair : augmented_dirichlet) {
+            q_sol(pair.first) = pair.second;
+            selected(pair.first) = 0;
         }
-
-        // Line search.
-        VectorXr ext_forces = VectorXr::Zero(dofs_);
-        for (const auto& pair : contact_forces)
-            ext_forces += contact_local_frames[pair.first] * pair.second;
-        real step_size = 1;
-        VectorXr q_sol_next = q_sol + step_size * dq;
-        VectorXr force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
+        VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
         auto eval_energy = [&](const VectorXr& q_cur, const VectorXr& f_cur){
-            return ((q_cur - h2m * f_cur - rhs - ext_forces).array() * selected.array()).square().sum();
+            return ((q_cur - h2m * f_cur - rhs).array() * selected.array()).square().sum();
         };
-        const real energy_sol = eval_energy(q_sol, force_sol);
-        real energy_next = eval_energy(q_sol_next, force_next);
-        for (int j = 0; j < max_ls_iter; ++j) {
-            if (!force_next.hasNaN() && energy_next < energy_sol) break;
-            step_size /= 2;
-            q_sol_next = q_sol + step_size * dq;
-            force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
-            energy_next = eval_energy(q_sol_next, force_next);
-        }
-        CheckError(!force_next.hasNaN(), "Elastic force has NaN.");
+        real energy_sol = eval_energy(q_sol, force_sol);
+        bool success = false;
+        for (int i = 0; i < max_newton_iter; ++i) {
+            const VectorXr new_rhs = (rhs - q_sol + h2m * force_sol).array() * selected.array();
+            VectorXr dq = VectorXr::Zero(dofs_);
+            if (method == "newton_pcg") {
+                // Looks like Matrix operators are more accurate and allow for more advanced preconditioners.
+                if (verbose_level > 1) Tic();
+                Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper, Eigen::IncompleteCholesky<real>> cg;
+                SparseMatrix op = NewtonMatrix(q_sol, a, h2m, augmented_dirichlet);
+                cg.compute(op);
+                if (verbose_level > 1) Toc("Step 5: preconditioning");
+                if (verbose_level > 1) Tic();
+                dq = cg.solve(new_rhs);
+                if (verbose_level > 1) Toc("Step 5: solve the right-hand side");
+                // For small problems, I noticed advanced preconditioners result in slightly less accurate solutions
+                // and triggers Eigen::NoConvergence, which means the max number of iterations has been used. However,
+                // for larger problems, IncompleteCholesky is a pretty good preconditioner that results in much fewer
+                // number of iterations. So my decision is to include NoConvergence in the test below.
+                CheckError(cg.info() == Eigen::Success || cg.info() == Eigen::NoConvergence, "PCG solver failed.");
+            } else if (method == "newton_cholesky") {
+                // Cholesky.
+                if (verbose_level > 1) Tic();
+                Eigen::SimplicialLDLT<SparseMatrix> cholesky;
+                const SparseMatrix op = NewtonMatrix(q_sol, a, h2m, augmented_dirichlet);
+                cholesky.compute(op);
+                if (verbose_level > 1) Toc("Step 5: Cholesky decomposition");
+                if (verbose_level > 1) Tic();
+                dq = cholesky.solve(new_rhs);
+                if (verbose_level > 1) Toc("Step 5: solve the right-hand side");
+                CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
+            } else {
+                // Should never happen.
+                CheckError(false, "Unsupported method.");
+            }
+            if (verbose_level > 0) std::cout << "|dq| = " << dq.norm() << std::endl;
 
-        // Convergence check.
-        const VectorXr lhs = q_sol_next - h2m * force_next;
-        const real abs_error = VectorXr((lhs - rhs - ext_forces).array() * selected.array()).norm();
-        const real rhs_norm = VectorXr((rhs + ext_forces).array() * selected.array()).norm();
-        if (abs_error <= rel_tol * rhs_norm + abs_tol) {
-            q_next = q_sol_next;
-            v_next = (q_next - q) / dt;
+            // Line search.
+            if (verbose_level > 1) Tic();
+            real step_size = 1;
+            VectorXr q_sol_next = q_sol + step_size * dq;
+            VectorXr force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
+            real energy_next = eval_energy(q_sol_next, force_next);
+            for (int j = 0; j < max_ls_iter; ++j) {
+                if (!force_next.hasNaN() && energy_next < energy_sol) break;
+                step_size /= 2;
+                q_sol_next = q_sol + step_size * dq;
+                force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
+                energy_next = eval_energy(q_sol_next, force_next);
+                if (verbose_level > 1) {
+                    std::cout << "Line search iteration: " << j << ", step size: " << step_size << std::endl;
+                    std::cout << "energ_sol: " << energy_sol << ", " << "energy_next: " << energy_next << std::endl;
+                }
+            }
+            CheckError(!force_next.hasNaN(), "Elastic force has NaN.");
+            if (verbose_level > 1) Toc("Step 5: line search");
+
+            // Update.
+            q_sol = q_sol_next;
+            force_sol = force_next;
+            energy_sol = energy_next;
+
+            // Check for convergence.
+            const VectorXr lhs = q_sol_next - h2m * force_next;
+            const real abs_error = VectorXr((lhs - rhs).array() * selected.array()).norm();
+            const real rhs_norm = VectorXr(selected.array() * rhs.array()).norm();
+            if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
+            if (abs_error <= rel_tol * rhs_norm + abs_tol) {
+                success = true;
+                break;
+            }
+        }
+        CheckError(success, "Newton's method fails to converge.");
+
+        // Now verify the contact conditions.
+        auto past_active_contact_nodes = active_contact_nodes;
+        active_contact_nodes.clear();
+        const VectorXr ext_forces = q_sol - h2m * force_sol - rhs;
+        bool good = true;
+        for (const auto& pair : frictional_boundary_vertex_indices_) {
+            const int node_idx = pair.first;
+            const auto node_q = q_sol.segment(node_idx * vertex_dim, vertex_dim);
+            const real dist = frictional_boundary_->GetDistance(node_q);
+            const auto node_f = ext_forces.segment(node_idx * vertex_dim, vertex_dim);
+            if (past_active_contact_nodes.find(node_idx) != past_active_contact_nodes.end()) {
+                if (node_f(vertex_dim - 1) >= 0) active_contact_nodes.insert(node_idx);
+                else good = false;
+            } else {
+                // Check if distance is above the collision plane.
+                if (dist < 0) {
+                    active_contact_nodes.insert(node_idx);
+                    good = false;
+                }
+            }
+        }
+        if (good) {
+            q_next = q_sol;
+            v_next = (q_next - q) / h;
             return;
         }
-
-        // Update.
-        q_sol = q_sol_next;
-        force_sol = force_next;
     }
-    PrintError("Newton's method fails to converge.");
+    CheckError(false, "Newton's method fails to resolve contacts after 20 iterations.");
 }
 
 template<int vertex_dim, int element_dim>
