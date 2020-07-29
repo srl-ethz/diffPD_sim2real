@@ -230,6 +230,163 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
 }
 
 template<int vertex_dim, int element_dim>
+const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const VectorXr& q_init, const VectorXr& a, const real h2m,
+    const VectorXr& rhs, const std::map<int, real>& additional_dirichlet, const std::map<std::string, real>& options) const {
+    CheckError(options.find("max_pd_iter") != options.end(), "Missing option max_pd_iter.");
+    CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
+    CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
+    CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
+    CheckError(options.find("method") != options.end(), "Missing option method.");
+    const int max_pd_iter = static_cast<int>(options.at("max_pd_iter"));
+    const real abs_tol = options.at("abs_tol");
+    const real rel_tol = options.at("rel_tol");
+    const int verbose_level = static_cast<int>(options.at("verbose"));
+    CheckError(max_pd_iter > 0, "Invalid max_pd_iter: " + std::to_string(max_pd_iter));
+    const int method = static_cast<int>(options.at("method"));
+    CheckError(0 <= method && method < 2, "Invalid method.");
+    if (verbose_level > 0) {
+        if (method == 0) std::cout << "Using constant Hessian approximation." << std::endl;
+        else if (method == 1) std::cout << "Using BFGS Hessian approximation." << std::endl;
+        else CheckError(false, "Should never happen: unsupported method.");
+    }
+    int bfgs_history_size = 0;
+    int max_ls_iter = 0;
+    if (method == 1) {
+        CheckError(options.find("bfgs_history_size") != options.end(), "Missing option bfgs_history_size");
+        bfgs_history_size = static_cast<int>(options.at("bfgs_history_size"));
+        CheckError(bfgs_history_size > 1, "Invalid bfgs_history_size.");
+        CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
+        max_ls_iter = static_cast<int>(options.at("max_ls_iter"));
+        CheckError(max_ls_iter > 0, "Invalid max_ls_iter: " + std::to_string(max_ls_iter));
+    }
+
+    std::map<int, real> augmented_dirichlet = dirichlet_;
+    for (const auto& pair : additional_dirichlet)
+        augmented_dirichlet[pair.first] = pair.second;
+
+    // Initial guess.
+    VectorXr q_sol = q_init;
+    // Enforce dirichlet boundary conditions.
+    VectorXr selected = VectorXr::Ones(dofs_);
+    for (const auto& pair : augmented_dirichlet) {
+        q_sol(pair.first) = pair.second;
+        selected(pair.first) = 0;
+    }
+    auto eval_energy = [&](const VectorXr& q_cur, const VectorXr& f_cur){
+        return ((q_cur - h2m * f_cur - rhs).array() * selected.array()).square().sum();
+    };
+    VectorXr force_sol = PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
+    real energy_sol = eval_energy(q_sol, force_sol);
+
+    if (verbose_level > 1) std::cout << "Projective dynamics forward" << std::endl;
+    // Initialize queues for BFGS.
+    std::deque<VectorXr> si_history, xi_history;
+    std::deque<VectorXr> yi_history, gi_history;
+
+    VectorXr force_next = VectorXr::Zero(dofs_);
+    real energy_next = 0;
+    const real rhs_norm = VectorXr(selected.array() * rhs.array()).norm();
+    const real gamma = ToReal(0.3); // Value recommended in Tiantian's paper.
+    for (int i = 0; i < max_pd_iter; ++i) {
+        if (verbose_level > 1) std::cout << "Iteration " << i << std::endl;
+
+        VectorXr q_sol_next = q_sol;
+        // Local step.
+        if (verbose_level > 1) Tic();
+        VectorXr pd_rhs = rhs + h2m * ProjectiveDynamicsLocalStep(q_sol, a, augmented_dirichlet);
+        for (const auto& pair : augmented_dirichlet) pd_rhs(pair.first) = pair.second;
+        if (verbose_level > 1) Toc("Local step");
+        if (method == 0) {
+            // Global step.
+            if (verbose_level > 1) Tic();
+            q_sol_next = PdLhsSolve(pd_rhs, additional_dirichlet);
+            force_next = PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
+            energy_next = eval_energy(q_sol_next, force_next);
+            if (verbose_level > 1) Toc("Global step");
+        } else if (method == 1) {
+            // Use q_sol to compute q_sol_next.
+            // BFGS-style update.
+            // See https://en.wikipedia.org/wiki/Limited-memory_BFGS.
+            VectorXr q = PdLhsMatrixOp(q_sol, additional_dirichlet) - pd_rhs;
+            if (static_cast<int>(xi_history.size()) == 0) {
+                xi_history.push_back(q_sol);
+                gi_history.push_back(q);
+                q_sol_next = PdLhsSolve(pd_rhs, additional_dirichlet);
+                force_next = PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
+                energy_next = eval_energy(q_sol_next, force_next);
+            } else {
+                si_history.push_back(q_sol - xi_history.back());
+                yi_history.push_back(q - gi_history.back());
+                xi_history.push_back(q_sol);
+                gi_history.push_back(q);
+                if (static_cast<int>(xi_history.size()) == bfgs_history_size + 2) {
+                    xi_history.pop_front();
+                    gi_history.pop_front();
+                    si_history.pop_front();
+                    yi_history.pop_front();
+                }
+                std::deque<real> rhoi_history, alphai_history;
+                for (auto sit = si_history.crbegin(), yit = yi_history.crbegin(); sit != si_history.crend(); ++sit, ++yit) {
+                    const VectorXr& yi = *yit;
+                    const VectorXr& si = *sit;
+                    const real rhoi = 1 / yi.dot(si);
+                    const real alphai = rhoi * si.dot(q);
+                    rhoi_history.push_front(rhoi);
+                    alphai_history.push_front(alphai);
+                    q -= alphai * yi;
+                }
+                // H0k = PdLhsSolve(I);
+                VectorXr z = PdLhsSolve(q, additional_dirichlet);
+                auto sit = si_history.cbegin(), yit = yi_history.cbegin();
+                auto rhoit = rhoi_history.cbegin(), alphait = alphai_history.cbegin();
+                for (; sit != si_history.cend(); ++sit, ++yit, ++rhoit, ++alphait) {
+                    const real rhoi = *rhoit;
+                    const real alphai = *alphait;
+                    const VectorXr& si = *sit;
+                    const VectorXr& yi = *yit;
+                    const real betai = rhoi * yi.dot(z);
+                    z += si * (alphai - betai);
+                }
+                z = -z;
+                real alpha = 2;
+                for (int j = 0; j < max_ls_iter; ++j) {
+                    alpha /= 2;
+                    q_sol_next = q_sol + alpha * z;
+                    force_next = PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
+                    energy_next = eval_energy(q_sol_next, force_next);
+                    if (verbose_level > 1) {
+                        std::cout << "Line search iteration: " << j << ", step size: " << alpha << std::endl;
+                        std::cout << "energ_sol: " << energy_sol << ", " << "energy_next: " << energy_next << std::endl;
+                    }
+                    if (!force_next.hasNaN() && energy_next <= energy_sol + gamma * alpha * z.dot(q)) {
+                        break;
+                    }
+                }
+            }
+        } else {
+            CheckError(false, "Should never happen: unsupported method.");
+        }
+
+        // Check for convergence.
+        if (verbose_level > 1) Tic();
+        const real abs_error = std::sqrt(energy_next);
+        if (verbose_level > 1) Toc("Convergence");
+        if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
+        if (abs_error <= rel_tol * rhs_norm + abs_tol) {
+            if (verbose_level > 0) std::cout << "Forward converged at iteration " << i << std::endl;
+            return q_sol_next;
+        }
+
+        // Update.
+        q_sol = q_sol_next;
+        force_sol = force_next;
+        energy_sol = energy_next;
+    }
+    PrintError("Projective dynamics method fails to converge.");
+    return VectorXr::Zero(dofs_);
+}
+
+template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& a,
     const VectorXr& f_ext, const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next,
     std::vector<int>& active_contact_idx) const {
@@ -242,8 +399,6 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
     CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
     CheckError(options.find("method") != options.end(), "Missing option method.");
     const int max_pd_iter = static_cast<int>(options.at("max_pd_iter"));
-    const real abs_tol = options.at("abs_tol");
-    const real rel_tol = options.at("rel_tol");
     const int verbose_level = static_cast<int>(options.at("verbose"));
     const int thread_ct = static_cast<int>(options.at("thread_ct"));
     CheckError(max_pd_iter > 0, "Invalid max_pd_iter: " + std::to_string(max_pd_iter));
@@ -269,159 +424,52 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
     // Pre-factorize the matrix -- it will be skipped if the matrix has already been factorized.
     SetupProjectiveDynamicsSolver(dt);
 
-    // TODO: implement the new contact algorithm.
-    active_contact_idx.clear();
-
-    const real mass = density_ * cell_volume_;
-    const real hm = dt / mass;
-    const real h2m = dt * dt / mass;
-    const VectorXr f_state = ForwardStateForce(q, v);
-    // rhs := q + h * v + h2m * f_ext + h2m * f_state(q, v).
-    const VectorXr rhs = q + dt * v + h2m * (f_ext + f_state);
-    // We use q as the initial guess --- do not use rhs as it will cause flipped elements when dirichlet_with_friction
-    // changes the shape aggressively.
-    VectorXr q_sol = q;
-    VectorXr selected = VectorXr::Ones(dofs_);
-    // Enforce boundary conditions.
-    std::map<int, real> dirichlet_with_friction = dirichlet_;
-    const VectorXr v_pred = v + hm * (f_ext + f_state + PdEnergyForce(q) + ActuationForce(q, a));
-    // Enforce frictional constraints.
-    std::map<int, real> friction_boundary_conditions;
-    for (const auto& pair : frictional_boundary_vertex_indices_) {
-        const int idx = pair.first;
-        const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * idx, vertex_dim);
-        const Eigen::Matrix<real, vertex_dim, 1> vi = v_pred.segment(vertex_dim * idx, vertex_dim);
-        real t_hit;
-        if (frictional_boundary_->ForwardIntersect(qi, vi, dt, t_hit)) {
-            const Eigen::Matrix<real, vertex_dim, 1> qi_hit = qi + t_hit * vi;
-            for (int i = 0; i < vertex_dim; ++i) {
-                dirichlet_with_friction[vertex_dim * idx + i] = qi_hit(i);
-                friction_boundary_conditions[vertex_dim * idx + i] = qi_hit(i);
-            }
+    // q_next = q + hv + h2m * (f_ext + f_ela(q_next) + f_state(q, v) + f_pd(q_next) + f_act(q_next, a)).
+    // q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, a)) = q + hv + h2m * f_ext + h2m * f_state(q, v).
+    const real h = dt;
+    const real h2m = dt * dt / (cell_volume_ * density_);
+    const VectorXr rhs = q + h * v + h2m * f_ext + h2m * ForwardStateForce(q, v);
+    const int max_contact_iter = 20;
+    for (int contact_iter = 0; contact_iter < max_contact_iter; ++contact_iter) {
+        // Fix dirichlet_ + active_contact_nodes.
+        std::map<int, real> additional_dirichlet;
+        for (const int idx : active_contact_idx) {
+            for (int i = 0; i < vertex_dim; ++i)
+                additional_dirichlet[idx * vertex_dim + i] = q(idx * vertex_dim + i);
         }
-    }
-    // Now dirichlet_with_friction = dirichlet_ \/ friction_boundary_conditions.
-    // Enforce boundary conditions.
-    for (const auto& pair : dirichlet_with_friction) {
-        q_sol(pair.first) = pair.second;
-        selected(pair.first) = 0;
-    }
+        // Initial guess.
+        const VectorXr q_sol = PdNonlinearSolve(q, a, h2m, rhs, additional_dirichlet, options);
+        const VectorXr force_sol = PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
 
-    // Left-hand side = q_next - h2m * f_pd(q_next) - h2m * f_act(q_next, u)
-    VectorXr force_sol = PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
-
-    // Initialize queues for BFGS.
-    std::deque<VectorXr> si_history, xi_history;
-    std::deque<VectorXr> yi_history, gi_history;
-
-    if (verbose_level > 1) std::cout << "Projective dynamics forward" << std::endl;
-    auto eval_energy = [&](const VectorXr& q_cur, const VectorXr& f_cur){
-        return ((q_cur - h2m * f_cur - rhs).array() * selected.array()).square().sum();
-    };
-    real energy_sol = eval_energy(q_sol, force_sol);
-    VectorXr force_next = VectorXr::Zero(dofs_);
-    real energy_next = 0;
-    const real rhs_norm = VectorXr(selected.array() * rhs.array()).norm();
-    const real gamma = ToReal(0.3); // Value recommended in Tiantian's paper.
-    for (int i = 0; i < max_pd_iter; ++i) {
-        if (verbose_level > 1) std::cout << "Iteration " << i << std::endl;
-
-        VectorXr q_sol_next = q_sol;
-        // Local step.
-        if (verbose_level > 1) Tic();
-        VectorXr pd_rhs = rhs + h2m * ProjectiveDynamicsLocalStep(q_sol, a, dirichlet_with_friction);
-        for (const auto& pair : dirichlet_with_friction) pd_rhs(pair.first) = pair.second;
-        if (verbose_level > 1) Toc("Local step");
-        if (method == 0) {
-            // Global step.
-            if (verbose_level > 1) Tic();
-            q_sol_next = PdLhsSolve(pd_rhs, friction_boundary_conditions);
-            force_next = PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
-            energy_next = eval_energy(q_sol_next, force_next);
-            if (verbose_level > 1) Toc("Global step");
-        } else if (method == 1) {
-            // Use q_sol to compute q_sol_next.
-            // BFGS-style update.
-            // See https://en.wikipedia.org/wiki/Limited-memory_BFGS.
-            VectorXr q = PdLhsMatrixOp(q_sol, friction_boundary_conditions) - pd_rhs;
-            if (static_cast<int>(xi_history.size()) == 0) {
-                xi_history.push_back(q_sol);
-                gi_history.push_back(q);
-                q_sol_next = PdLhsSolve(pd_rhs, friction_boundary_conditions);
-                force_next = PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
-                energy_next = eval_energy(q_sol_next, force_next);
+        // Now verify the contact conditions.
+        std::set<int> past_active_contact_idx;
+        for (const int idx : active_contact_idx) past_active_contact_idx.insert(idx);
+        active_contact_idx.clear();
+        const VectorXr ext_forces = q_sol - h2m * force_sol - rhs;
+        bool good = true;
+        for (const auto& pair : frictional_boundary_vertex_indices_) {
+            const int node_idx = pair.first;
+            const auto node_q = q_sol.segment(node_idx * vertex_dim, vertex_dim);
+            const real dist = frictional_boundary_->GetDistance(node_q);
+            const auto node_f = ext_forces.segment(node_idx * vertex_dim, vertex_dim);
+            if (past_active_contact_idx.find(node_idx) != past_active_contact_idx.end()) {
+                if (node_f(vertex_dim - 1) >= 0) active_contact_idx.push_back(node_idx);
+                else good = false;
             } else {
-                si_history.push_back(q_sol - xi_history.back());
-                yi_history.push_back(q - gi_history.back());
-                xi_history.push_back(q_sol);
-                gi_history.push_back(q);
-                if (static_cast<int>(xi_history.size()) == bfgs_history_size + 2) {
-                    xi_history.pop_front();
-                    gi_history.pop_front();
-                    si_history.pop_front();
-                    yi_history.pop_front();
-                }
-                std::deque<real> rhoi_history, alphai_history;
-                for (auto sit = si_history.crbegin(), yit = yi_history.crbegin(); sit != si_history.crend(); ++sit, ++yit) {
-                    const VectorXr& yi = *yit;
-                    const VectorXr& si = *sit;
-                    const real rhoi = 1 / yi.dot(si);
-                    const real alphai = rhoi * si.dot(q);
-                    rhoi_history.push_front(rhoi);
-                    alphai_history.push_front(alphai);
-                    q -= alphai * yi;
-                }
-                // H0k = PdLhsSolve(I);
-                VectorXr z = PdLhsSolve(q, friction_boundary_conditions);
-                auto sit = si_history.cbegin(), yit = yi_history.cbegin();
-                auto rhoit = rhoi_history.cbegin(), alphait = alphai_history.cbegin();
-                for (; sit != si_history.cend(); ++sit, ++yit, ++rhoit, ++alphait) {
-                    const real rhoi = *rhoit;
-                    const real alphai = *alphait;
-                    const VectorXr& si = *sit;
-                    const VectorXr& yi = *yit;
-                    const real betai = rhoi * yi.dot(z);
-                    z += si * (alphai - betai);
-                }
-                z = -z;
-                real alpha = 2;
-                for (int j = 0; j < max_ls_iter; ++j) {
-                    alpha /= 2;
-                    q_sol_next = q_sol + alpha * z;
-                    force_next = PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
-                    energy_next = eval_energy(q_sol_next, force_next);
-                    if (verbose_level > 1) {
-                        std::cout << "Line search iteration: " << j << ", step size: " << alpha << std::endl;
-                        std::cout << "energ_sol: " << energy_sol << ", " << "energy_next: " << energy_next << std::endl;
-                    }
-                    if (!force_next.hasNaN() && energy_next <= energy_sol + gamma * alpha * z.dot(q)) {
-                        q_next = q_sol_next;
-                        break;
-                    }
+                // Check if distance is above the collision plane.
+                if (dist < 0) {
+                    active_contact_idx.push_back(node_idx);
+                    good = false;
                 }
             }
-        } else {
-            CheckError(false, "Should never happen: unsupported method.");
         }
-
-        // Check for convergence.
-        if (verbose_level > 1) Tic();
-        const real abs_error = std::sqrt(energy_next);
-        if (verbose_level > 1) Toc("Convergence");
-        if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
-        if (abs_error <= rel_tol * rhs_norm + abs_tol) {
-            if (verbose_level > 0) std::cout << "Forward converged at iteration " << i << std::endl;
-            q_next = q_sol_next;
-            v_next = (q_next - q) / dt;
+        if (good) {
+            q_next = q_sol;
+            v_next = (q_next - q) / h;
             return;
         }
-
-        // Update.
-        q_sol = q_sol_next;
-        force_sol = force_next;
-        energy_sol = energy_next;
     }
-    PrintError("Projective dynamics method fails to converge.");
+    CheckError(false, "Newton's method fails to resolve contacts after 20 iterations.");
 }
 
 template<int vertex_dim, int element_dim>

@@ -205,6 +205,13 @@ private:
     const Eigen::Matrix<real, vertex_dim, vertex_dim> DeformationGradient(const Eigen::Matrix<real, vertex_dim, element_dim>& q,
         const int sample_idx) const;
 
+    // A dedicate function of using PD to solve the nonlinear systems of equations.
+    // - q_next - h2m * (f_pd(q_next) + f_act(q_next, a)) = rhs.
+    // - q_init is the intiial guess.
+    // - Return: q_next.
+    const VectorXr PdNonlinearSolve(const VectorXr& q_init, const VectorXr& a, const real h2m, const VectorXr& rhs,
+        const std::map<int, real>& additional_dirichlet, const std::map<std::string, real>& options) const;
+
     // Undeformed shape.
     Mesh<vertex_dim, element_dim> mesh_;
     // Cell information.
