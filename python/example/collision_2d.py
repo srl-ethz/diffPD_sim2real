@@ -50,12 +50,12 @@ def test_collision_2d(verbose):
     for method in methods:
         if not np.isclose(losses['newton_pcg'], losses[method]):
             if verbose:
-                print_info('Losses are inconsistent between newton_pcg and {}'.format(method))
+                print_error('Losses are inconsistent between newton_pcg and {}'.format(method))
             return False
         for q, qm in zip(qs['newton_pcg'], qs[method]):
             if not np.allclose(q, qm):
                 if verbose:
-                    print_info('states are inconsistent between newton_pcg and {}'.format(method))
+                    print_error('states are inconsistent between newton_pcg and {}'.format(method))
                 return False
 
     eps = 1e-8
