@@ -16,6 +16,21 @@ conda activate diff_pd
 ```
 If you would like to enable multi-threading, set the thread_ct in the options object in the python script. The examples below all use a default of 4 threads for parallel processes. Using 1 will force the program to run sequentially.
 
+### (Optional) Using Pardiso for the linear solver
+Let `PARDISO_HOME` be the folder that you saved your Pardiso license file and the binary file. For example, if `/home/pardiso/pardiso.lic` and `/home/pardiso/libpardiso600-GNU720-X86-64.so` are your license and binary files, then `PARDISO_HOME` should be set to `/home/pardiso`.
+- Set the environment variable `PARDISO_LIC_PATH`:
+```
+export PARDISO_LIC_PATH=<PARDISO_HOME>
+```
+- Recompile the codebase with an optional `pardiso` argument:
+```
+./install pardiso
+```
+- Suppress Pardiso license messages:
+```
+export PARDISOLICMESSAGE=1
+```
+
 ## Examples
 Navigate to the `python/example` path and run `python [example_name].py` where the `example_name` could be the following:
 

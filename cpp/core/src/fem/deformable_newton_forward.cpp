@@ -1,13 +1,15 @@
 #include "fem/deformable.h"
 #include "common/common.h"
 #include "solver/matrix_op.h"
+#include "solver/pardiso_solver.h"
 #include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& method,
     const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext, const real dt,
     const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next, std::vector<int>& active_contact_idx) const {
-    CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
+    CheckError(method == "newton_pcg" || method == "newton_cholesky" || method == "newton_pardiso",
+        "Unsupported Newton's method: " + method);
     CheckError(options.find("max_newton_iter") != options.end(), "Missing option max_newton_iter.");
     CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
@@ -54,11 +56,11 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
         for (int i = 0; i < max_newton_iter; ++i) {
             const VectorXr new_rhs = (rhs - q_sol + h2m * force_sol).array() * selected.array();
             VectorXr dq = VectorXr::Zero(dofs_);
+            const SparseMatrix op = NewtonMatrix(q_sol, a, h2m, augmented_dirichlet);
             if (method == "newton_pcg") {
                 // Looks like Matrix operators are more accurate and allow for more advanced preconditioners.
                 if (verbose_level > 1) Tic();
                 Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper, Eigen::IncompleteCholesky<real>> cg;
-                SparseMatrix op = NewtonMatrix(q_sol, a, h2m, augmented_dirichlet);
                 cg.compute(op);
                 if (verbose_level > 1) Toc("Step 5: preconditioning");
                 if (verbose_level > 1) Tic();
@@ -73,13 +75,19 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                 // Cholesky.
                 if (verbose_level > 1) Tic();
                 Eigen::SimplicialLDLT<SparseMatrix> cholesky;
-                const SparseMatrix op = NewtonMatrix(q_sol, a, h2m, augmented_dirichlet);
                 cholesky.compute(op);
                 if (verbose_level > 1) Toc("Step 5: Cholesky decomposition");
                 if (verbose_level > 1) Tic();
                 dq = cholesky.solve(new_rhs);
                 if (verbose_level > 1) Toc("Step 5: solve the right-hand side");
                 CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
+            } else if (method == "newton_pardiso") {
+#ifdef PARDISO_AVAILABLE
+                // Pardiso.
+                if (verbose_level > 1) Tic();
+                dq = PardisoSymmetricPositiveDefiniteSolver(op, new_rhs, thread_ct);
+                if (verbose_level > 1) Toc("Step 5: solve the right-hand side");
+#endif
             } else {
                 // Should never happen.
                 CheckError(false, "Unsupported method.");

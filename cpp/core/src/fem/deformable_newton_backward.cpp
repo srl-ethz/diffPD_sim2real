@@ -1,6 +1,7 @@
 #include "fem/deformable.h"
 #include "common/common.h"
 #include "solver/matrix_op.h"
+#include "solver/pardiso_solver.h"
 #include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
@@ -9,7 +10,8 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     const std::vector<int>& active_contact_idx, const VectorXr& dl_dq_next,
     const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
     VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const {
-    CheckError(method == "newton_pcg" || method == "newton_cholesky", "Unsupported Newton's method: " + method);
+    CheckError(method == "newton_pcg" || method == "newton_cholesky" || method == "newton_pardiso",
+        "Unsupported Newton's method: " + method);
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
     CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
@@ -66,6 +68,7 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     // q_next_free - h2m * (f_ela(q_next_free; rhs_fixed) + f_pd(q_next_free; rhs_fixed)
     //     + f_act(q_next_free; rhs_fixed, a)) = rhs_free.
     VectorXr dl_drhs = VectorXr::Zero(dofs_);
+    const SparseMatrix op = NewtonMatrix(q_next, a, h2m, augmented_dirichlet);
     if (method == "newton_pcg") {
         Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper> cg;
         // Setting up cg termination conditions: here what you set is the upper bound of:
@@ -76,17 +79,20 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
         // |Ax - b|/|b| <= rel_tol + abs_tol/|b|.
         const real tol = rel_tol + abs_tol / dl_dq_next_agg.norm();
         cg.setTolerance(tol);
-        const SparseMatrix op = NewtonMatrix(q_next, a, h2m, augmented_dirichlet);
         cg.compute(op);
         dl_drhs = cg.solve(dl_dq_next_agg);
         CheckError(cg.info() == Eigen::Success, "CG solver failed.");
     } else if (method == "newton_cholesky") {
         // Note that Cholesky is a direct solver: no tolerance is ever used to terminate the solution.
         Eigen::SimplicialLDLT<SparseMatrix> cholesky;
-        const SparseMatrix op = NewtonMatrix(q_next, a, h2m, augmented_dirichlet);
         cholesky.compute(op);
         dl_drhs = cholesky.solve(dl_dq_next_agg);
         CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
+    } else if (method == "newton_pardiso") {
+#ifdef PARDISO_AVAILABLE
+        // Pardiso.
+        dl_drhs = PardisoSymmetricPositiveDefiniteSolver(op, dl_dq_next_agg, thread_ct);
+#endif
     } else {
         // Should never happen.
     }
