@@ -173,75 +173,67 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     const int w_dofs = static_cast<int>(pd_element_energies_.size());
     dl_dw = VectorXr::Zero(w_dofs);
 
-    // Step 6: compute v_next: q, q_next -> v_next.
-    // v_next = (q_next - q) / dt.
-    const real mass = density_ * cell_volume_;
     const real h = dt;
-    const real hm = dt / mass;
-    const real h2m = hm * dt;
-    const real inv_dt = 1 / dt;
-    VectorXr dl_dq_next_agg = dl_dq_next;
-    dl_dq_next_agg += dl_dv_next * inv_dt;
-    dl_dq += -dl_dv_next * inv_dt;
-
-    // Step 5: compute q_next: a, rhs_friction -> q_next.
-    // q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, a)) = rhs_friction.
-    // and certain q_next DoFs are directly copied from rhs_friction.
-    // Let n be the dim of q_next. Let m be the dim of frozen DoFs.
-    // lhs(q_next_free; rhs_friction_fixed; a) = rhs_friction_free.
-    // lhs: R^(n - m) x R^m -> R^(n - m).
-    // dlhs/dq_next_free * dq_next_free + dlhs/drhs_friction_fixed * drhs_friction_fixed
-    // + dlhs/da * da = drhs_friction_free.
-    // q_next_fixed = rhs_friction_fixed.
-    if (verbose_level > 1) Tic();
-    const VectorXr forward_state_force = ForwardStateForce(q, v);
-    const VectorXr v_pred = v + hm * (f_ext + forward_state_force + PdEnergyForce(q) + ActuationForce(q, a));
-
-    const VectorXr rhs = q + h * v + h2m * f_ext + h2m * forward_state_force;
-    VectorXr rhs_dirichlet = rhs;
-    for (const auto& pair : dirichlet_) rhs_dirichlet(pair.first) = pair.second;
-
-    VectorXr rhs_friction = rhs_dirichlet;
-    std::map<int, real> dirichlet_with_friction = dirichlet_;
-    std::map<int, real> friction_boundary_conditions;
-    for (const auto& pair : frictional_boundary_vertex_indices_) {
-        const int idx = pair.first;
-        const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * idx, vertex_dim);
-        const Eigen::Matrix<real, vertex_dim, 1> vi = v_pred.segment(vertex_dim * idx, vertex_dim);
-        real t_hit;
-        if (frictional_boundary_->ForwardIntersect(qi, vi, dt, t_hit)) {
-            const Eigen::Matrix<real, vertex_dim, 1> qi_hit = qi + t_hit * vi;
-            for (int i = 0; i < vertex_dim; ++i) {
-                rhs_friction(vertex_dim * idx + i) = qi_hit(i);
-                dirichlet_with_friction[vertex_dim * idx + i] = qi_hit(i);
-                friction_boundary_conditions[vertex_dim * idx + i] = qi_hit(i);
-            }
-        }
-    }
-    if (verbose_level > 1) Toc("Step 5: compute collision");
-
-    // Backpropagate rhs_friction -> q_next.
-    // dlhs/dq_next_free * dq_next_free + dlhs/drhs_friction_fixed * drhs_friction_fixed
-    // + dlhs/da * da = drhs_friction_free.
-    // q_next_fixed = rhs_friction_fixed.
-    if (verbose_level > 1) Tic();
+    const real inv_h = 1 / h;
+    const real h2m = h * h / (cell_volume_ * density_);
     std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>> pd_backward_local_element_matrices;
     std::vector<std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>> pd_backward_local_muscle_matrices;
     SetupProjectiveDynamicsLocalStepDifferential(q_next, a, pd_backward_local_element_matrices, pd_backward_local_muscle_matrices);
+
+    // Forward:
+    // Step 1:
+    // rhs_basic = q + hv + h2m * f_ext + h2m * f_state(q, v).
+    const VectorXr f_state_force = ForwardStateForce(q, v);
+    // const VectorXr rhs_basic = q + h * v + h2m * f_ext + h2m * f_state_force;
+    // Step 2:
+    // rhs_dirichlet = rhs_basic(DoFs in dirichlet_) = dirichlet_.second.
+    // VectorXr rhs_dirichlet = rhs_basic;
+    // for (const auto& pair : dirichlet_) rhs_dirichlet(pair.first) = pair.second;
+    // Step 3:
+    // rhs = rhs_dirichlet(DoFs in active_contact_idx) = q.
+    // VectorXr rhs = rhs_dirichlet;
+    // for (const int idx : active_contact_idx) {
+    //     for (int i = 0; i < vertex_dim; ++i) {
+    //         rhs(idx * vertex_dim + i) = q(idx * vertex_dim + i);
+    //     }
+    // }
+    // Step 4:
+    // q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, a)) = rhs.
+    std::map<int, real> augmented_dirichlet = dirichlet_;
+    std::map<int, real> additional_dirichlet;
+    for (const int idx : active_contact_idx) {
+        for (int i = 0; i < vertex_dim; ++i) {
+            const int dof = idx * vertex_dim + i;
+            augmented_dirichlet[dof] = q(dof);
+            additional_dirichlet[dof] = q(dof);
+        }
+    }
+    // Step 5:
+    // v_next = (q_next - q) / h.
+
+    // Backward:
+    // Step 5:
+    // v_next = (q_next - q) / h.
+    dl_dq += -dl_dv_next * inv_h;
+    const VectorXr dl_dq_next_agg = dl_dq_next + dl_dv_next * inv_h;
+
+    // Step 4:
+    // q_next_fixed = rhs_fixed.
+    // q_next_free - h2m * (f_ela(q_next_free; rhs_fixed) + f_pd(q_next_free; rhs_fixed)
+    //     + f_act(q_next_free; rhs_fixed, a)) = rhs_free.
+    // Newton equivalence:
+    // Eigen::SimplicialLDLT<SparseMatrix> cholesky;
+    // const SparseMatrix op = NewtonMatrix(q_next, a, h2m, augmented_dirichlet);
+    // cholesky.compute(op);
+    // const VectorXr dl_drhs = cholesky.solve(dl_dq_next_agg);
+    // CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
+
     VectorXr adjoint = dl_dq_next_agg;  // Initial guess.
     VectorXr selected = VectorXr::Ones(dofs_);
-    for (const auto& pair : dirichlet_with_friction) {
+    for (const auto& pair : augmented_dirichlet) {
         adjoint(pair.first) = 0;
         selected(pair.first) = 0;
     }
-    // Newton equivalence:
-    // Eigen::SimplicialLDLT<SparseMatrix> cholesky;
-    // const SparseMatrix op = NewtonMatrix(q_next, a, h2m, dirichlet_with_friction);
-    // cholesky.compute(op);
-    // adjoint = cholesky.solve(dl_dq_next_agg);
-    // CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
-    // End of Newton equivalence.
-    // (A - h2m * delta_A) * adjoint = dl_dq_next_agg for DoFs not in dirichlet_with_friction.
 
     // Initialize queues for BFGS.
     std::deque<VectorXr> si_history, xi_history;
@@ -256,18 +248,18 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
         if (verbose_level > 1) Tic();
         VectorXr pd_rhs = dl_dq_next_agg + h2m * ApplyProjectiveDynamicsLocalStepDifferential(q_next, a,
             pd_backward_local_element_matrices, pd_backward_local_muscle_matrices, adjoint_next);
-        for (const auto& pair : dirichlet_with_friction) pd_rhs(pair.first) = 0;
+        for (const auto& pair : augmented_dirichlet) pd_rhs(pair.first) = 0;
         if (verbose_level > 1) Toc("Local step");
 
         // Check for convergence.
-        const VectorXr pd_lhs = PdLhsMatrixOp(adjoint, friction_boundary_conditions);
+        const VectorXr pd_lhs = PdLhsMatrixOp(adjoint, additional_dirichlet);
         const real abs_error = VectorXr((pd_lhs - pd_rhs).array() * selected.array()).norm();
         const real rhs_norm = VectorXr(selected.array() * pd_rhs.array()).norm();
         if (verbose_level > 1) Toc("Convergence");
         if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
         if (abs_error <= rel_tol * rhs_norm + abs_tol) {
             if (verbose_level > 0) std::cout << "Backward converged at iteration " << i << std::endl;
-            for (const auto& pair : dirichlet_with_friction) adjoint(pair.first) = dl_dq_next_agg(pair.first);
+            for (const auto& pair : augmented_dirichlet) adjoint(pair.first) = dl_dq_next_agg(pair.first);
             break;
         }
 
@@ -275,8 +267,8 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
         if (method == 0) {
             // Global step.
             if (verbose_level > 1) Tic();
-            adjoint = PdLhsSolve(pd_rhs, friction_boundary_conditions);
-            for (const auto& pair : friction_boundary_conditions) adjoint(pair.first) = 0;
+            adjoint = PdLhsSolve(pd_rhs, additional_dirichlet);
+            for (const auto& pair : additional_dirichlet) adjoint(pair.first) = 0;
             if (verbose_level > 1) Toc("Global step");
         } else if (method == 1) {
             // Use q_sol to compute q_sol_next.
@@ -286,8 +278,8 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
             if (static_cast<int>(xi_history.size()) == 0) {
                 xi_history.push_back(adjoint);
                 gi_history.push_back(q);
-                adjoint = PdLhsSolve(pd_rhs, friction_boundary_conditions);
-                for (const auto& pair : friction_boundary_conditions) adjoint(pair.first) = 0;
+                adjoint = PdLhsSolve(pd_rhs, additional_dirichlet);
+                for (const auto& pair : additional_dirichlet) adjoint(pair.first) = 0;
             } else {
                 si_history.push_back(adjoint - xi_history.back());
                 yi_history.push_back(q - gi_history.back());
@@ -310,7 +302,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
                     q -= alphai * yi;
                 }
                 // H0k = PdLhsSolve(I);
-                VectorXr z = PdLhsSolve(q, friction_boundary_conditions);
+                VectorXr z = PdLhsSolve(q, additional_dirichlet);
                 auto sit = si_history.cbegin(), yit = yi_history.cbegin();
                 auto rhoit = rhoi_history.cbegin(), alphait = alphai_history.cbegin();
                 for (; sit != si_history.cend(); ++sit, ++yit, ++rhoit, ++alphait) {
@@ -323,97 +315,69 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
                 }
                 z = -z;
                 adjoint += z;
-                for (const auto& pair : friction_boundary_conditions) adjoint(pair.first) = 0;
+                for (const auto& pair : additional_dirichlet) adjoint(pair.first) = 0;
             }
         } else {
             CheckError(false, "Should never happen: unsupported method.");
         }
     }
+    VectorXr dl_drhs = adjoint;
 
-    // dlhs/dq_next_free * dq_next_free = drhs_friction_free - dlhs/drhs_friction_fixed * drhs_friction_fixed.
-    // dq_next_free = J^{-1} * drhs_friction_free - J^{-1} * (dlhs/drhs_friction_fixed) * drhs_friction_fixed.
-    // q_next_fixed = rhs_friction_fixed.
-    VectorXr adjoint_with_zero = adjoint;
-    for (const auto& pair : dirichlet_with_friction) adjoint_with_zero(pair.first) = 0;
-    // Additionally, need to add -adjoint_with_zero * (dlhs/drhs_friction_fixed) to rows corresponding to fixed DoFs.
+    // dl_drhs already backpropagates q_next_free to rhs_free and q_next_fixed to rhs_fixed.
+    // Since q_next_fixed does not depend on rhs_free, it remains to backpropagate q_next_free to rhs_fixed.
+    // Let J = [A,  B] = NewtonMatrixOp(q_next, a, h2m, {}).
+    //         [B', C]
+    // Let A corresponds to fixed dofs.
+    // B' + C * dq_next_free / drhs_fixed = 0.
+    // so what we want is -dl_dq_next_free * inv(C) * B'.
+    for (const auto& pair : augmented_dirichlet) adjoint(pair.first) = 0;
     // Newton equivalence:
-    // VectorXr dl_drhs_friction_fixed = NewtonMatrixOp(q_next, a, h2m, {}, -adjoint_with_zero);
-    VectorXr dl_drhs_friction_fixed = PdLhsMatrixOp(-adjoint_with_zero, {}) - h2m *
-        ApplyProjectiveDynamicsLocalStepDifferential(q_next, a, pd_backward_local_element_matrices, pd_backward_local_muscle_matrices,
-            -adjoint_with_zero);
-    for (const auto& pair : dirichlet_) dl_drhs_friction_fixed(pair.first) = -adjoint_with_zero(pair.first);
-    VectorXr dl_drhs_friction = adjoint;
-    for (const auto& pair : dirichlet_with_friction)
-        dl_drhs_friction(pair.first) += dl_drhs_friction_fixed(pair.first);
-    if (verbose_level > 1) Toc("Step 5: backpropagate q_next to q");
+    // const VectorXr dfixed = NewtonMatrixOp(q_next, a, h2m, {}, -adjoint);
+    const VectorXr dfixed = PdLhsMatrixOp(-adjoint, {}) - h2m * ApplyProjectiveDynamicsLocalStepDifferential(q_next, a,
+        pd_backward_local_element_matrices, pd_backward_local_muscle_matrices, -adjoint);
+    for (const auto& pair : augmented_dirichlet) dl_drhs(pair.first) += dfixed(pair.first);
 
     // Backpropagate a -> q_next.
-    // dlhs/dq_next_free * dq_next_free + dlhs/da * da = 0.
-    if (verbose_level > 1) Tic();
+    // q_next_free - h2m * (f_ela(q_next_free; rhs_fixed) + f_pd(q_next_free; rhs_fixed)
+    //     + f_act(q_next_free; rhs_fixed, a)) = rhs_free.
+    // C * dq_next_free / da - h2m * df_act / da = 0.
+    // dl_da += dl_dq_next_agg * inv(C) * h2m * df_act / da.
     SparseMatrixElements nonzeros_q, nonzeros_a;
     ActuationForceDifferential(q_next, a, nonzeros_q, nonzeros_a);
-    dl_da += adjoint_with_zero.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_a) * h2m;
-    if (verbose_level > 1) Toc("Step 5: backpropagate q_next to a");
+    dl_da += VectorXr(adjoint.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_a) * h2m);
 
     // Backpropagate w -> q_next.
-    if (verbose_level > 1) Tic();
     SparseMatrixElements nonzeros_w;
     PdEnergyForceDifferential(q_next, false, true, nonzeros_q, nonzeros_w);
-    dl_dw += VectorXr(adjoint_with_zero.transpose() * ToSparseMatrix(dofs_, w_dofs, nonzeros_w) * h2m);
-    if (verbose_level > 1) Toc("Step 5: backpropagate q_next to w");
+    dl_dw += VectorXr(adjoint.transpose() * ToSparseMatrix(dofs_, w_dofs, nonzeros_w) * h2m);
 
-    // Step 4: q, v_pred, rhs_dirichlet -> rhs_friction.
-    if (verbose_level > 1) Tic();
-    VectorXr dl_drhs_dirichlet = dl_drhs_friction;
-    VectorXr dl_dv_pred = VectorXr::Zero(dofs_);
-    for (const auto& pair : frictional_boundary_vertex_indices_) {
-        const int idx = pair.first;
-        const Eigen::Matrix<real, vertex_dim, 1> qi = q.segment(vertex_dim * idx, vertex_dim);
-        const Eigen::Matrix<real, vertex_dim, 1> vi_pred = v_pred.segment(vertex_dim * idx, vertex_dim);
-        real t_hit;
-        if (frictional_boundary_->ForwardIntersect(qi, vi_pred, dt, t_hit)) {
-            dl_drhs_dirichlet.segment(vertex_dim * idx, vertex_dim) = Eigen::Matrix<real, vertex_dim, 1>::Zero();
-            Eigen::Matrix<real, vertex_dim, 1> dl_dqi, dl_dvi_pred;
-            frictional_boundary_->BackwardIntersect(qi, vi_pred, t_hit,
-                dl_drhs_friction.segment(vertex_dim * idx, vertex_dim), dl_dqi, dl_dvi_pred);
-            dl_dq.segment(vertex_dim * idx, vertex_dim) += dl_dqi;
-            dl_dv_pred.segment(vertex_dim * idx, vertex_dim) += dl_dvi_pred;
+    // Step 3:
+    // rhs = rhs_dirichlet(DoFs in active_contact_idx) = q.
+    VectorXr dl_drhs_dirichlet = dl_drhs;
+    for (const int idx : active_contact_idx) {
+        for (int i = 0; i < vertex_dim; ++i) {
+            const int dof = idx * vertex_dim + i;
+            dl_drhs_dirichlet(dof) = 0;
+            dl_dq(dof) += dl_drhs(dof);
         }
     }
-    if (verbose_level > 1) Toc("Step 4: backpropagate rhs_friction");
 
-    // Step 3: merge dirichlet: rhs -> rhs_dirichlet.
-    // rhs_dirichlet = rhs \/ dirichlet_.
-    VectorXr dl_drhs = dl_drhs_dirichlet;
-    for (const auto& pair : dirichlet_) dl_drhs(pair.first) = 0;
+    // Step 2:
+    // rhs_dirichlet = rhs_basic(DoFs in dirichlet_) = dirichlet_.second.
+    VectorXr dl_drhs_basic = dl_drhs_dirichlet;
+    for (const auto& pair : dirichlet_) {
+        dl_drhs_basic(pair.first) = 0;
+    }
 
-    // Step 2: compute rhs: q, v, f_ext -> rhs.
-    // rhs = q + h * v + h2m * f_ext + h2m * f_state(q, v).
-    if (verbose_level > 1) Tic();
-    dl_dq += dl_drhs;
-    dl_dv += dl_drhs * h;
-    dl_df_ext += dl_drhs * h2m;
+    // Step 1:
+    // rhs_basic = q + hv + h2m * f_ext + h2m * f_state(q, v).
+    dl_dq += dl_drhs_basic;
+    dl_dv += dl_drhs_basic * h;
+    dl_df_ext += dl_drhs_basic * h2m;
     VectorXr dl_dq_single, dl_dv_single;
-    BackwardStateForce(q, v, forward_state_force, dl_drhs * h2m, dl_dq_single, dl_dv_single);
+    BackwardStateForce(q, v, f_state_force, dl_drhs_basic * h2m, dl_dq_single, dl_dv_single);
     dl_dq += dl_dq_single;
     dl_dv += dl_dv_single;
-    if (verbose_level > 1) Toc("Step 2: backpropagate rhs");
-
-    // Step 1: compute predicted velocity: q, v, a, f_ext -> v_pred.
-    // v_pred = v + h / m * (f_ext + f_state(q, v) + f_pd(q) + f_act(q, a)).
-    if (verbose_level > 1) Tic();
-    dl_dv += dl_dv_pred;
-    dl_df_ext += dl_dv_pred * hm;
-    BackwardStateForce(q, v, forward_state_force, dl_dv_pred * hm, dl_dq_single, dl_dv_single);
-    dl_dq += dl_dq_single;
-    dl_dv += dl_dv_single;
-    PdEnergyForceDifferential(q, false, true, nonzeros_q, nonzeros_w);
-    dl_dq += PdEnergyForceDifferential(q, dl_dv_pred * hm, VectorXr::Zero(w_dofs));
-    dl_dw += VectorXr(dl_dv_pred.transpose() * ToSparseMatrix(dofs_, w_dofs, nonzeros_w) * hm);
-    ActuationForceDifferential(q, a, nonzeros_q, nonzeros_a);
-    dl_dq += dl_dv_pred.transpose() * ToSparseMatrix(dofs_, dofs_, nonzeros_q) * hm;
-    dl_da += dl_dv_pred.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_a) * hm;
-    if (verbose_level > 1) Toc("Step 1: backpropagate v_pred");
 }
 
 template class Deformable<2, 4>;
