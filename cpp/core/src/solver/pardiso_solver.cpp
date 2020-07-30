@@ -16,53 +16,66 @@ extern "C" void pardiso_printstats (int *, int *, double *, int *, int *, int *,
                            double *, int *);
 
 const VectorXr PardisoSymmetricPositiveDefiniteSolver(const SparseMatrix& lhs, const VectorXr& rhs, const int thread_cnt) {
-    int        n = static_cast<int>(rhs.size());
-    int*      ia = new int[n + 1];
-    double*    x = new double[n];
-
-    std::vector<int> ia_vec(n + 1, 0), ja_vec(0);
-    std::vector<double> a_vec(0);
-    // Explain the notation in Python:
-    // For row i: ja[ia[i] : ia[i + 1]] is the indices of nonzero columns at row i.
-    // a[ia[i] : ia[i + 1]] are the corresponding nonzero elements.
-    for (int k = 0; k < lhs.outerSize(); ++k) {
-        ia_vec[k + 1] = ia_vec[k];
-        // Note that ia_vec[k] == ja_vec.size() == a_vec.size() is always true.
-        // For symmetric matrices, Pardiso requires the diagonal elements to be always present, even if it is zero.
-        std::deque<int> ja_row_k;
-        std::deque<double> a_row_k;
-        for (SparseMatrix::InnerIterator it(lhs, k); it; ++it) {
-            // it.value() is the nonzero element.
-            // it.row() is the row index.
-            // it.col() is the column index and it equals k in this inner loop.
-            // We make use of the fact that the matrix is symmetric.
-            // Eigen guarantees row is sorted in each k.
-            const int row = it.row();
-            const double val = ToDouble(it.value());
-            if (row < k) continue;
-            // Now adding element value at (k, row) to the data.
-            ja_row_k.push_back(row);
-            a_row_k.push_back(val);
+    int         n = static_cast<int>(rhs.size());
+    int       *ia = new int[n + 1];
+    std::vector<int> ja_vec;
+    std::vector<double> a_vec;
+    SparseMatrixElements nonzeros = FromSparseMatrix(lhs);
+    nonzeros.push_back(Eigen::Triplet<real>(n, n, 0));
+    int last_row = -1;
+    int last_col = -1;  // This points to the finished elements.
+    ia[0] = 0;
+    const std::string error_message = "Inconsistent input";
+    for (const auto& triplet : nonzeros) {
+        const int row = triplet.row();
+        const int col = triplet.col();
+        const double val = triplet.value();
+        if (row < col) continue;
+        if (col == last_col) {
+            CheckError(last_row < row, error_message);
+            ++ia[col + 1];
+            ja_vec.push_back(row);
+            a_vec.push_back(val);
+            last_row = row;
+            last_col = col;
+        } else if (col > last_col) {
+            for (int c = last_col + 1; c < col; ++c) {
+                ia[c + 1] = ia[c] + 1;
+                ja_vec.push_back(c);
+                a_vec.push_back(0);
+            }
+            if (col == n) break;
+            ia[col + 1] = ia[col];
+            if (row > col) {
+                ++ia[col + 1];
+                ja_vec.push_back(col);
+                a_vec.push_back(0);
+            }
+            ++ia[col + 1];
+            ja_vec.push_back(row);
+            a_vec.push_back(val);
+            last_row = row;
+            last_col = col;
+        } else {
+            CheckError(false, error_message);
         }
-        if (ja_row_k.empty() || ja_row_k.front() > k) {
-            // Need to insert a fake diagonal element.
-            ja_row_k.push_front(k);
-            a_row_k.push_front(0);
-        }
-        ja_vec.insert(ja_vec.end(), ja_row_k.begin(), ja_row_k.end());
-        a_vec.insert(a_vec.end(), a_row_k.begin(), a_row_k.end());
-        ia_vec[k + 1] += static_cast<int>(ja_row_k.size());
     }
-    int      nnz = static_cast<int>(a_vec.size());
-    int*      ja = new int[nnz];
-    double*    a = new double[nnz];
-    std::memcpy(ia, ia_vec.data(), sizeof(int) * ia_vec.size());
-    std::memcpy(ja, ja_vec.data(), sizeof(int) * ja_vec.size());
-    std::memcpy(a, a_vec.data(), sizeof(double) * a_vec.size());
+
+    int      nnz = ia[n];
+    int       *ja = new int[nnz];
+    double     *a = new double[nnz];
+    CheckError(static_cast<int>(ja_vec.size()) == nnz, "Inconsistent ja_vec.");
+    CheckError(static_cast<int>(a_vec.size()) == nnz, "Inconsistent a_vec.");
+    for (int i = 0; i < nnz; ++i) {
+        ja[i] = ja_vec[i];
+        a[i] = a_vec[i];
+    }
 
     // SPD matrix.
     int      mtype = 2;
 
+    // RHS and solution vectors.
+    double* x = new double[n];
     // Number of right hand sides.
     int      nrhs = 1;
 

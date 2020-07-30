@@ -82,7 +82,7 @@ class EnvBase:
         # Check input parameters.
         assert dt > 0
         assert frame_num > 0
-        assert method in [ 'semi_implicit', 'newton_pcg', 'newton_cholesky', 'pd' ]
+        assert method in [ 'semi_implicit', 'newton_pcg', 'newton_cholesky', 'newton_pardiso', 'pd' ]
 
         if q0 is None:
             sim_q0 = np.copy(self._q0)
