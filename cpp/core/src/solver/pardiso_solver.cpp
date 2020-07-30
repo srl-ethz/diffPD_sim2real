@@ -12,10 +12,15 @@ extern "C" void pardiso     (void   *, int    *,   int *, int *,    int *, int *
                      int *, double *, double *, int *, double *);
 extern "C" void pardiso_chkmatrix  (int *, int *, double *, int *, int *, int *);
 extern "C" void pardiso_chkvec     (int *, int *, double *, int *);
-extern "C" void pardiso_printstats (int *, int *, double *, int *, int *, int *,
-                           double *, int *);
+// extern "C" void pardiso_printstats (int *, int *, double *, int *, int *, int *,
+//                            double *, int *);
 
-const VectorXr PardisoSymmetricPositiveDefiniteSolver(const SparseMatrix& lhs, const VectorXr& rhs, const int thread_cnt) {
+const VectorXr PardisoSymmetricPositiveDefiniteSolver(const SparseMatrix& lhs, const VectorXr& rhs,
+    const std::map<std::string, real>& options) {
+    const int thread_cnt = static_cast<int>(options.at("thread_ct"));
+    const int verbose_level = static_cast<int>(options.at("verbose"));
+
+    if (verbose_level > 0) Tic();
     int         n = static_cast<int>(rhs.size());
     int       *ia = new int[n + 1];
     std::vector<int> ja_vec;
@@ -70,6 +75,7 @@ const VectorXr PardisoSymmetricPositiveDefiniteSolver(const SparseMatrix& lhs, c
         ja[i] = ja_vec[i];
         a[i] = a_vec[i];
     }
+    if (verbose_level > 0) Toc("(Pardiso) set up matrix elements.");
 
     // SPD matrix.
     int      mtype = 2;
@@ -100,10 +106,13 @@ const VectorXr PardisoSymmetricPositiveDefiniteSolver(const SparseMatrix& lhs, c
     error = 0;
     // Use sparse direct solver.
     solver = 0;
-    pardisoinit(pt, &mtype, &solver, iparm, dparm, &error); 
+    if (verbose_level > 0) Tic();
+    pardisoinit(pt, &mtype, &solver, iparm, dparm, &error);
     CheckError(error == 0, "Pardiso license check failed.");
+    if (verbose_level > 0) Toc("(Pardiso) pardisoinit");
 
     // Numbers of processors.
+    if (verbose_level > 0) Tic();
     omp_set_num_threads(thread_cnt);
     iparm[2]  = thread_cnt;
 
@@ -124,30 +133,51 @@ const VectorXr PardisoSymmetricPositiveDefiniteSolver(const SparseMatrix& lhs, c
     double* b = new double[n];
     for (i = 0; i < n; ++i) b[i] = ToDouble(rhs(i));
 
+
+    // pardiso_chk_matrix(...)
+    // Checks the consistency of the given matrix.
+    //Use this functionality only for debugging purposes
+    pardiso_chkmatrix(&mtype, &n, a, ia, ja, &error);
+    CheckError(error == 0, "Error in consistency of matrix: " + std::to_string(error));
+
+    // pardiso_chkvec(...)
+    // Checks the given vectors for infinite and NaN values
+    // Input parameters (see PARDISO user manual for a description):
+    // Use this functionality only for debugging purposes.
+    pardiso_chkvec(&n, &nrhs, b, &error);
+    CheckError(error == 0, "Error in the right-hand side: " + std::to_string(error));
+    if (verbose_level > 0) Toc("(Pardiso) check inputs");
+
     // Reordering and Symbolic Factorization.  This step also allocates
     // all memory that is necessary for the factorization.
+    if (verbose_level > 0) Tic();
     phase = 11;
     pardiso(pt, &maxfct, &mnum, &mtype, &phase, &n, a, ia, ja, &idum, &nrhs,
             iparm, &msglvl, &ddum, &ddum, &error, dparm);
     CheckError(error == 0, "Error during symbolic factorization: " + std::to_string(error));
+    if (verbose_level > 0) Toc("(Pardiso) phase 11");
 
     // Numerical factorization.
+    if (verbose_level > 0) Tic();
     phase = 22;
     // Do not compute determinant.
     iparm[32] = 0;
     pardiso(pt, &maxfct, &mnum, &mtype, &phase, &n, a, ia, ja, &idum, &nrhs,
             iparm, &msglvl, &ddum, &ddum, &error, dparm);
-
     CheckError(error == 0, "Error during numerical factorization: " + std::to_string(error));
+    if (verbose_level > 0) Toc("(Pardiso) phase 22");
 
     // Back substitution and iterative refinement.
+    if (verbose_level > 0) Tic();
     phase = 33;
     // Max numbers of iterative refinement steps.
     iparm[7] = 1;
     pardiso(pt, &maxfct, &mnum, &mtype, &phase, &n, a, ia, ja, &idum, &nrhs,
             iparm, &msglvl, b, x, &error,  dparm);
     CheckError(error == 0, "Error during Pardiso solution: " + std::to_string(error));
+    if (verbose_level > 0) Toc("(Pardiso) phase 33");
 
+    if (verbose_level > 0) Tic();
     VectorXr sol = VectorXr::Zero(n);
     for (i = 0; i < n; ++i) sol(i) = x[i];
 
@@ -166,6 +196,7 @@ const VectorXr PardisoSymmetricPositiveDefiniteSolver(const SparseMatrix& lhs, c
     delete []a;
     delete []x;
 
+    if (verbose_level > 0) Toc("(Pardiso) cleanup");
     return sol;
 }
 

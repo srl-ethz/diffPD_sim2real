@@ -5,6 +5,7 @@
 ## Recommended systems
 - Ubuntu 18.04
 - (Mini)conda 4.7.12 or higher
+- GCC 7.5 (Other versions might work but we tested the codebase with 7.5 only)
 
 ## Installation
 ```
@@ -21,14 +22,25 @@ Let `PARDISO_HOME` be the folder that you saved your Pardiso license file and th
 - Set the environment variable `PARDISO_LIC_PATH`:
 ```
 export PARDISO_LIC_PATH=<PARDISO_HOME>
+export PARDISOLICMESSAGE=1
+```
+- Pardiso requires `lapack` and `blas`:
+```
+sudo apt-get install liblapack-dev
+sudo apt-get install libblas-dev
+```
+As of the date this README is written, the version we use is `3.7.1-4ubuntu1`
+```
+Reading package lists... Done
+Building dependency tree
+Reading state information... Done
+libblas-dev is already the newest version (3.7.1-4ubuntu1).
+liblapack-dev is already the newest version (3.7.1-4ubuntu1).
+0 upgraded, 0 newly installed, 0 to remove and 132 not upgraded.
 ```
 - Recompile the codebase with an optional `pardiso` argument:
 ```
-./install pardiso
-```
-- Suppress Pardiso license messages:
-```
-export PARDISOLICMESSAGE=1
+./install.sh pardiso
 ```
 
 ## Examples

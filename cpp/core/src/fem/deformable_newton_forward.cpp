@@ -83,10 +83,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                 CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
             } else if (method == "newton_pardiso") {
 #ifdef PARDISO_AVAILABLE
-                // Pardiso.
-                if (verbose_level > 1) Tic();
-                dq = PardisoSymmetricPositiveDefiniteSolver(op, new_rhs, thread_ct);
-                if (verbose_level > 1) Toc("Step 5: solve the right-hand side");
+                dq = PardisoSymmetricPositiveDefiniteSolver(op, new_rhs, options);
 #endif
             } else {
                 // Should never happen.

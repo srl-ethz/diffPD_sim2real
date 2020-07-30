@@ -30,7 +30,10 @@ int main() {
     const VectorXr b = VectorXr::Random(n);
     const SparseMatrix A = ToSparseMatrix(n, n, nonzeros);
     const int thread_cnt = 4;
-    const VectorXr x = PardisoSymmetricPositiveDefiniteSolver(A, b, thread_cnt);
+    std::map<std::string, real> options;
+    options["thread_ct"] = thread_cnt;
+    options["verbose"] = 1;
+    const VectorXr x = PardisoSymmetricPositiveDefiniteSolver(A, b, options);
     std::cout << "Pardiso error: " << (A * x - b).norm() << std::endl;
 #else
     PrintInfo("The program compiles fine. Pardiso is not detected.");
