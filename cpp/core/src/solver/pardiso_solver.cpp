@@ -16,11 +16,8 @@ extern "C" void pardiso_printstats (int *, int *, double *, int *, int *, int *,
                            double *, int *);
 
 const VectorXr PardisoSymmetricPositiveDefiniteSolver(const SparseMatrix& lhs, const VectorXr& rhs, const int thread_cnt) {
-    int n = static_cast<int>(rhs.size());
-    int      nnz = lhs.nonZeros();
+    int        n = static_cast<int>(rhs.size());
     int*      ia = new int[n + 1];
-    int*      ja = new int[nnz];
-    double*    a = new double[nnz];
     double*    x = new double[n];
 
     std::vector<int> ia_vec(n + 1, 0), ja_vec(0);
@@ -56,6 +53,9 @@ const VectorXr PardisoSymmetricPositiveDefiniteSolver(const SparseMatrix& lhs, c
         a_vec.insert(a_vec.end(), a_row_k.begin(), a_row_k.end());
         ia_vec[k + 1] += static_cast<int>(ja_row_k.size());
     }
+    int      nnz = static_cast<int>(a_vec.size());
+    int*      ja = new int[nnz];
+    double*    a = new double[nnz];
     std::memcpy(ia, ia_vec.data(), sizeof(int) * ia_vec.size());
     std::memcpy(ja, ja_vec.data(), sizeof(int) * ja_vec.size());
     std::memcpy(a, a_vec.data(), sizeof(double) * a_vec.size());
