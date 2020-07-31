@@ -18,10 +18,15 @@ def test_pd_forward(verbose):
     folder = Path('pd_forward')
     env = BenchmarkEnv2d(seed, folder, { 'refinement': 6 })
 
-    methods = ('newton_pcg', 'pd')
-    opts = ({ 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-8, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': 4 },
+    methods = ['newton_pcg', 'pd_eigen']
+    opts = [{ 'max_newton_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-8, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': 4 },
         { 'max_pd_iter': 100, 'max_ls_iter': 10, 'abs_tol': 1e-8, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': 4,
-            'method': 1, 'bfgs_history_size': 10 })
+            'use_bfgs': 1, 'bfgs_history_size': 10 }]
+    # Check if Pardiso is available
+    pardiso_available = 'PARDISO_LIC_PATH' in os.environ
+    if pardiso_available:
+        methods.append('pd_pardiso')
+        opts.append(opts[-1])
 
     # Forward simulation.
     dt = 0.01
@@ -40,12 +45,20 @@ def test_pd_forward(verbose):
     # Compare results.
     atol = 1e-4
     rtol = 5e-3
-    for qn, qp in zip(q['newton_pcg'], q['pd']):
+    for qn, qp in zip(q['newton_pcg'], q['pd_eigen']):
         state_equal = np.linalg.norm(qn - qp) < rtol * np.linalg.norm(qn) + atol
         if not state_equal:
             if verbose:
                 print_error(np.linalg.norm(qn - qp), np.linalg.norm(qn))
             return False
+
+    if pardiso_available:
+        for qn, qp in zip(q['newton_pcg'], q['pd_pardiso']):
+            state_equal = np.linalg.norm(qn - qp) < rtol * np.linalg.norm(qn) + atol
+            if not state_equal:
+                if verbose:
+                    print_error(np.linalg.norm(qn - qp), np.linalg.norm(qn))
+                return False
 
     # Visualize results.
     if verbose:

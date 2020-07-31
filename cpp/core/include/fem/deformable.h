@@ -11,6 +11,7 @@
 #include "pd_energy/pd_element_energy.h"
 #include "pd_energy/pd_muscle_energy.h"
 #include "friction/frictional_boundary.h"
+#include "solver/pardiso_spd_solver.h"
 #include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
@@ -146,8 +147,8 @@ protected:
     virtual void ForwardNewton(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext,
         const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next,
         std::vector<int>& active_contact_idx) const;
-    virtual void ForwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext,
-        const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next,
+    virtual void ForwardProjectiveDynamics(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& a,
+        const VectorXr& f_ext, const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next,
         std::vector<int>& active_contact_idx) const;
 
     virtual void BackwardSemiImplicit(const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext, const real dt,
@@ -159,10 +160,9 @@ protected:
         const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
         const std::map<std::string, real>& options,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const;
-    virtual void BackwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext, const real dt,
-        const VectorXr& q_next, const VectorXr& v_next, const std::vector<int>& active_contact_idx,
-        const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
-        const std::map<std::string, real>& options,
+    virtual void BackwardProjectiveDynamics(const std::string& method, const VectorXr& q, const VectorXr& v, const VectorXr& a,
+        const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const std::vector<int>& active_contact_idx,
+        const VectorXr& dl_dq_next, const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
         VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const;
 
     virtual void QuasiStaticStateNewton(const std::string& method, const VectorXr& a, const VectorXr& f_ext,
@@ -184,7 +184,7 @@ private:
     const VectorXr QuasiStaticMatrixOp(const VectorXr& q, const VectorXr& a, const VectorXr& dq) const;
     const SparseMatrix QuasiStaticMatrix(const VectorXr& q, const VectorXr& a) const;
 
-    void SetupProjectiveDynamicsSolver(const real dt) const;
+    void SetupProjectiveDynamicsSolver(const std::string& method, const real dt, const std::map<std::string, real>& options) const;
     const VectorXr ProjectiveDynamicsLocalStep(const VectorXr& q_cur, const VectorXr& a_cur,
         const std::map<int, real>& dirichlet_with_friction) const;
 
@@ -197,7 +197,8 @@ private:
         const std::vector<std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>>& pd_backward_local_muscle_matrices,
         const VectorXr& dq_cur) const;
     const VectorXr PdLhsMatrixOp(const VectorXr& q, const std::map<int, real>& additional_dirichlet_boundary_condition) const;
-    const VectorXr PdLhsSolve(const VectorXr& rhs, const std::map<int, real>& additional_dirichlet_boundary_condition) const;
+    const VectorXr PdLhsSolve(const std::string& method, const VectorXr& rhs,
+        const std::map<int, real>& additional_dirichlet_boundary_condition) const;
 
     // Compute deformation gradient.
     const Eigen::Matrix<real, vertex_dim, element_dim> ScatterToElement(const VectorXr& q, const int element_idx) const;
@@ -209,8 +210,9 @@ private:
     // - q_next - h2m * (f_pd(q_next) + f_act(q_next, a)) = rhs.
     // - q_init is the intiial guess.
     // - Return: q_next.
-    const VectorXr PdNonlinearSolve(const VectorXr& q_init, const VectorXr& a, const real h2m, const VectorXr& rhs,
-        const std::map<int, real>& additional_dirichlet, const std::map<std::string, real>& options) const;
+    const VectorXr PdNonlinearSolve(const std::string& method, const VectorXr& q_init, const VectorXr& a,
+        const real h2m, const VectorXr& rhs, const std::map<int, real>& additional_dirichlet,
+        const std::map<std::string, real>& options) const;
 
     // Undeformed shape.
     Mesh<vertex_dim, element_dim> mesh_;
@@ -232,7 +234,9 @@ private:
     std::array<Eigen::Matrix<real, element_dim * vertex_dim, vertex_dim * vertex_dim>, element_dim> dF_dxkd_flattened_;
 
     // Projective-dynamics-related data members.
-    mutable std::array<Eigen::SimplicialLDLT<SparseMatrix>, vertex_dim> pd_solver_;
+    mutable std::array<PardisoSpdSolver, vertex_dim> pd_pardiso_solver_;
+    mutable std::array<Eigen::SimplicialLDLT<SparseMatrix>, vertex_dim> pd_eigen_solver_;
+
     mutable std::array<SparseMatrix, vertex_dim> pd_lhs_;
     mutable bool pd_solver_ready_;
     mutable std::vector<SparseMatrix> pd_A_, pd_At_;

@@ -20,11 +20,15 @@ def test_deformable_backward_3d(verbose):
     env = BenchmarkEnv3d(seed, folder, { 'refinement': 1 })
     deformable = env.deformable()
 
-    methods = ('newton_pcg', 'newton_cholesky', 'pd')
-    opts = ({ 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0, 'thread_ct': 4 },
+    methods = ['newton_pcg', 'newton_cholesky', 'pd_eigen']
+    opts = [{ 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0, 'thread_ct': 4 },
         { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0, 'thread_ct': 4 },
         { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0, 'thread_ct': 4,
-            'method': 1, 'bfgs_history_size': 10 })
+            'use_bfgs': 1, 'bfgs_history_size': 10 }]
+    if 'PARDISO_LIC_PATH' in os.environ:
+        methods += ['newton_pardiso', 'pd_pardiso']
+        opts.append(opts[1])
+        opts.append(opts[2])
 
     dofs = deformable.dofs()
     act_dofs = deformable.act_dofs()

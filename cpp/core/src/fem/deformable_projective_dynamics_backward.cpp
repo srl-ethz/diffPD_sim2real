@@ -125,11 +125,11 @@ const VectorXr Deformable<vertex_dim, element_dim>::ApplyProjectiveDynamicsLocal
 }
 
 template<int vertex_dim, int element_dim>
-void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& a,
-    const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next, const std::vector<int>& active_contact_idx,
-    const VectorXr& dl_dq_next, const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
-    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const {
-    // TODO: fix the contact model.
+void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::string& method, const VectorXr& q, const VectorXr& v,
+    const VectorXr& a, const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next,
+    const std::vector<int>& active_contact_idx, const VectorXr& dl_dq_next, const VectorXr& dl_dv_next,
+    const std::map<std::string, real>& options, VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext,
+    VectorXr& dl_dw) const {
     CheckError(!material_, "PD does not support material models.");
 
     CheckError(options.find("max_pd_iter") != options.end(), "Missing option max_pd_iter.");
@@ -137,23 +137,17 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
     CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
     CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
-    CheckError(options.find("method") != options.end(), "Missing option method.");
+    CheckError(options.find("use_bfgs") != options.end(), "Missing option use_bfgs.");
     const int max_pd_iter = static_cast<int>(options.at("max_pd_iter"));
     const real abs_tol = options.at("abs_tol");
     const real rel_tol = options.at("rel_tol");
     const int verbose_level = static_cast<int>(options.at("verbose"));
     const int thread_ct = static_cast<int>(options.at("thread_ct"));
     CheckError(max_pd_iter > 0, "Invalid max_pd_iter: " + std::to_string(max_pd_iter));
-    const int method = static_cast<int>(options.at("method"));
-    CheckError(0 <= method && method < 2, "Invalid method.");
-    if (verbose_level > 0) {
-        if (method == 0) std::cout << "Using constant Hessian approximation." << std::endl;
-        else if (method == 1) std::cout << "Using BFGS Hessian approximation." << std::endl;
-        else CheckError(false, "Should never happen: unsupported method.");
-    }
+    const bool use_bfgs = static_cast<bool>(options.at("use_bfgs"));
     int bfgs_history_size = 0;
     int max_ls_iter = 0;
-    if (method == 1) {
+    if (use_bfgs) {
         CheckError(options.find("bfgs_history_size") != options.end(), "Missing option bfgs_history_size");
         bfgs_history_size = static_cast<int>(options.at("bfgs_history_size"));
         CheckError(bfgs_history_size > 1, "Invalid bfgs_history_size.");
@@ -164,7 +158,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
 
     omp_set_num_threads(thread_ct);
     // Pre-factorize the matrix -- it will be skipped if the matrix has already been factorized.
-    SetupProjectiveDynamicsSolver(dt);
+    SetupProjectiveDynamicsSolver(method, dt, options);
 
     dl_dq = VectorXr::Zero(dofs_);
     dl_dv = VectorXr::Zero(dofs_);
@@ -264,13 +258,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
         }
 
         // Update.
-        if (method == 0) {
-            // Global step.
-            if (verbose_level > 1) Tic();
-            adjoint = PdLhsSolve(pd_rhs, additional_dirichlet);
-            for (const auto& pair : additional_dirichlet) adjoint(pair.first) = 0;
-            if (verbose_level > 1) Toc("Global step");
-        } else if (method == 1) {
+        if (use_bfgs) {
             // Use q_sol to compute q_sol_next.
             // BFGS-style update.
             // See https://en.wikipedia.org/wiki/Limited-memory_BFGS.
@@ -278,7 +266,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
             if (static_cast<int>(xi_history.size()) == 0) {
                 xi_history.push_back(adjoint);
                 gi_history.push_back(q);
-                adjoint = PdLhsSolve(pd_rhs, additional_dirichlet);
+                adjoint = PdLhsSolve(method, pd_rhs, additional_dirichlet);
                 for (const auto& pair : additional_dirichlet) adjoint(pair.first) = 0;
             } else {
                 si_history.push_back(adjoint - xi_history.back());
@@ -302,7 +290,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
                     q -= alphai * yi;
                 }
                 // H0k = PdLhsSolve(I);
-                VectorXr z = PdLhsSolve(q, additional_dirichlet);
+                VectorXr z = PdLhsSolve(method, q, additional_dirichlet);
                 auto sit = si_history.cbegin(), yit = yi_history.cbegin();
                 auto rhoit = rhoi_history.cbegin(), alphait = alphai_history.cbegin();
                 for (; sit != si_history.cend(); ++sit, ++yit, ++rhoit, ++alphait) {
@@ -318,7 +306,11 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const Vecto
                 for (const auto& pair : additional_dirichlet) adjoint(pair.first) = 0;
             }
         } else {
-            CheckError(false, "Should never happen: unsupported method.");
+            // Global step.
+            if (verbose_level > 1) Tic();
+            adjoint = PdLhsSolve(method, pd_rhs, additional_dirichlet);
+            for (const auto& pair : additional_dirichlet) adjoint(pair.first) = 0;
+            if (verbose_level > 1) Toc("Global step");
         }
     }
     VectorXr dl_drhs = adjoint;

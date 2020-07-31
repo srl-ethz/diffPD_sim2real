@@ -1,7 +1,7 @@
 #include "fem/deformable.h"
 #include "common/common.h"
 #include "solver/matrix_op.h"
-#include "solver/pardiso_solver.h"
+#include "solver/pardiso_spd_solver.h"
 #include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
@@ -89,9 +89,9 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
         dl_drhs = cholesky.solve(dl_dq_next_agg);
         CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
     } else if (method == "newton_pardiso") {
-#ifdef PARDISO_AVAILABLE
-        dl_drhs = PardisoSymmetricPositiveDefiniteSolver(op, dl_dq_next_agg, options);
-#endif
+        PardisoSpdSolver solver;
+        solver.Compute(op, options);
+        dl_drhs = solver.Solve(dl_dq_next_agg);
     } else {
         // Should never happen.
     }

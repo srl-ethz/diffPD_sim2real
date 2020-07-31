@@ -18,7 +18,7 @@ conda activate diff_pd
 If you would like to enable multi-threading, set the thread_ct in the options object in the python script. The examples below all use a default of 4 threads for parallel processes. Using 1 will force the program to run sequentially.
 
 ### (Optional) Using Pardiso for the linear solver
-Let `PARDISO_HOME` be the folder that you saved your Pardiso license file and the binary file. For example, if `/home/pardiso/pardiso.lic` and `/home/pardiso/libpardiso600-GNU720-X86-64.so` are your license and binary files, then `PARDISO_HOME` should be set to `/home/pardiso`.
+Let `PARDISO_HOME` be the folder that you saved your Pardiso license file and the binary file. For example, if `/home/pardiso/pardiso.lic` and `/home/pardiso/libpardiso600-GNU720-X86-64.so` are your license and binary files, then `PARDISO_HOME` should be set to `/home/pardiso`. Please note that the whole codebase relies on this particular Pardiso version --- newer or older Pardiso may cause some weird segmentation fault issues on the Python end. See the comments in `cpp/CMakeLists.txt` for details.
 - Set the environment variable `PARDISO_LIC_PATH`:
 ```
 export PARDISO_LIC_PATH=<PARDISO_HOME>
@@ -29,7 +29,7 @@ export PARDISOLICMESSAGE=1
 sudo apt-get install liblapack-dev
 sudo apt-get install libblas-dev
 ```
-As of the date this README is written, the version we use is `3.7.1-4ubuntu1`
+As of the date this README is written, the version we use is `3.7.1-4ubuntu1`:
 ```
 Reading package lists... Done
 Building dependency tree

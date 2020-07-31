@@ -1,7 +1,7 @@
 #include "fem/deformable.h"
 #include "common/common.h"
 #include "solver/matrix_op.h"
-#include "solver/pardiso_solver.h"
+#include "solver/pardiso_spd_solver.h"
 #include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
@@ -56,16 +56,18 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
         for (int i = 0; i < max_newton_iter; ++i) {
             const VectorXr new_rhs = (rhs - q_sol + h2m * force_sol).array() * selected.array();
             VectorXr dq = VectorXr::Zero(dofs_);
+            if (verbose_level > 1) Tic();
             const SparseMatrix op = NewtonMatrix(q_sol, a, h2m, augmented_dirichlet);
+            if (verbose_level > 1) Toc("Assemble NewtonMatrix");
             if (method == "newton_pcg") {
                 // Looks like Matrix operators are more accurate and allow for more advanced preconditioners.
                 if (verbose_level > 1) Tic();
                 Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper, Eigen::IncompleteCholesky<real>> cg;
                 cg.compute(op);
-                if (verbose_level > 1) Toc("Step 5: preconditioning");
+                if (verbose_level > 1) Toc("Newton-PCG: preconditioning");
                 if (verbose_level > 1) Tic();
                 dq = cg.solve(new_rhs);
-                if (verbose_level > 1) Toc("Step 5: solve the right-hand side");
+                if (verbose_level > 1) Toc("Newton-PCG: solve the right-hand side");
                 // For small problems, I noticed advanced preconditioners result in slightly less accurate solutions
                 // and triggers Eigen::NoConvergence, which means the max number of iterations has been used. However,
                 // for larger problems, IncompleteCholesky is a pretty good preconditioner that results in much fewer
@@ -76,15 +78,19 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                 if (verbose_level > 1) Tic();
                 Eigen::SimplicialLDLT<SparseMatrix> cholesky;
                 cholesky.compute(op);
-                if (verbose_level > 1) Toc("Step 5: Cholesky decomposition");
+                if (verbose_level > 1) Toc("Newton-Cholesky: Cholesky decomposition");
                 if (verbose_level > 1) Tic();
                 dq = cholesky.solve(new_rhs);
-                if (verbose_level > 1) Toc("Step 5: solve the right-hand side");
+                if (verbose_level > 1) Toc("Newton-Cholesky: solve the right-hand side");
                 CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
             } else if (method == "newton_pardiso") {
-#ifdef PARDISO_AVAILABLE
-                dq = PardisoSymmetricPositiveDefiniteSolver(op, new_rhs, options);
-#endif
+                if (verbose_level > 1) Tic();
+                PardisoSpdSolver solver;
+                solver.Compute(op, options);
+                if (verbose_level > 1) Toc("Newton-Pardiso: decomposition");
+                if (verbose_level > 1) Tic();
+                dq = solver.Solve(new_rhs);
+                if (verbose_level > 1) Toc("Newton-Pardiso: solve the right-hand side");
             } else {
                 // Should never happen.
                 CheckError(false, "Unsupported method.");
@@ -109,7 +115,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                 }
             }
             CheckError(!force_next.hasNaN(), "Elastic force has NaN.");
-            if (verbose_level > 1) Toc("Step 5: line search");
+            if (verbose_level > 1) Toc("line search");
 
             // Update.
             q_sol = q_sol_next;

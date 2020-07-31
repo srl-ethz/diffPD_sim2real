@@ -2,29 +2,30 @@
 #include "Eigen/Dense"
 #include "common/config.h"
 #include "common/common.h"
-#include "solver/pardiso_solver.h"
+#include "solver/pardiso_spd_solver.h"
 
 int main(int argc, char* argv[]) {
 #ifdef PARDISO_AVAILABLE
-    int n = 32;
-    if (argc > 1) n = std::stoi(std::string(argv[1]));
-    std::cout << "Solving a randomly generated " << n << " x " << n << " matrix" << std::endl;
-    MatrixXr A_dense = MatrixXr::Random(n, n);
-    SparseMatrix A_sparse = A_dense.sparseView(1, 0.9);
-    SparseMatrix At = A_sparse.transpose();
-    SparseMatrix AtA = At * A_sparse;
-    SparseMatrixElements nonzeros = FromSparseMatrix(AtA);
-    // Ensure this is SPD.
-    for (int i = 0; i < n; ++i) nonzeros.push_back(Eigen::Triplet<real>(i, i, 1));
-    const VectorXr b = VectorXr::Random(n);
-    const SparseMatrix A = ToSparseMatrix(n, n, nonzeros);
-    std::cout << A.nonZeros() * 100.0 / (n * n) << "% elements are nonzero." << std::endl;
-    const int thread_cnt = 4;
+    const int n = 12;
+    SparseMatrix AtA[2];
+    VectorXr b[2];
+    for (int i = 0; i < 2; ++i) {
+        const SparseMatrix A = MatrixXr::Random(n, n).sparseView(1, 0.25);
+        AtA[i] = A.transpose() * A;
+        b[i] = VectorXr::Random(n);
+    }
+    PardisoSpdSolver solver[2];
     std::map<std::string, real> options;
-    options["thread_ct"] = thread_cnt;
-    options["verbose"] = 1;
-    const VectorXr x = PardisoSymmetricPositiveDefiniteSolver(A, b, options);
-    std::cout << "Pardiso error: " << (A * x - b).norm() << std::endl;
+    options["thread_ct"] = 4;
+    for (int i = 0; i < 2; ++i)
+        solver[i].Compute(AtA[i], options);
+
+    for (int i = 0; i < 2; ++i) {
+        const VectorXr x = solver[i].Solve(b[i]);
+        const real abs_error = (AtA[i] * x - b[i]).norm();
+        const real rel_error = abs_error / b[i].norm();
+        std::cout << "abs_error: " << abs_error << ", rel_error: " << rel_error << std::endl;
+    }
 #else
     PrintInfo("The program compiles fine. Pardiso is not detected.");
 #endif

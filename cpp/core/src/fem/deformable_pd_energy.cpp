@@ -176,11 +176,15 @@ void Deformable<vertex_dim, element_dim>::PdEnergyForceDifferential(const Vector
 
     const int element_num = mesh_.NumOfElements();
     const int sample_num = element_dim;
+    const int dq_offset = static_cast<int>(dq.size());
     if (require_dq) {
+        int energy_cnt = 0;
+        dq.resize(dq_offset + pd_element_energies_.size() * element_num * sample_num * element_dim * vertex_dim * element_dim * vertex_dim);
         for (const auto& energy : pd_element_energies_) {
             for (int i = 0; i < element_num; ++i) {
                 const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
                 const auto deformed = ScatterToElement(q, i);
+                #pragma omp parallel for
                 for (int j = 0; j < sample_num; ++j) {
                     const auto F = DeformationGradient(deformed, j);
                     MatrixXr dF(vertex_dim * vertex_dim, element_dim * vertex_dim); dF.setZero();
@@ -194,14 +198,23 @@ void Deformable<vertex_dim, element_dim>::PdEnergyForceDifferential(const Vector
                     const auto dP_from_dF = energy->StressTensorDifferential(F) * dF;
                     const Eigen::Matrix<real, element_dim * vertex_dim, element_dim * vertex_dim> df_kd_from_dF
                         = dF_dxkd_flattened_[j] * dP_from_dF;
+                    const int offset = dq_offset
+                        + energy_cnt * element_num * sample_num * element_dim * vertex_dim * element_dim * vertex_dim
+                        + i * sample_num * element_dim * vertex_dim * element_dim * vertex_dim
+                        + j * element_dim * vertex_dim * element_dim * vertex_dim;
                     for (int k = 0; k < element_dim; ++k)
                         for (int d = 0; d < vertex_dim; ++d)
                             for (int s = 0; s < element_dim; ++s)
-                                for (int t = 0; t < vertex_dim; ++t)
-                                    dq.push_back(Eigen::Triplet<real>(vertex_dim * vi(k) + d,
-                                        vertex_dim * vi(s) + t, df_kd_from_dF(k * vertex_dim + d, s * vertex_dim + t)));
+                                for (int t = 0; t < vertex_dim; ++t) {
+                                    dq[offset + k * vertex_dim * element_dim * vertex_dim
+                                        + d * element_dim * vertex_dim
+                                        + s * vertex_dim + t]
+                                        = Eigen::Triplet<real>(vertex_dim * vi(k) + d,
+                                            vertex_dim * vi(s) + t, df_kd_from_dF(k * vertex_dim + d, s * vertex_dim + t));
+                                }
                 }
             }
+            ++energy_cnt;
         }
     }
 

@@ -4,10 +4,17 @@
 #include "Eigen/SparseCholesky"
 
 template<int vertex_dim, int element_dim>
-void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const real dt) const {
+void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const std::string& method, const real dt,
+    const std::map<std::string, real>& options) const {
     CheckError(!material_, "PD does not support material models.");
 
     if (pd_solver_ready_) return;
+
+    CheckError(options.find("thread_ct") != options.end(), "Missing parameter thread_ct.");
+    CheckError(method == "pd_eigen" || method == "pd_pardiso", "Invalid PD method: " + method);
+    const int thread_ct = static_cast<int>(options.at("thread_ct"));
+    omp_set_num_threads(thread_ct);
+
     // I + h2m * w_i * S'A'AS + h2m * w_i + h2m * w_i * S'A'M'MAS.
     // Assemble and pre-factorize the left-hand-side matrix.
     const int element_num = mesh_.NumOfElements();
@@ -101,8 +108,11 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
     // Assemble and pre-factorize the matrix.
     for (int i = 0; i < vertex_dim; ++i) {
         pd_lhs_[i] = ToSparseMatrix(vertex_num, vertex_num, nonzeros[i]);
-        pd_solver_[i].compute(pd_lhs_[i]);
-        CheckError(pd_solver_[i].info() == Eigen::Success, "Cholesky solver failed to factorize the matrix.");
+        pd_eigen_solver_[i].compute(pd_lhs_[i]);
+        CheckError(pd_eigen_solver_[i].info() == Eigen::Success, "Cholesky solver failed to factorize the matrix.");
+#ifdef PARDISO_AVAILABLE  
+        pd_pardiso_solver_[i].Compute(pd_lhs_[i], options);
+#endif
     }
 
     // Collision.
@@ -125,7 +135,8 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const re
         for (const auto& pair : frictional_boundary_vertex_indices_) {
             VectorXr ej = VectorXr::Zero(vertex_num);
             ej(pair.first) = 1;
-            AinvIc_[d].col(pair.second) = pd_solver_[d].solve(ej);
+            if (method == "pd_eigen") AinvIc_[d].col(pair.second) = pd_eigen_solver_[d].solve(ej);
+            else if (method == "pd_pardiso") AinvIc_[d].col(pair.second) = pd_pardiso_solver_[d].Solve(ej);
         }
     }
     pd_solver_ready_ = true;
@@ -230,28 +241,23 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
 }
 
 template<int vertex_dim, int element_dim>
-const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const VectorXr& q_init, const VectorXr& a, const real h2m,
-    const VectorXr& rhs, const std::map<int, real>& additional_dirichlet, const std::map<std::string, real>& options) const {
+const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::string& method,
+    const VectorXr& q_init, const VectorXr& a, const real h2m, const VectorXr& rhs,
+    const std::map<int, real>& additional_dirichlet, const std::map<std::string, real>& options) const {
     CheckError(options.find("max_pd_iter") != options.end(), "Missing option max_pd_iter.");
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
     CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
-    CheckError(options.find("method") != options.end(), "Missing option method.");
+    CheckError(options.find("use_bfgs") != options.end(), "Missing option use_bfgs.");
     const int max_pd_iter = static_cast<int>(options.at("max_pd_iter"));
     const real abs_tol = options.at("abs_tol");
     const real rel_tol = options.at("rel_tol");
     const int verbose_level = static_cast<int>(options.at("verbose"));
     CheckError(max_pd_iter > 0, "Invalid max_pd_iter: " + std::to_string(max_pd_iter));
-    const int method = static_cast<int>(options.at("method"));
-    CheckError(0 <= method && method < 2, "Invalid method.");
-    if (verbose_level > 0) {
-        if (method == 0) std::cout << "Using constant Hessian approximation." << std::endl;
-        else if (method == 1) std::cout << "Using BFGS Hessian approximation." << std::endl;
-        else CheckError(false, "Should never happen: unsupported method.");
-    }
+    const bool use_bfgs = static_cast<bool>(options.at("use_bfgs"));
     int bfgs_history_size = 0;
     int max_ls_iter = 0;
-    if (method == 1) {
+    if (use_bfgs) {
         CheckError(options.find("bfgs_history_size") != options.end(), "Missing option bfgs_history_size");
         bfgs_history_size = static_cast<int>(options.at("bfgs_history_size"));
         CheckError(bfgs_history_size > 1, "Invalid bfgs_history_size.");
@@ -296,14 +302,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const Vecto
         VectorXr pd_rhs = rhs + h2m * ProjectiveDynamicsLocalStep(q_sol, a, augmented_dirichlet);
         for (const auto& pair : augmented_dirichlet) pd_rhs(pair.first) = pair.second;
         if (verbose_level > 1) Toc("Local step");
-        if (method == 0) {
-            // Global step.
-            if (verbose_level > 1) Tic();
-            q_sol_next = PdLhsSolve(pd_rhs, additional_dirichlet);
-            force_next = PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
-            energy_next = eval_energy(q_sol_next, force_next);
-            if (verbose_level > 1) Toc("Global step");
-        } else if (method == 1) {
+        if (use_bfgs) {
             // Use q_sol to compute q_sol_next.
             // BFGS-style update.
             // See https://en.wikipedia.org/wiki/Limited-memory_BFGS.
@@ -311,7 +310,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const Vecto
             if (static_cast<int>(xi_history.size()) == 0) {
                 xi_history.push_back(q_sol);
                 gi_history.push_back(q);
-                q_sol_next = PdLhsSolve(pd_rhs, additional_dirichlet);
+                q_sol_next = PdLhsSolve(method, pd_rhs, additional_dirichlet);
                 force_next = PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
                 energy_next = eval_energy(q_sol_next, force_next);
             } else {
@@ -336,7 +335,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const Vecto
                     q -= alphai * yi;
                 }
                 // H0k = PdLhsSolve(I);
-                VectorXr z = PdLhsSolve(q, additional_dirichlet);
+                VectorXr z = PdLhsSolve(method, q, additional_dirichlet);
                 auto sit = si_history.cbegin(), yit = yi_history.cbegin();
                 auto rhoit = rhoi_history.cbegin(), alphait = alphai_history.cbegin();
                 for (; sit != si_history.cend(); ++sit, ++yit, ++rhoit, ++alphait) {
@@ -364,7 +363,12 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const Vecto
                 }
             }
         } else {
-            CheckError(false, "Should never happen: unsupported method.");
+            // Global step.
+            if (verbose_level > 1) Tic();
+            q_sol_next = PdLhsSolve(method, pd_rhs, additional_dirichlet);
+            force_next = PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
+            energy_next = eval_energy(q_sol_next, force_next);
+            if (verbose_level > 1) Toc("Global step");
         }
 
         // Check for convergence.
@@ -387,8 +391,9 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const Vecto
 }
 
 template<int vertex_dim, int element_dim>
-void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const VectorXr& q, const VectorXr& v, const VectorXr& a,
-    const VectorXr& f_ext, const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next,
+void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const std::string& method,
+    const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext, const real dt,
+    const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next,
     std::vector<int>& active_contact_idx) const {
     CheckError(!material_, "PD does not support material models.");
 
@@ -397,21 +402,14 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
     CheckError(options.find("verbose") != options.end(), "Missing option verbose.");
     CheckError(options.find("thread_ct") != options.end(), "Missing option thread_ct.");
-    CheckError(options.find("method") != options.end(), "Missing option method.");
+    CheckError(options.find("use_bfgs") != options.end(), "Missing option use_bfgs.");
     const int max_pd_iter = static_cast<int>(options.at("max_pd_iter"));
-    const int verbose_level = static_cast<int>(options.at("verbose"));
     const int thread_ct = static_cast<int>(options.at("thread_ct"));
     CheckError(max_pd_iter > 0, "Invalid max_pd_iter: " + std::to_string(max_pd_iter));
-    const int method = static_cast<int>(options.at("method"));
-    CheckError(0 <= method && method < 2, "Invalid method.");
-    if (verbose_level > 0) {
-        if (method == 0) std::cout << "Using constant Hessian approximation." << std::endl;
-        else if (method == 1) std::cout << "Using BFGS Hessian approximation." << std::endl;
-        else CheckError(false, "Should never happen: unsupported method.");
-    }
+    const bool use_bfgs = static_cast<bool>(options.at("use_bfgs"));
     int bfgs_history_size = 0;
     int max_ls_iter = 0;
-    if (method == 1) {
+    if (use_bfgs) {
         CheckError(options.find("bfgs_history_size") != options.end(), "Missing option bfgs_history_size");
         bfgs_history_size = static_cast<int>(options.at("bfgs_history_size"));
         CheckError(bfgs_history_size > 1, "Invalid bfgs_history_size.");
@@ -422,7 +420,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
 
     omp_set_num_threads(thread_ct);
     // Pre-factorize the matrix -- it will be skipped if the matrix has already been factorized.
-    SetupProjectiveDynamicsSolver(dt);
+    SetupProjectiveDynamicsSolver(method, dt, options);
 
     // q_next = q + hv + h2m * (f_ext + f_ela(q_next) + f_state(q, v) + f_pd(q_next) + f_act(q_next, a)).
     // q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, a)) = q + hv + h2m * f_ext + h2m * f_state(q, v).
@@ -438,7 +436,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const Vector
                 additional_dirichlet[idx * vertex_dim + i] = q(idx * vertex_dim + i);
         }
         // Initial guess.
-        const VectorXr q_sol = PdNonlinearSolve(q, a, h2m, rhs, additional_dirichlet, options);
+        const VectorXr q_sol = PdNonlinearSolve(method, q, a, h2m, rhs, additional_dirichlet, options);
         const VectorXr force_sol = PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
 
         // Now verify the contact conditions.
@@ -496,15 +494,21 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdLhsMatrixOp(const VectorXr
 }
 
 template<int vertex_dim, int element_dim>
-const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const VectorXr& rhs,
+const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const std::string& method, const VectorXr& rhs,
     const std::map<int, real>& additional_dirichlet_boundary_condition) const {
+    CheckError(method == "pd_eigen" || method == "pd_pardiso", "Invalid PD method: " + method);
+
     const int vertex_num = mesh_.NumOfVertices();
     const Eigen::Matrix<real, vertex_dim, -1> rhs_reshape = Eigen::Map<
         const Eigen::Matrix<real, vertex_dim, -1>>(rhs.data(), vertex_dim, vertex_num);
     Eigen::Matrix<real, vertex_dim, -1> sol = Eigen::Matrix<real, vertex_dim, -1>::Zero(vertex_dim, vertex_num);
     for (int j = 0; j < vertex_dim; ++j) {
-        sol.row(j) = pd_solver_[j].solve(VectorXr(rhs_reshape.row(j)));
-        CheckError(pd_solver_[j].info() == Eigen::Success, "Cholesky solver failed.");
+        if (method == "pd_eigen") {
+            sol.row(j) = pd_eigen_solver_[j].solve(VectorXr(rhs_reshape.row(j)));
+            CheckError(pd_eigen_solver_[j].info() == Eigen::Success, "Cholesky solver failed.");
+        } else if (method == "pd_pardiso") {
+            sol.row(j) = pd_pardiso_solver_[j].Solve(VectorXr(rhs_reshape.row(j)));
+        }
     }
     const VectorXr y1 = Eigen::Map<const VectorXr>(sol.data(), sol.size());
     if (additional_dirichlet_boundary_condition.empty()) return y1;

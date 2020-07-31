@@ -135,7 +135,7 @@ void Deformable<vertex_dim, element_dim>::Forward(const std::string& method, con
     const real dt, const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next,
     std::vector<int>& active_contact_idx) const {
     if (method == "semi_implicit") ForwardSemiImplicit(q, v, a, f_ext, dt, options, q_next, v_next, active_contact_idx);
-    else if (method == "pd") ForwardProjectiveDynamics(q, v, a, f_ext, dt, options, q_next, v_next, active_contact_idx);
+    else if (BeginsWith(method, "pd")) ForwardProjectiveDynamics(method, q, v, a, f_ext, dt, options, q_next, v_next, active_contact_idx);
     else if (BeginsWith(method, "newton")) ForwardNewton(method, q, v, a, f_ext, dt, options, q_next, v_next, active_contact_idx);
     else PrintError("Unsupported forward method: " + method);
 }
@@ -149,8 +149,8 @@ void Deformable<vertex_dim, element_dim>::Backward(const std::string& method, co
     if (method == "semi_implicit")
         BackwardSemiImplicit(q, v, a, f_ext, dt, q_next, v_next, active_contact_idx, dl_dq_next, dl_dv_next, options,
             dl_dq, dl_dv, dl_da, dl_df_ext, dl_dw);
-    else if (method == "pd")
-        BackwardProjectiveDynamics(q, v, a, f_ext, dt, q_next, v_next, active_contact_idx, dl_dq_next, dl_dv_next, options,
+    else if (BeginsWith(method, "pd"))
+        BackwardProjectiveDynamics(method, q, v, a, f_ext, dt, q_next, v_next, active_contact_idx, dl_dq_next, dl_dv_next, options,
             dl_dq, dl_dv, dl_da, dl_df_ext, dl_dw);
     else if (BeginsWith(method, "newton"))
         BackwardNewton(method, q, v, a, f_ext, dt, q_next, v_next, active_contact_idx, dl_dq_next, dl_dv_next, options,
