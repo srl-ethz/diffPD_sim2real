@@ -7,7 +7,10 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-add_definitions("-Wall")
+# Pardiso requires stack variables to be aligned.
+# Thanks to Fish for figuring out the flag -mpreferred-stack-boundary=4
+# This magic number is suitable only for libpardiso600-GNU720-X86-64.so
+add_definitions("-Wall -mpreferred-stack-boundary=4")
 set(GCC_COVERAGE_COMPILE_FLAGS "-Wl,--no-as-needed")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}")
 
