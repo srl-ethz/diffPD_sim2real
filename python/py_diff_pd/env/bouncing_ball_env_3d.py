@@ -30,14 +30,15 @@ class BouncingBallEnv3d(EnvBase):
         cell_nums = (refinement, refinement, refinement)
         origin = ndarray([0, 0, 0])
         node_nums = [n + 1 for n in cell_nums]
-        dx = 0.1 / refinement
+        radius = 0.05
+        dx = radius * 2 / refinement
         bin_file_name = folder / 'mesh.bin'
         voxels = np.ones(cell_nums)
         for i in range(cell_nums[0]):
             for j in range(cell_nums[1]):
                 for k in range(cell_nums[2]):
                     cell_center = ndarray([(i + 0.5) * dx, (j + 0.5) * dx, (k + 0.5) * dx])
-                    if np.linalg.norm(cell_center - ndarray([0.05, 0.05, 0.05])) > 0.05:
+                    if np.linalg.norm(cell_center - ndarray([radius, radius, radius])) > radius:
                         voxels[i][j][k] = 0
         generate_hex_mesh(voxels, dx, origin, bin_file_name)
         mesh = Mesh3d()

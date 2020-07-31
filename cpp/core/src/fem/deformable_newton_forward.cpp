@@ -54,6 +54,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
         real energy_sol = eval_energy(q_sol, force_sol);
         bool success = false;
         for (int i = 0; i < max_newton_iter; ++i) {
+            if (verbose_level > 0) std::cout << "Newton's iteration: " << i << std::endl;
             const VectorXr new_rhs = (rhs - q_sol + h2m * force_sol).array() * selected.array();
             VectorXr dq = VectorXr::Zero(dofs_);
             if (verbose_level > 1) Tic();
@@ -109,7 +110,8 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                 q_sol_next = q_sol + step_size * dq;
                 force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
                 energy_next = eval_energy(q_sol_next, force_next);
-                if (verbose_level > 1) {
+                if (verbose_level > 0) std::cout << "Line search iteration: " << j << std::endl;
+                else if (verbose_level > 1) {
                     std::cout << "Line search iteration: " << j << ", step size: " << step_size << std::endl;
                     std::cout << "energ_sol: " << energy_sol << ", " << "energy_next: " << energy_next << std::endl;
                 }
