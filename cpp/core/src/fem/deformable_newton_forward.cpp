@@ -32,8 +32,9 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
     const real h = dt;
     const real h2m = dt * dt / (cell_volume_ * density_);
     const VectorXr rhs = q + h * v + h2m * f_ext + h2m * ForwardStateForce(q, v);
-    const int max_contact_iter = 20;
+    const int max_contact_iter = 5;
     for (int contact_iter = 0; contact_iter < max_contact_iter; ++contact_iter) {
+        if (verbose_level > 0) std::cout << "Contact iteration " << contact_iter << std::endl;
         // Fix dirichlet_ + active_contact_nodes.
         std::map<int, real> augmented_dirichlet = dirichlet_;
         for (const int idx : active_contact_idx) {
@@ -48,15 +49,25 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
             selected(pair.first) = 0;
         }
         VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
-        auto eval_energy = [&](const VectorXr& q_cur, const VectorXr& f_cur){
-            return ((q_cur - h2m * f_cur - rhs).array() * selected.array()).square().sum();
+        // We aim to use Newton's method to minimize the following energy:
+        // 0.5 * q_next^2 + h2m * (E_ela(q_next) + E_pd(q_next) + E_act(q_next, a)) - rhs * q_next.
+        real energy_sol = ElasticEnergy(q_sol) + ComputePdEnergy(q_sol) + ActuationEnergy(q_next, a);
+        auto eval_obj = [&](const VectorXr& q_cur, const real energy_cur){
+            return 0.5 * q_cur.dot(q_cur) + h2m * energy_cur - rhs.dot(q_cur);
         };
-        real energy_sol = eval_energy(q_sol, force_sol);
+        real obj_sol = eval_obj(q_sol, energy_sol);
+        VectorXr grad_sol = (q_sol - rhs - h2m * force_sol).array() * selected.array();
+        // At each Newton's iteration, we maintain:
+        // - q_sol
+        // - force_sol
+        // - energy_sol
+        // - obj_sol
+        // - grad_sol
         bool success = false;
         for (int i = 0; i < max_newton_iter; ++i) {
             if (verbose_level > 0) std::cout << "Newton's iteration: " << i << std::endl;
-            const VectorXr new_rhs = (rhs - q_sol + h2m * force_sol).array() * selected.array();
-            VectorXr dq = VectorXr::Zero(dofs_);
+            // Newton's direction: dq = H^{-1} * grad.
+            VectorXr newton_direction = VectorXr::Zero(dofs_);
             if (verbose_level > 1) Tic();
             const SparseMatrix op = NewtonMatrix(q_sol, a, h2m, augmented_dirichlet);
             if (verbose_level > 1) Toc("Assemble NewtonMatrix");
@@ -67,13 +78,13 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                 cg.compute(op);
                 if (verbose_level > 1) Toc("Newton-PCG: preconditioning");
                 if (verbose_level > 1) Tic();
-                dq = cg.solve(new_rhs);
+                newton_direction = cg.solve(grad_sol);
                 if (verbose_level > 1) Toc("Newton-PCG: solve the right-hand side");
                 // For small problems, I noticed advanced preconditioners result in slightly less accurate solutions
                 // and triggers Eigen::NoConvergence, which means the max number of iterations has been used. However,
                 // for larger problems, IncompleteCholesky is a pretty good preconditioner that results in much fewer
-                // number of iterations. So my decision is to include NoConvergence in the test below.
-                CheckError(cg.info() == Eigen::Success || cg.info() == Eigen::NoConvergence, "PCG solver failed.");
+                // number of iterations.
+                CheckError(cg.info() == Eigen::Success, "PCG solver failed.");
             } else if (method == "newton_cholesky") {
                 // Cholesky.
                 if (verbose_level > 1) Tic();
@@ -81,7 +92,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                 cholesky.compute(op);
                 if (verbose_level > 1) Toc("Newton-Cholesky: Cholesky decomposition");
                 if (verbose_level > 1) Tic();
-                dq = cholesky.solve(new_rhs);
+                newton_direction = cholesky.solve(grad_sol);
                 if (verbose_level > 1) Toc("Newton-Cholesky: solve the right-hand side");
                 CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
             } else if (method == "newton_pardiso") {
@@ -90,43 +101,81 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                 solver.Compute(op, options);
                 if (verbose_level > 1) Toc("Newton-Pardiso: decomposition");
                 if (verbose_level > 1) Tic();
-                dq = solver.Solve(new_rhs);
+                newton_direction = solver.Solve(grad_sol);
                 if (verbose_level > 1) Toc("Newton-Pardiso: solve the right-hand side");
             } else {
                 // Should never happen.
                 CheckError(false, "Unsupported method.");
             }
-            if (verbose_level > 0) std::cout << "|dq| = " << dq.norm() << std::endl;
 
-            // Line search.
-            if (verbose_level > 1) Tic();
-            real step_size = 1;
-            VectorXr q_sol_next = q_sol + step_size * dq;
-            VectorXr force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
-            real energy_next = eval_energy(q_sol_next, force_next);
-            for (int j = 0; j < max_ls_iter; ++j) {
-                if (!force_next.hasNaN() && energy_next < energy_sol) break;
-                step_size /= 2;
-                q_sol_next = q_sol + step_size * dq;
-                force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
-                energy_next = eval_energy(q_sol_next, force_next);
-                if (verbose_level > 0) std::cout << "Line search iteration: " << j << std::endl;
-                else if (verbose_level > 1) {
-                    std::cout << "Line search iteration: " << j << ", step size: " << step_size << std::endl;
-                    std::cout << "energ_sol: " << energy_sol << ", " << "energy_next: " << energy_next << std::endl;
+            // Check if definiteness fix is needed.
+            const real eigvalue = newton_direction.dot(op * newton_direction) / newton_direction.dot(newton_direction);
+            if (eigvalue <= 0) {
+                if (verbose_level > 1) Tic();
+                // The matrix is now indefinite. Ideally, we should apply definiteness fix tricks, e.g., [Teran et al 05]
+                // to compute a descend direction. For now we will simply switch to the steepest descent algorithm.
+                newton_direction = grad_sol;
+                if (verbose_level > 2) {
+                    // Check if the gradients make sense.
+                    for (const real eps : { 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6 }) {
+                        const VectorXr q_sol_perturbed = q_sol - eps * grad_sol;
+                        const real energy_sol_perturbed = ElasticEnergy(q_sol_perturbed)
+                            + ComputePdEnergy(q_sol_perturbed) + ActuationEnergy(q_sol_perturbed, a);
+                        const real obj_sol_perturbed = eval_obj(q_sol_perturbed, energy_sol_perturbed);
+                        const real obj_diff_numerical = obj_sol_perturbed - obj_sol;
+                        const real obj_diff_analytical = -eps * grad_sol.dot(grad_sol);
+                        std::cout << "eps: " << eps << ", numerical: " << obj_diff_numerical
+                            << ", analytical: " << obj_diff_analytical << std::endl;
+                    }
+                }
+                if (verbose_level > 1) Toc("Definiteness fix");
+                if (verbose_level > 0) {
+                    std::cout << "Indefinite matrix: " << eigvalue << ", |newton_direction| = " << newton_direction.norm() << std::endl;
                 }
             }
-            CheckError(!force_next.hasNaN(), "Elastic force has NaN.");
+
+            // Line search --- keep in mind that grad/newton_direction points to the direction that *increases* the objective.
+            if (verbose_level > 1) Tic();
+            real step_size = 1;
+            VectorXr q_sol_next = q_sol - step_size * newton_direction;
+            real energy_next = ElasticEnergy(q_sol_next) + ComputePdEnergy(q_sol_next) + ActuationEnergy(q_sol_next, a);
+            real obj_next = eval_obj(q_sol_next, energy_next);
+            const real gamma = ToReal(1e-4);
+            bool ls_success = false;
+            for (int j = 0; j < max_ls_iter; ++j) {
+                // Directional gradient: obj(q_sol - step_size * newton_direction)
+                //                     = obj_sol - step_size * newton_direction.dot(grad_sol)
+                const real obj_cond = obj_sol - gamma * step_size * grad_sol.dot(newton_direction);
+                const bool descend_condition = !std::isnan(obj_next) && obj_next < obj_cond;
+                if (descend_condition) {
+                    ls_success = true;
+                    break;
+                }
+                step_size /= 2;
+                q_sol_next = q_sol - step_size * newton_direction;
+                energy_next = ElasticEnergy(q_sol_next) + ComputePdEnergy(q_sol_next) + ActuationEnergy(q_sol_next, a);
+                obj_next = eval_obj(q_sol_next, energy_next);
+                if (verbose_level > 0) std::cout << "Line search iteration: " << j << std::endl;
+                if (verbose_level > 1) {
+                    std::cout << "step size: " << step_size << std::endl;
+                    std::cout << "obj_sol: " << obj_sol << ", "
+                        << "obj_cond: " << obj_cond << ", "
+                        << "obj_next: " << obj_next << std::endl;
+                }
+            }
             if (verbose_level > 1) Toc("line search");
+            CheckError(ls_success, "Line search fails after 10 trials.");
 
             // Update.
+            if (verbose_level > 1) std::cout << "obj_sol = " << obj_sol << ", obj_next = " << obj_next << std::endl;
             q_sol = q_sol_next;
-            force_sol = force_next;
+            force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
             energy_sol = energy_next;
+            obj_sol = obj_next;
+            grad_sol = (q_sol - rhs - h2m * force_sol).array() * selected.array();
 
-            // Check for convergence.
-            const VectorXr lhs = q_sol_next - h2m * force_next;
-            const real abs_error = VectorXr((lhs - rhs).array() * selected.array()).norm();
+            // Check for convergence --- gradients must be zero.
+            const real abs_error = grad_sol.norm();
             const real rhs_norm = VectorXr(selected.array() * rhs.array()).norm();
             if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
             if (abs_error <= rel_tol * rhs_norm + abs_tol) {
@@ -147,24 +196,29 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
             const auto node_q = q_sol.segment(node_idx * vertex_dim, vertex_dim);
             const real dist = frictional_boundary_->GetDistance(node_q);
             const auto node_f = ext_forces.segment(node_idx * vertex_dim, vertex_dim);
-            if (past_active_contact_idx.find(node_idx) != past_active_contact_idx.end()) {
-                if (node_f(vertex_dim - 1) >= 0) active_contact_idx.push_back(node_idx);
+            const real contact_force = (frictional_boundary_->GetLocalFrame(node_q).transpose() * node_f)(vertex_dim - 1);
+            const bool active = past_active_contact_idx.find(node_idx) != past_active_contact_idx.end();
+            // There are two possible cases violating the condition:
+            // - an active node_idx requiring negative contact forces;
+            // - an inactive node_idx having negative distance.
+            if (active) {
+                if (contact_force >= 0) active_contact_idx.push_back(node_idx);
                 else good = false;
             } else {
-                // Check if distance is above the collision plane.
                 if (dist < 0) {
                     active_contact_idx.push_back(node_idx);
                     good = false;
                 }
             }
         }
-        if (good) {
+        const bool final_iter = contact_iter == max_contact_iter - 1;
+        if (good || final_iter) {
             q_next = q_sol;
             v_next = (q_next - q) / h;
+            if (!good && final_iter) PrintWarning("The contact set fails to converge after 5 iterations.");
             return;
         }
     }
-    CheckError(false, "Newton's method fails to resolve contacts after 20 iterations.");
 }
 
 template<int vertex_dim, int element_dim>

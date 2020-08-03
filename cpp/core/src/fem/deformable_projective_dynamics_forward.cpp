@@ -405,6 +405,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const std::s
     CheckError(options.find("use_bfgs") != options.end(), "Missing option use_bfgs.");
     const int max_pd_iter = static_cast<int>(options.at("max_pd_iter"));
     const int thread_ct = static_cast<int>(options.at("thread_ct"));
+    const int verbose_level = static_cast<int>(options.at("verbose"));
     CheckError(max_pd_iter > 0, "Invalid max_pd_iter: " + std::to_string(max_pd_iter));
     const bool use_bfgs = static_cast<bool>(options.at("use_bfgs"));
     int bfgs_history_size = 0;
@@ -427,8 +428,9 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const std::s
     const real h = dt;
     const real h2m = dt * dt / (cell_volume_ * density_);
     const VectorXr rhs = q + h * v + h2m * f_ext + h2m * ForwardStateForce(q, v);
-    const int max_contact_iter = 20;
+    const int max_contact_iter = 5;
     for (int contact_iter = 0; contact_iter < max_contact_iter; ++contact_iter) {
+        if (verbose_level > 0) std::cout << "Contact iteration " << contact_iter << std::endl;
         // Fix dirichlet_ + active_contact_nodes.
         std::map<int, real> additional_dirichlet;
         for (const int idx : active_contact_idx) {
@@ -450,24 +452,29 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const std::s
             const auto node_q = q_sol.segment(node_idx * vertex_dim, vertex_dim);
             const real dist = frictional_boundary_->GetDistance(node_q);
             const auto node_f = ext_forces.segment(node_idx * vertex_dim, vertex_dim);
-            if (past_active_contact_idx.find(node_idx) != past_active_contact_idx.end()) {
-                if (node_f(vertex_dim - 1) >= 0) active_contact_idx.push_back(node_idx);
+            const real contact_force = (frictional_boundary_->GetLocalFrame(node_q).transpose() * node_f)(vertex_dim - 1);
+            const bool active = past_active_contact_idx.find(node_idx) != past_active_contact_idx.end();
+            // There are two possible cases violating the condition:
+            // - an active node_idx requiring negative contact forces;
+            // - an inactive node_idx having negative distance.
+            if (active) {
+                if (contact_force >= 0) active_contact_idx.push_back(node_idx);
                 else good = false;
             } else {
-                // Check if distance is above the collision plane.
                 if (dist < 0) {
                     active_contact_idx.push_back(node_idx);
                     good = false;
                 }
             }
         }
-        if (good) {
+        const bool final_iter = contact_iter == max_contact_iter - 1;
+        if (good || final_iter) {
             q_next = q_sol;
             v_next = (q_next - q) / h;
+            if (!good && final_iter) PrintWarning("The contact set fails to converge after 5 iterations.");
             return;
         }
     }
-    CheckError(false, "Newton's method fails to resolve contacts after 20 iterations.");
 }
 
 template<int vertex_dim, int element_dim>

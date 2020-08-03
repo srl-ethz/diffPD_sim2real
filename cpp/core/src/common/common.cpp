@@ -207,7 +207,7 @@ void SaveEigenVectorToBinaryFile(const VectorXr& v, const std::string& file_name
     for (int i = 0; i < n; ++i) Save<real>(fout, v(i));
 }
 
-const VectorXr LoadEigenVectorToBinaryFile(const std::string& file_name) {
+const VectorXr LoadEigenVectorFromBinaryFile(const std::string& file_name) {
     std::ifstream fin(file_name);
     const int n = Load<int>(fin);
     VectorXr v = VectorXr::Zero(n);
