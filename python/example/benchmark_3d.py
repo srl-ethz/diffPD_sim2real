@@ -17,19 +17,21 @@ from py_diff_pd.env.benchmark_env_3d import BenchmarkEnv3d
 def test_benchmark_3d(verbose):
     seed = 42
     folder = Path('benchmark_3d')
-    env = BenchmarkEnv3d(seed, folder, { 'refinement': 8 })
+    env = BenchmarkEnv3d(seed, folder, { 'refinement': 1 })
     deformable = env.deformable()
 
     # Setting thread number.
     max_threads = int(subprocess.run(['nproc', '--all'], capture_output=True).stdout)
-    thread_cts = [4, 8, 16, 32]
+    thread_cts = [2, 4, 8]
 
-    methods = ('newton_pcg', 'newton_cholesky', 'pd')
+    methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen', 'pd_no_bfgs')
     opts = ({ 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
         { 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
-        # Disable line search in PD: we are using quadratic material models. 
+        # Disable line search in PD: we are using quadratic material models.
         { 'max_pd_iter': 5000, 'max_ls_iter': 1, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4,
-            'method': 1, 'bfgs_history_size': 10 })
+            'use_bfgs': 1, 'bfgs_history_size': 10 },
+        { 'max_pd_iter': 5000, 'max_ls_iter': 1, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4,
+            'use_bfgs': 0, 'bfgs_history_size': 10 })
 
     dofs = deformable.dofs()
     act_dofs = deformable.act_dofs()
@@ -77,9 +79,14 @@ def test_benchmark_3d(verbose):
 
         for method, opt in zip(methods, opts):
             opt['rel_tol'] = rel_tol
+            if method == 'pd_no_bfgs':
+                method = 'pd_eigen'
             for thread_ct in thread_cts:
                 opt['thread_ct'] = thread_ct
-                meth_thread_num = '{}_{}threads'.format(method, thread_ct)
+                if 'pd' in method and not opt['use_bfgs']:
+                    meth_thread_num = 'pd_no_bfgs_{}threads'.format(thread_ct)
+                else:
+                    meth_thread_num = '{}_{}threads'.format(method, thread_ct)
 
                 loss, grad, info = env.simulate(dt, frame_num, method, opt, q0, v0, [a0 for _ in range(frame_num)],
                     [f0 for _ in range(frame_num)], require_grad=True, vis_folder=None)
@@ -105,5 +112,5 @@ def test_benchmark_3d(verbose):
 
 
 if __name__ == '__main__':
-    verbose = True
+    verbose = False
     test_benchmark_3d(verbose)
