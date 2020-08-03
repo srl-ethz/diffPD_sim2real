@@ -30,9 +30,6 @@ if __name__ == '__main__':
     folder = Path('benchmark_3d')
     rel_tols, forward_times, backward_times, losses, grads = pickle.load(open(folder / 'table.bin', 'rb'))
 
-    # Load additional PD data w/o speedup.
-    _, pd_wo_speedup_forward_times, pd_wo_speedup_backward_times, _, _ = pickle.load(open(folder / 'table_pd_wo_bfgs.bin', 'rb'))
-
     thread_cts = [2, 4, 8]
     forward_backward_times = {}
     for method in forward_times:
@@ -61,6 +58,7 @@ if __name__ == '__main__':
                 'loss': losses[method][idx],
                 '|grad|': np.linalg.norm(grads[method][idx]) }))
 
+
     fig = plt.figure(figsize=(18, 7))
     ax_fb = fig.add_subplot(131)
     ax_f = fig.add_subplot(132)
@@ -75,25 +73,23 @@ if __name__ == '__main__':
         ax.set_xlabel('time (s)')
         ax.set_ylabel('relative error')
         ax.set_yscale('log')
-        for method, method_ref_name in zip(['newton_pcg', 'newton_cholesky', 'pd'],
-            ['Newton-PCG', 'Newton-Cholesky', 'DiffPD (Ours)']):
-            if 'pd' in method:
+        for method, method_ref_name in zip(['newton_pcg', 'newton_cholesky', 'pd_eigen', 'pd_no_bfgs'],
+            ['Newton-PCG', 'Newton-Cholesky', 'DiffPD (Ours)', 'DiffPD w/o quasi-Newton']):
+            if 'eigen' in method:
                 color = 'tab:green'
             elif 'pcg' in method:
                 color = 'tab:blue'
             elif 'cholesky' in method:
                 color = 'tab:red'
-            for thread_ct in thread_cts:
-                idx = thread_cts.index(thread_ct)
+            elif 'bfgs' in method:
+                color = 'tab:olive'
+            if method == 'pd_no_bfgs' and title != 'backward':
+                continue
+            for idx, thread_ct in enumerate(thread_cts):
                 meth_thread_num = '{} ({} threads)'.format(method_ref_name, thread_ct)
                 ax.plot(t['{}_{}threads'.format(method, thread_ct)], rel_tols, label=meth_thread_num,
                     color=color, dashes=dash_list[idx], linewidth=2)
-        if title == 'backward':
-            for idx, thread_ct in enumerate(thread_cts):
-                pd_wo_speedup_backward_time = pd_wo_speedup_backward_times['pd_{}threads'.format(thread_ct)]
-                ax.plot(pd_wo_speedup_backward_time, rel_tols[:len(pd_wo_speedup_backward_time)],
-                    label='DiffPD w/o quasi-Newton ({} threads)'.format(thread_ct),
-                    color='tab:olive', dashes=dash_list[idx], linewidth=2)
+
         ax.grid(True)
         ax.set_title(title)
         handles, labels = ax.get_legend_handles_labels()
@@ -119,7 +115,7 @@ if __name__ == '__main__':
         ax.invert_xaxis()
         if 'grad' in title:
             ax.set_yscale('log')
-        for method, method_ref_name in zip(['newton_pcg', 'newton_cholesky', 'pd'], ['Newton-PCG', 'Newton-Cholesky', 'DiffPD (Ours)']):
+        for method, method_ref_name in zip(['newton_pcg', 'newton_cholesky', 'pd_eigen'], ['Newton-PCG', 'Newton-Cholesky', 'DiffPD (Ours)']):
             if 'pd' in method:
                 color = 'tab:green'
             elif 'pcg' in method:
