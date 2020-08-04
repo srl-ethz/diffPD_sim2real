@@ -165,8 +165,12 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                         << "obj_next - obj_sol: " << obj_next - obj_sol << std::endl;
                 }
             }
-            if (verbose_level > 1) Toc("line search");
-            CheckError(ls_success, "Line search fails after " + std::to_string(max_ls_iter) + " trials.");
+            if (verbose_level > 1) {
+                Toc("line search");
+                if (!ls_success) {
+                    PrintWarning("Line search fails after " + std::to_string(max_ls_iter) + " trials.");
+                }
+            }
 
             // Update.
             if (verbose_level > 1) std::cout << "obj_sol = " << obj_sol << ", obj_next = " << obj_next << std::endl;
