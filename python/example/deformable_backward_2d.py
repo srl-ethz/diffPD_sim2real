@@ -16,8 +16,8 @@ from py_diff_pd.env.benchmark_env_2d import BenchmarkEnv2d
 def test_deformable_backward_2d(verbose):
     seed = 42
     folder = Path('deformable_backward_2d')
-    refinement = 2
-    youngs_modulus = 1e6
+    refinement = 1
+    youngs_modulus = 1e4
     poissons_ratio = 0.45
     env = BenchmarkEnv2d(seed, folder, {
         'refinement': refinement,
@@ -45,8 +45,8 @@ def test_deformable_backward_2d(verbose):
     dt = 3e-2
     frame_num = 30
     eps = 1e-8
-    atol = 1e-4
-    rtol = 1e-2
+    atol = 1e-5
+    rtol = 5e-2
     def skip_var(dof):
         return env.is_dirichlet_dof(dof)
 

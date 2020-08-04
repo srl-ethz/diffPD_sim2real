@@ -17,7 +17,7 @@ from py_diff_pd.env.benchmark_env_3d import BenchmarkEnv3d
 def test_deformable_backward_3d(verbose):
     seed = 42
     folder = Path('deformable_backward_3d')
-    env = BenchmarkEnv3d(seed, folder, { 'refinement': 1 })
+    env = BenchmarkEnv3d(seed, folder, { 'refinement': 1, 'youngs_modulus': 1e4, 'poissons_ratio': 0.4 })
     deformable = env.deformable()
 
     methods = ['newton_pcg', 'newton_cholesky', 'pd_eigen']
@@ -45,7 +45,7 @@ def test_deformable_backward_3d(verbose):
         grads[method] = []
 
     dt = 0.01
-    frame_num = 25
+    frame_num = 10
     for method, opt in zip(methods, opts):
         if verbose:
             print_info('method: {}'.format(method))
@@ -125,9 +125,9 @@ def test_deformable_backward_3d(verbose):
             os.system('eog {}.gif'.format(folder / method))
 
     # Check gradients.
-    eps = 1e-6
+    eps = 1e-4
     atol = 1e-4
-    rtol = 1e-2
+    rtol = 5e-2
     def skip_var(dof):
         return env.is_dirichlet_dof(dof)
 

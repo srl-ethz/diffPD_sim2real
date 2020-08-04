@@ -54,7 +54,7 @@ class BenchmarkEnv3d(EnvBase):
         def to_index(i, j, k):
             return i * node_nums[1] * node_nums[2] + j * node_nums[2] + k
         collision_indices = [to_index(cell_nums[0], 0, 0), to_index(cell_nums[0], cell_nums[1], 0)]
-        deformable.AddPdEnergy('planar_collision', [5e3, 0.0, 0.0, 1.0, 0.05], collision_indices)
+        deformable.AddPdEnergy('planar_collision', [1e2, 0.0, 0.0, 1.0, 0.05], collision_indices)
         # Actuation.
         act_indices = []
         for i in range(cell_nums[0]):

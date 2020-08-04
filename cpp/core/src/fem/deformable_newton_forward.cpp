@@ -51,7 +51,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
         VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
         // We aim to use Newton's method to minimize the following energy:
         // 0.5 * q_next^2 + h2m * (E_ela(q_next) + E_pd(q_next) + E_act(q_next, a)) - rhs * q_next.
-        real energy_sol = ElasticEnergy(q_sol) + ComputePdEnergy(q_sol) + ActuationEnergy(q_next, a);
+        real energy_sol = ElasticEnergy(q_sol) + ComputePdEnergy(q_sol) + ActuationEnergy(q_sol, a);
         auto eval_obj = [&](const VectorXr& q_cur, const real energy_cur){
             return 0.5 * q_cur.dot(q_cur) + h2m * energy_cur - rhs.dot(q_cur);
         };
@@ -84,7 +84,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                 // and triggers Eigen::NoConvergence, which means the max number of iterations has been used. However,
                 // for larger problems, IncompleteCholesky is a pretty good preconditioner that results in much fewer
                 // number of iterations.
-                CheckError(cg.info() == Eigen::Success, "PCG solver failed.");
+                CheckError(cg.info() == Eigen::Success || cg.info() == Eigen::NoConvergence, "PCG solver failed.");
             } else if (method == "newton_cholesky") {
                 // Cholesky.
                 if (verbose_level > 1) Tic();
@@ -146,7 +146,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                 // Directional gradient: obj(q_sol - step_size * newton_direction)
                 //                     = obj_sol - step_size * newton_direction.dot(grad_sol)
                 const real obj_cond = obj_sol - gamma * step_size * grad_sol.dot(newton_direction);
-                const bool descend_condition = !std::isnan(obj_next) && obj_next < obj_cond;
+                const bool descend_condition = !std::isnan(obj_next) && obj_next < obj_cond + std::numeric_limits<real>::epsilon();
                 if (descend_condition) {
                     ls_success = true;
                     break;
@@ -160,11 +160,13 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                     std::cout << "step size: " << step_size << std::endl;
                     std::cout << "obj_sol: " << obj_sol << ", "
                         << "obj_cond: " << obj_cond << ", "
-                        << "obj_next: " << obj_next << std::endl;
+                        << "obj_next: " << obj_next << ", "
+                        << "obj_cond - obj_sol: " << obj_cond - obj_sol << ", "
+                        << "obj_next - obj_sol: " << obj_next - obj_sol << std::endl;
                 }
             }
             if (verbose_level > 1) Toc("line search");
-            CheckError(ls_success, "Line search fails after 10 trials.");
+            CheckError(ls_success, "Line search fails after " + std::to_string(max_ls_iter) + " trials.");
 
             // Update.
             if (verbose_level > 1) std::cout << "obj_sol = " << obj_sol << ", obj_next = " << obj_next << std::endl;
