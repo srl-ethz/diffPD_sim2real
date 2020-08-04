@@ -17,11 +17,10 @@ from py_diff_pd.env.benchmark_env_3d import BenchmarkEnv3d
 def test_benchmark_3d(verbose):
     seed = 42
     folder = Path('benchmark_3d')
-    env = BenchmarkEnv3d(seed, folder, { 'refinement': 1 })
+    env = BenchmarkEnv3d(seed, folder, { 'refinement': 8 })
     deformable = env.deformable()
 
     # Setting thread number.
-    max_threads = int(subprocess.run(['nproc', '--all'], capture_output=True).stdout)
     thread_cts = [2, 4, 8]
 
     methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen', 'pd_no_bfgs')
@@ -45,7 +44,9 @@ def test_benchmark_3d(verbose):
     frame_num = 25
     if verbose:
         for method, opt in zip(methods, opts):
-            env.simulate(dt, frame_num, method, opt, q0, v0, [a0 for _ in range(frame_num)],
+            env.simulate(dt, frame_num,
+                'pd_eigen' if method == 'pd_no_bfgs' else method,
+                opt, q0, v0, [a0 for _ in range(frame_num)],
                 [f0 for _ in range(frame_num)], require_grad=False, vis_folder=method)
             os.system('eog {}.gif'.format(folder / method))
 
@@ -79,16 +80,11 @@ def test_benchmark_3d(verbose):
 
         for method, opt in zip(methods, opts):
             opt['rel_tol'] = rel_tol
-            if method == 'pd_no_bfgs':
-                method = 'pd_eigen'
             for thread_ct in thread_cts:
                 opt['thread_ct'] = thread_ct
-                if 'pd' in method and not opt['use_bfgs']:
-                    meth_thread_num = 'pd_no_bfgs_{}threads'.format(thread_ct)
-                else:
-                    meth_thread_num = '{}_{}threads'.format(method, thread_ct)
-
-                loss, grad, info = env.simulate(dt, frame_num, method, opt, q0, v0, [a0 for _ in range(frame_num)],
+                meth_thread_num = '{}_{}threads'.format(method, thread_ct)
+                loss, grad, info = env.simulate(dt, frame_num, 'pd_eigen' if method == 'pd_no_bfgs' else method,
+                    opt, q0, v0, [a0 for _ in range(frame_num)],
                     [f0 for _ in range(frame_num)], require_grad=True, vis_folder=None)
                 grad_q, grad_v, grad_a, grad_f = grad
                 grad = np.zeros(q0.size + v0.size + a0.size + f0.size)
@@ -110,7 +106,6 @@ def test_benchmark_3d(verbose):
                 grads[meth_thread_num].append(g)
         pickle.dump((rel_tols, forward_times, backward_times, losses, grads), open(folder / 'table.bin', 'wb'))
 
-
 if __name__ == '__main__':
-    verbose = False
+    verbose = True
     test_benchmark_3d(verbose)
