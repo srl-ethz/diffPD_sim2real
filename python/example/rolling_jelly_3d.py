@@ -24,7 +24,7 @@ if __name__ == '__main__':
     refinement = 4
     youngs_modulus = 1e6
     poissons_ratio = 0.49
-    target_com = ndarray([0.6, 0.6, 0.1])
+    target_com = ndarray([0.5, 0.5, 0.2])
     env = RollingJellyEnv3d(seed, folder, { 'refinement': refinement,
         'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio,
@@ -65,9 +65,9 @@ if __name__ == '__main__':
         # init_q = (offset @ R.T + init_com_q).ravel()
         rpy = x[:3]
         dR_dr, dR_dp, dR_dy = rpy_to_rotation_gradient(rpy)
-        grad[0] = (offset @ dR_dr).ravel().dot(grad_init_q)
-        grad[1] = (offset @ dR_dp).ravel().dot(grad_init_q)
-        grad[2] = (offset @ dR_dy).ravel().dot(grad_init_q)
+        grad[0] = (offset @ dR_dr.T).ravel().dot(grad_init_q)
+        grad[1] = (offset @ dR_dp.T).ravel().dot(grad_init_q)
+        grad[2] = (offset @ dR_dy.T).ravel().dot(grad_init_q)
         # init_com_q:
         grad[3:6] = np.sum(grad_init_q.reshape((-1, 3)), axis=0)
         # init_com_v:
@@ -77,8 +77,8 @@ if __name__ == '__main__':
     # Optimization.
     # Variables to be optimized:
     # init_rpy (3D), init_com_q (3D), init_com_v (3D).
-    x_lb = ndarray([-np.pi / 4, -np.pi / 4, -np.pi / 4, -0.01, -0.01, 0.19, 0.5, 0.5, -2.5])
-    x_ub = ndarray([np.pi / 4, np.pi / 4, np.pi / 4, 0.01, 0.01, 0.21, 1.5, 1.5, -1.5])
+    x_lb = ndarray([-np.pi / 3, -np.pi / 3, -np.pi / 3, -0.01, -0.01, 0.19, -3, -3, -5])
+    x_ub = ndarray([np.pi / 3, np.pi / 3, np.pi / 3, 0.01, 0.01, 0.21, 3, 3, -3])
     x_init = np.random.uniform(x_lb, x_ub)
     # Visualize initial guess.
     init_q, init_v = variable_to_initial_states(x_init)
@@ -105,6 +105,11 @@ if __name__ == '__main__':
             single_data['backward_time'] = info['backward_time']
             data[method].append(single_data)
             return loss, np.copy(grad_x)
+
+        # Use the two lines below to sanity check the gradients.
+        # Note that you might need to fine tune the rel_tol in opt to make it work.
+        # from py_diff_pd.common.grad_check import check_gradients
+        # check_gradients(loss_and_grad, x_init, eps=1e-6)
 
         t0 = time.time()
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),

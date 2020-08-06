@@ -28,7 +28,7 @@ if __name__ == '__main__':
 
     # Optimization parameters.
     methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
-    thread_ct = 8
+    thread_ct = 4
     opts = (
         { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct },
         { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct },
