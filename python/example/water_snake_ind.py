@@ -6,8 +6,6 @@ from functools import partial
 import math
 import random
 import copy
-import pprint
-import argparse
 from collections import deque
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -32,9 +30,11 @@ from torch.utils.tensorboard import SummaryWriter
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.mesh import generate_hex_mesh, get_boundary_face
-from py_diff_pd.common.display import display_hex_mesh, render_hex_mesh_no_floor, export_gif
+from py_diff_pd.common.display import render_hex_mesh_no_floor, export_gif, Arrow3D
 from py_diff_pd.common.sim import Sim
-from py_diff_pd.common.controller import AdaNNController, SnakeAdaNNController, IndNNController
+from py_diff_pd.common.controller import SnakeAdaNNController, AdaNNController, IndNNController
+
+import optuna
 
 
 class Display(object):
@@ -80,13 +80,13 @@ class Display(object):
         self.scatter = self.ax.scatter(xs, ys, zs, c='tab:blue')
 
         self.arrow_target = self.ax.arrow3D(
-            (1, 1, 0),
+            (0, 0, 1),
             arrow_target_data.numpy(),
             mutation_scale=10,
             ec='tab:red', fc='tab:red')
 
         self.arrow_vel = self.ax.arrow3D(
-            (1, 1, 0),
+            (0, 0, 1),
             v_center.numpy(),
             mutation_scale=10,
             ec='tab:green', fc='tab:green')
@@ -97,7 +97,7 @@ class Display(object):
             mutation_scale=10,
             ec='tab:orange', fc='tab:orange')
 
-        radius = 3
+        radius = 5
         self.ax.set_xlim([-radius, radius])
         self.ax.set_ylim([-radius, radius])
         self.ax.set_zlim([-radius, radius])
@@ -106,7 +106,7 @@ class Display(object):
         self.ax.set_zlabel('z')
         self.title = self.ax.set_title('Interactive Animation step=0 fps=?', animated=True)
 
-        return self.scatter, self.arrow_target, self.arrow_vel, self.arrow_face
+        return self.scatter, self.arrow_target, self.arrow_vel, self.arrow_face, self.title
 
     def update(self, i):
         tstart = time.time()
@@ -117,13 +117,13 @@ class Display(object):
 
         self.scatter._offsets3d = (xs, ys, zs)  # pylint: disable=protected-access
 
-        self.arrow_target.set_positions((1, 1, 0), arrow_target_data.numpy())
-        self.arrow_vel.set_positions((1, 1, 0), v_center.numpy())
+        self.arrow_target.set_positions((0, 0, 1), arrow_target_data.numpy())
+        self.arrow_vel.set_positions((0, 0, 1), v_center.numpy())
         self.arrow_face.set_positions(face_base.numpy(), face_dir.numpy())
 
         self.title.set_text(f'Interactive Animation step={i} fps={sum(self.fpss) / len(self.fpss):.2f}')
 
-        return self.scatter, self.arrow_target, self.arrow_vel, self.arrow_face
+        return self.scatter, self.arrow_target, self.arrow_vel, self.arrow_face, self.title
 
     @torch.no_grad()
     def data_stream(self):
@@ -157,32 +157,24 @@ def main():
     torch.manual_seed(seed)
     torch.set_default_dtype(torch.float64)
 
-    folder = Path('starfish_3d_nn').resolve()
-    ckpt_folder = folder / 'checkpoints'
-    video_folder = folder / 'videos'
+    folder = Path('water_snake').resolve()
+    sub_folder = folder / 'Ind'
+    ckpt_folder = sub_folder / 'checkpoints'
+    video_folder = sub_folder / 'videos'
     folder.mkdir(parents=True, exist_ok=True)
+    sub_folder.mkdir(parents=True, exist_ok=True)
     ckpt_folder.mkdir(parents=True, exist_ok=True)
     video_folder.mkdir(parents=True, exist_ok=True)
 
-    # Mesh parameters
-    limb_width = 2
-    limb_length = 10
-    limb_depth = 2
-
-    cell_nums = [limb_length * 2 + limb_width, limb_length * 2 + limb_width, limb_depth]
+    # Mesh parameters.
+    cell_nums = [20, 2, 2]
     node_nums = [c + 1 for c in cell_nums]
-    dx = 0.2
+    dx = 0.1
     origin = np.zeros((3,))
-    bin_file_name = str(folder / 'starfish.bin')
-
+    bin_file_name = str(folder / 'water_snake.bin')
     voxels = np.ones(cell_nums)
-    voxels[:limb_length, :limb_length] = 0
-    voxels[:limb_length, -limb_length:] = 0
-    voxels[-limb_length:, :limb_length] = 0
-    voxels[-limb_length:, -limb_length:] = 0
 
-    voxel_indices, vertex_indices = generate_hex_mesh(
-        voxels, dx, origin, bin_file_name)
+    voxel_indices, vertex_indices = generate_hex_mesh(voxels, dx, origin, bin_file_name)
     mesh = Mesh3d()
     mesh.Initialize(bin_file_name)
 
@@ -203,9 +195,9 @@ def main():
     # Hydrodynamics parameters.
     rho = 1e3
     v_water = [0, 0, 0]   # Velocity of the water.
-    # Cd_points = (angle, coeff) pairs where angle is normalized to [0, 1].
+    # # Cd_points = (angle, coeff) pairs where angle is normalized to [0, 1].
     Cd_points = ndarray([[0.0, 0.05], [0.4, 0.05], [0.7, 1.85], [1.0, 2.05]])
-    # Ct_points = (angle, coeff) pairs where angle is normalized to [-1, 1].
+    # # Ct_points = (angle, coeff) pairs where angle is normalized to [-1, 1].
     Ct_points = ndarray([[-1, -0.8], [-0.3, -0.5], [0.3, 0.1], [1, 2.5]])
     # The current Cd and Ct are similar to Figure 2 in SoftCon.
     # surface_faces is a list of (v0, v1) where v0 and v1 are the vertex indices of the two endpoints of a boundary edge.
@@ -216,34 +208,21 @@ def main():
             [[rho,], v_water, Cd_points.ravel(), Ct_points.ravel(), ndarray(surface_faces).ravel()]))
 
     # Add actuation.
+    # ******************** <- muscle
+    # |                  | <- body
+    # |                  | <- body
+    # ******************** <- muscle
+
     all_muscles = []
-    muscle_pairs = []
-
-    muscle_stiffness = 1e5
-
-    for move in [range(limb_length - 1, -1, -1), range(-limb_length, 0)]:
-        for fix in [limb_length, limb_length + limb_width - 1]:
-
-            muscle_pair = []
-            for depth in [0, limb_depth - 1]:
-                indices = [int(voxel_indices[fix, m, depth]) for m in move]
-                deformable.AddActuation(muscle_stiffness, [0.0, 1.0, 0.0], indices)
-                muscle_pair.append(indices)
-            muscle_pairs.append(muscle_pair)
-
-            muscle_pair = []
-            for depth in [0, limb_depth - 1]:
-                indices = [int(voxel_indices[m, fix, depth]) for m in move]
-                deformable.AddActuation(muscle_stiffness, [1.0, 0.0, 0.0], indices)
-                muscle_pair.append(indices)
-            muscle_pairs.append(muscle_pair)
-
-    all_muscles = [
-        [muscle_pairs[0], muscle_pairs[2]],
-        [muscle_pairs[1], muscle_pairs[3]],
-        [muscle_pairs[4], muscle_pairs[6]],
-        [muscle_pairs[5], muscle_pairs[7]],
-    ]
+    shared_muscles = []
+    for i in [0, cell_nums[2] - 1]:
+        muscle_pair = []
+        for j in [0, cell_nums[1] - 1]:
+            indices = voxel_indices[:, j, i].tolist()
+            deformable.AddActuation(1e5, [1.0, 0.0, 0.0], indices)
+            muscle_pair.append(indices)
+        shared_muscles.append(muscle_pair)
+    all_muscles.append(shared_muscles)
     deformable.all_muscles = all_muscles
 
     # Implement the forward and backward simulation.
@@ -252,7 +231,7 @@ def main():
     dofs = deformable.dofs()
     act_dofs = deformable.act_dofs()
     f_ext = torch.zeros(dofs).detach()
-    arrow_target_data = torch.Tensor([0, 0, 1]).detach()
+    arrow_target_data = torch.Tensor([-1, 0, 0]).detach()
 
     w_sideward = 10.0
     w_face = 0.0
@@ -260,10 +239,11 @@ def main():
     mid_x = math.floor(node_nums[0] / 2)
     mid_y = math.floor(node_nums[1] / 2)
     mid_z = math.floor(node_nums[2] / 2)
+    mid_line = vertex_indices[:, mid_y, mid_z]
     center = vertex_indices[mid_x, mid_y, mid_z]
 
-    face_head = vertex_indices[mid_x, mid_y, -1]
-    face_tail = vertex_indices[mid_x, mid_y, 0]
+    face_head = vertex_indices[0, mid_y, mid_z]
+    face_tail = vertex_indices[2, mid_y, mid_z]
 
     q0 = torch.as_tensor(ndarray(mesh.py_vertices())).detach()
     q0_center = q0.view(-1, 3)[center].detach()
@@ -271,44 +251,37 @@ def main():
 
     v0 = torch.zeros(dofs).detach()
 
-    mid_plane = np.array([
-        vertex_indices[mid_x, :limb_length, mid_z],
-        vertex_indices[mid_x, -limb_length:, mid_z],
-        vertex_indices[:limb_length, mid_y, mid_z],
-        vertex_indices[-limb_length:, mid_y, mid_z],
-    ]).ravel()
-
     def get_state(q, v):
         q_center = q.view(-1, 3)[center]
         v_center = v.view(-1, 3)[center]
 
-        q_mid_plane_rel = q.view(-1, 3)[mid_plane] - q_center.detach()
-        v_mid_plane = v.view(-1, 3)[mid_plane]
+        q_mid_line_rel = q.view(-1, 3)[mid_line] - q_center.detach()
+        v_mid_line = v.view(-1, 3)[mid_line]
         state = [
             v_center,
-            q_mid_plane_rel.view(-1),
-            v_mid_plane.view(-1),
+            q_mid_line_rel.view(-1),
+            v_mid_line.view(-1),
         ]
         return torch.cat(state).unsqueeze(0)
-
 
     def get_plot(q, v):
         face_dir = q.view(-1, 3)[face_head] - q.view(-1, 3)[face_tail]
         face_dir = face_dir / face_dir.norm()
         return (
             (q.view(-1, 3)).clone().detach(),
-            v.view(-1, 3)[center].clone().detach(),
+            v.view(-1, 3)[mid_line].mean(dim=0).clone().detach(),
             arrow_target_data.clone().detach(),
             q.view(-1, 3)[face_head].clone().detach(),
             face_dir.clone().detach())
 
     sim = Sim(deformable)
 
-    controller = AdaNNController(
+    # state = [q_mid_y_rel, q_mid_z_rel, v_mid_x, v_mid_y, v_mid_z]
+    controller = IndNNController(
         deformable, [get_state(q0, v0).size(1), 64, 64, len(all_muscles)], None, dropout=0.0)
     controller.reset_parameters()
 
-    num_epochs = 200
+    num_epochs = 30
     optimizer = optim.Adam(controller.parameters(), lr=0.001, weight_decay=1e-4)
 
     q, v = q0, v0
@@ -318,7 +291,7 @@ def main():
         controller, get_state, get_plot, (q0, v0), num_frames
     )
 
-    writer = SummaryWriter(folder, purge_step=0)
+    writer = SummaryWriter(sub_folder, purge_step=0)
 
     for epoch in range(1, num_epochs + 1):
         controller.train(True)
@@ -334,7 +307,7 @@ def main():
             state = get_state(q, v)
             a = controller(state, a)
             q, v = sim(dofs, act_dofs, method, q, v, a, f_ext, dt, opt)
-            v_center = v.view(-1, 3)[center]
+            v_center = v.view(-1, 3)[mid_line].mean(dim=0)
             q_center = q.view(-1, 3)[center].detach()
             face_dir = q.view(-1, 3)[face_head] - q.view(-1, 3)[face_tail]
             face_dir = face_dir / face_dir.norm()
@@ -370,6 +343,8 @@ def main():
         }
         torch.save(ckpt, ckpt_folder / f'{epoch}.pth')
 
+        writer.add_scalar('episode_reward', -loss.item(), epoch * num_frames)
+        writer.add_scalar('loss/total', loss.item(), epoch)
         writer.add_scalar('loss/forward', forward_loss.item(), epoch)
         writer.add_scalar('loss/sideward', sideward_loss.item(), epoch)
         writer.add_scalar('loss/face', face_loss.item(), epoch)
