@@ -27,13 +27,13 @@ if __name__ == '__main__':
     deformable = env.deformable()
 
     # Optimization parameters.
-    methods = ('newton_pcg', 'newton_cholesky', 'pd')
+    methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
     thread_ct = 8
     opts = (
         { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct },
         { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct },
         { 'max_pd_iter': 500, 'max_ls_iter': 1, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
-            'method': 1, 'bfgs_history_size': 10 }
+            'use_bfgs': 1, 'bfgs_history_size': 10 },
     )
 
     # Compute the initial state.

@@ -54,11 +54,32 @@ class BouncingBallEnv3d(EnvBase):
 
         # Collisions.
         vertex_num = mesh.NumOfVertices()
-        friction_node_idx = []
+        v_bottom = []
+        v_bottom_idx = []
         for i in range(vertex_num):
             v = ndarray(mesh.py_vertex(i))
             if v[2] < dx:
-                friction_node_idx.append(i)
+                v_bottom.append(v)
+                v_bottom_idx.append(i)
+        v_bottom = ndarray(v_bottom)
+        vx_min = np.min(v_bottom[:, 0])
+        vx_max = np.max(v_bottom[:, 0])
+        vy_min = np.min(v_bottom[:, 1])
+        vy_max = np.max(v_bottom[:, 1])
+        # From v_bottom find points whose dim = value_dim. These points form a straight line. Pick its two endpoints.
+        def find_endpoints(dim, value_dim):
+            line = []
+            for v, idx in zip(v_bottom, v_bottom_idx):
+                if np.abs(v[dim] - value_dim) < 0.5 * dx:
+                    line.append((v[1 - dim], idx))
+            line = sorted(line, key=lambda x: x[0])
+            return [l[1] for l in line]
+
+        friction_node_idx = find_endpoints(0, vx_min) \
+            + find_endpoints(0, vx_max) \
+            + find_endpoints(1, vx_min) \
+            + find_endpoints(1, vx_max)
+        friction_node_idx = list(dict.fromkeys(friction_node_idx))
         deformable.SetFrictionalBoundary('planar', [0.0, 0.0, 1.0, 0.0], friction_node_idx)
 
         # Initial state set by rotating the cuboid kinematically.

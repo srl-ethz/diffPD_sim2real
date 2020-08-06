@@ -59,11 +59,11 @@ class BenchmarkEnv2d(EnvBase):
         for j in range(cell_nums[1]):
             left_muscle_indices.append(0 * cell_nums[1] + j)
             right_muscle_indices.append(refinement * cell_nums[1] + j)
-        deformable.AddActuation(1e5, [0.0, 1.0], left_muscle_indices)
-        deformable.AddActuation(1e5, [0.0, 1.0], right_muscle_indices)
+        deformable.AddActuation(1e4, [0.0, 1.0], left_muscle_indices)
+        deformable.AddActuation(1e4, [0.0, 1.0], right_muscle_indices)
 
         # Collision.
-        deformable.AddPdEnergy('planar_collision', [1e5, 0.0, 1.0, -0.036], [
+        deformable.AddPdEnergy('planar_collision', [1e3, 0.0, 1.0, -0.036], [
             i * node_nums[1] for i in range(node_nums[0])
         ])
 

@@ -26,7 +26,7 @@ if __name__ == '__main__':
 
     # Optimization parameters.
     thread_ct = 4
-    newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
+    newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 20, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
     pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 1, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
     methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
@@ -47,7 +47,7 @@ if __name__ == '__main__':
     a0 = [np.zeros(act_dofs) for _ in range(frame_num)]
     f0 = [np.zeros(dofs) for _ in range(frame_num)]
 
-    # Generate groudtruth motion.
+    # Generate groundtruth motion.
     env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a0, f0, require_grad=False, vis_folder='groundtruth')
 
     # Optimization.
