@@ -38,7 +38,7 @@ class QuadrupedEnv3d(EnvBase):
         # Mesh parameters.
         la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
         mu = youngs_modulus / (2 * (1 + poissons_ratio))
-        density = 1e2
+        density = 3e2
         cell_nums = (refinement * body_x_length, refinement * body_y_length, refinement * (leg_z_length + body_z_length))
         origin = ndarray([0, 0, 0])
         node_nums = [n + 1 for n in cell_nums]
