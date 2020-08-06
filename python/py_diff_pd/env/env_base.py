@@ -1,3 +1,4 @@
+
 from pathlib import Path
 import time
 
@@ -198,4 +199,5 @@ class EnvBase:
             info['backward_time'] = t_grad
             info['material_parameter_gradients'] = dl_dw.T @ self.material_stiffness_differential(
                 self._youngs_modulus, self._poissons_ratio)
+            info['actuator_gradients'] = ndarray(dl_act)
             return loss, grad, info
