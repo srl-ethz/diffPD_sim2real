@@ -197,3 +197,57 @@ def get_boundary_face(hex_mesh):
             else:
                 faces.add(l)
     return list(faces)
+
+# Return a heuristic set of vertices that could be used for contact handling.
+def get_contact_vertex(hex_mesh):
+    vertex_num = hex_mesh.NumOfVertices()
+    element_num = hex_mesh.NumOfElements()
+    v_maps = np.zeros((vertex_num, 8))
+    for e in range(element_num):
+        vertex_indices = list(hex_mesh.py_element(e))
+        for i, vid in enumerate(vertex_indices):
+            assert v_maps[vid][i] == 0
+            v_maps[vid][i] = 1
+
+    contact_vertices = []
+    for i, v in enumerate(v_maps):
+        # We consider the following vertices as contact vertices.
+        if np.sum(v) == 1:
+            contact_vertices.append(i)
+        # We could add other cases, e.g., np.sum(v) == 2, if needed.
+    return contact_vertices
+
+# Convert triangle meshes into voxels.
+# Input:
+# - triangle mesh file name (obj, stl, ply, etc.)
+# - dx: the size of the cell, which will be explained later.
+# Output:
+# - a 3D 0-1 array of size nx x ny x nz where nx, ny, and nz are the number of cells along x, y, and z axes.
+#
+# Algorithm:
+# - Load the triangle mesh.
+# - Rescale it so that the longest axis of the bounding box is 1.
+# - Divide the whole bounding box into cells of size dx.
+import trimesh
+
+def voxelize(triangle_mesh_file_name, dx):
+    tri_mesh = trimesh.load(triangle_mesh_file_name)
+    assert tri_mesh.is_watertight
+    bbx_offset = np.min(tri_mesh.vertices, axis=0)
+    tri_mesh.vertices -= bbx_offset
+    bbx_extent = ndarray(tri_mesh.bounding_box.extents)
+    tri_mesh.vertices /= np.max(bbx_extent)
+    # Now tri_mesh.vertices is bounded by [0, 1].
+    assert 0 < dx <= 0.5
+
+    # Voxelization.
+    cell_num = (ndarray(tri_mesh.bounding_box.extents) / dx).astype(np.int)
+    voxels = np.zeros(cell_num)
+    for i in range(cell_num[0]):
+        for j in range(cell_num[1]):
+            for k in range(cell_num[2]):
+                center = ndarray([i + 0.5, j + 0.5, k + 0.5]) * dx
+                signed_distance = trimesh.proximity.signed_distance(tri_mesh, center.reshape((1, 3)))
+                if signed_distance > 0:
+                    voxels[i][j][k] = 1
+    return voxels
