@@ -150,7 +150,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
     if (use_bfgs) {
         CheckError(options.find("bfgs_history_size") != options.end(), "Missing option bfgs_history_size");
         bfgs_history_size = static_cast<int>(options.at("bfgs_history_size"));
-        CheckError(bfgs_history_size > 1, "Invalid bfgs_history_size.");
+        CheckError(bfgs_history_size >= 1, "Invalid bfgs_history_size.");
         CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
         max_ls_iter = static_cast<int>(options.at("max_ls_iter"));
         CheckError(max_ls_iter > 0, "Invalid max_ls_iter: " + std::to_string(max_ls_iter));
@@ -212,9 +212,6 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
     const VectorXr dl_dq_next_agg = dl_dq_next + dl_dv_next * inv_h;
 
     // Step 4:
-    // q_next_fixed = rhs_fixed.
-    // q_next_free - h2m * (f_ela(q_next_free; rhs_fixed) + f_pd(q_next_free; rhs_fixed)
-    //     + f_act(q_next_free; rhs_fixed, a)) = rhs_free.
     // Newton equivalence:
     // Eigen::SimplicialLDLT<SparseMatrix> cholesky;
     // const SparseMatrix op = NewtonMatrix(q_next, a, h2m, augmented_dirichlet);
@@ -222,75 +219,82 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
     // const VectorXr dl_drhs = cholesky.solve(dl_dq_next_agg);
     // CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
 
-    VectorXr adjoint = dl_dq_next_agg;  // Initial guess.
+    // The PD equivalent (using the notation from the paper:)
+    // A is the matrix in PdLhsSolve.
+    // dA is the matrix in ApplyProjectiveDynamicsLocalStepDifferential.
+    // In Newton's method: op * dl_drhs = dl_dq_next_agg.
+    // In PD:
+    // (A - h2m * dA) * dl_drhs = dl_dq_next_agg.
+    // Rows and cols in additional_dirichlet are erased.
+    // This is equivalent to minimizing the following objective:
+    // S := A - h2m * dA.
+    // b := dl_dq_next_agg.
+    // min_x 0.5 * x' * S * x - b' * x.
+    // Note that in the minimization problem above, x(augment_dirichlet) must be 0, otherwise its gradient
+    // will no longer be Sx - b. To see this point, assume x = [x_free, x_fixed] = [x_0, x_1] and S is defined as follows:
+    // S = [S_00, S_01]
+    //     [S_10, S_11]
+    // min_x 0.5 * x_0 * S_00 * x_0 + x_1' * S_10 * x_0 - b * x_0.
+    // Then its gradients become S_00 * x_0 + x_1' * S_10 - b, which is no longer what we want.
+    // To resolve this issue, we set x(augmented_dirichlet) = 0. This will help us infer the gradients correctly.
+    VectorXr x_sol = VectorXr::Zero(dofs_);   // Use the same initial guess as in Newton's method.
     VectorXr selected = VectorXr::Ones(dofs_);
     for (const auto& pair : augmented_dirichlet) {
-        adjoint(pair.first) = 0;
+        x_sol(pair.first) = 0;
         selected(pair.first) = 0;
     }
-
+    VectorXr Sx_sol = PdLhsMatrixOp(x_sol, additional_dirichlet) - h2m * ApplyProjectiveDynamicsLocalStepDifferential(q_next,
+        a, pd_backward_local_element_matrices, pd_backward_local_muscle_matrices, x_sol);
+    VectorXr grad_sol = (Sx_sol - dl_dq_next_agg).array() * selected.array();
+    real obj_sol = 0.5 * x_sol.dot(Sx_sol) - dl_dq_next_agg.dot(x_sol);
+    bool success = false;
     // Initialize queues for BFGS.
     std::deque<VectorXr> si_history, xi_history;
     std::deque<VectorXr> yi_history, gi_history;
-
-    if (verbose_level > 1) std::cout << "Projective dynamics backward" << std::endl;
     for (int i = 0; i < max_pd_iter; ++i) {
-        if (verbose_level > 1) std::cout << "Iteration " << i << std::endl;
-
-        VectorXr adjoint_next = adjoint;
-        // Local step.
-        if (verbose_level > 1) Tic();
-        VectorXr pd_rhs = dl_dq_next_agg + h2m * ApplyProjectiveDynamicsLocalStepDifferential(q_next, a,
-            pd_backward_local_element_matrices, pd_backward_local_muscle_matrices, adjoint_next);
-        for (const auto& pair : augmented_dirichlet) pd_rhs(pair.first) = 0;
-        if (verbose_level > 1) Toc("Local step");
-
-        // Check for convergence.
-        const VectorXr pd_lhs = PdLhsMatrixOp(adjoint, additional_dirichlet);
-        const real abs_error = VectorXr((pd_lhs - pd_rhs).array() * selected.array()).norm();
-        const real rhs_norm = VectorXr(selected.array() * pd_rhs.array()).norm();
-        if (verbose_level > 1) Toc("Convergence");
-        if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
-        if (abs_error <= rel_tol * rhs_norm + abs_tol) {
-            if (verbose_level > 0) std::cout << "Backward converged at iteration " << i << std::endl;
-            for (const auto& pair : augmented_dirichlet) adjoint(pair.first) = dl_dq_next_agg(pair.first);
-            break;
-        }
-
-        // Update.
+        if (verbose_level > 0) std::cout << "PD iteration: " << i << std::endl;
         if (use_bfgs) {
-            // Use q_sol to compute q_sol_next.
-            // BFGS-style update.
-            // See https://en.wikipedia.org/wiki/Limited-memory_BFGS.
-            VectorXr q = pd_lhs - pd_rhs;
-            if (static_cast<int>(xi_history.size()) == 0) {
-                xi_history.push_back(adjoint);
-                gi_history.push_back(q);
-                adjoint = PdLhsSolve(method, pd_rhs, additional_dirichlet);
-                for (const auto& pair : additional_dirichlet) adjoint(pair.first) = 0;
+            // At each iteration, we maintain:
+            // - x_sol
+            // - Sx_sol
+            // - grad_sol
+            // - obj_sol
+            // BFGS's direction: quasi_newton_direction = B * grad_sol.
+            VectorXr quasi_newton_direction = VectorXr::Zero(dofs_);
+            // Current solution: x_sol.
+            // Current gradient: grad_sol.
+            const int bfgs_size = static_cast<int>(xi_history.size());
+            if (bfgs_size == 0) {
+                // Initially, the queue is empty. We use A as our initial guess of Hessian (not the inverse!).
+                xi_history.push_back(x_sol);
+                gi_history.push_back(grad_sol);
+                quasi_newton_direction = PdLhsSolve(method, grad_sol, additional_dirichlet);
             } else {
-                si_history.push_back(adjoint - xi_history.back());
-                yi_history.push_back(q - gi_history.back());
-                xi_history.push_back(adjoint);
-                gi_history.push_back(q);
-                if (static_cast<int>(xi_history.size()) == bfgs_history_size + 2) {
+                const VectorXr x_sol_last = xi_history.back();
+                const VectorXr grad_sol_last = gi_history.back();
+                xi_history.push_back(x_sol);
+                gi_history.push_back(grad_sol);
+                si_history.push_back(x_sol - x_sol_last);
+                yi_history.push_back(grad_sol - grad_sol_last);
+                if (bfgs_size == bfgs_history_size + 1) {
                     xi_history.pop_front();
                     gi_history.pop_front();
                     si_history.pop_front();
                     yi_history.pop_front();
                 }
+                VectorXr bfgs_q = grad_sol;
                 std::deque<real> rhoi_history, alphai_history;
                 for (auto sit = si_history.crbegin(), yit = yi_history.crbegin(); sit != si_history.crend(); ++sit, ++yit) {
                     const VectorXr& yi = *yit;
                     const VectorXr& si = *sit;
                     const real rhoi = 1 / yi.dot(si);
-                    const real alphai = rhoi * si.dot(q);
+                    const real alphai = rhoi * si.dot(bfgs_q);
                     rhoi_history.push_front(rhoi);
                     alphai_history.push_front(alphai);
-                    q -= alphai * yi;
+                    bfgs_q -= alphai * yi;
                 }
                 // H0k = PdLhsSolve(I);
-                VectorXr z = PdLhsSolve(method, q, additional_dirichlet);
+                VectorXr z = PdLhsSolve(method, bfgs_q, additional_dirichlet);
                 auto sit = si_history.cbegin(), yit = yi_history.cbegin();
                 auto rhoit = rhoi_history.cbegin(), alphait = alphai_history.cbegin();
                 for (; sit != si_history.cend(); ++sit, ++yit, ++rhoit, ++alphait) {
@@ -301,19 +305,87 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
                     const real betai = rhoi * yi.dot(z);
                     z += si * (alphai - betai);
                 }
-                z = -z;
-                adjoint += z;
-                for (const auto& pair : additional_dirichlet) adjoint(pair.first) = 0;
+                quasi_newton_direction = z;
             }
-        } else {
-            // Global step.
+            quasi_newton_direction = quasi_newton_direction.array() * selected.array();
+            // Since BFGS approximates the (inverse of) Hessian as an SPD matrix, there is no need for definiteness fix.
+
+            // Line search --- keep in mind that grad/newton_direction points to the direction that *increases* the objective.
             if (verbose_level > 1) Tic();
-            adjoint = PdLhsSolve(method, pd_rhs, additional_dirichlet);
-            for (const auto& pair : additional_dirichlet) adjoint(pair.first) = 0;
-            if (verbose_level > 1) Toc("Global step");
+            real step_size = 1;
+            VectorXr x_sol_next = x_sol - step_size * quasi_newton_direction;
+            VectorXr Sx_sol_next = PdLhsMatrixOp(x_sol_next, additional_dirichlet) -
+                h2m * ApplyProjectiveDynamicsLocalStepDifferential(q_next,
+                    a, pd_backward_local_element_matrices, pd_backward_local_muscle_matrices, x_sol_next);
+            VectorXr grad_sol_next = (Sx_sol_next - dl_dq_next_agg).array() * selected.array();
+            real obj_next = 0.5 * x_sol_next.dot(Sx_sol_next) - dl_dq_next_agg.dot(x_sol_next);
+            const real gamma = ToReal(1e-4);
+            bool ls_success = false;
+            for (int j = 0; j < max_ls_iter; ++j) {
+                // Directional gradient: obj(q_sol - step_size * newton_direction)
+                //                     = obj_sol - step_size * newton_direction.dot(grad_sol)
+                const real obj_cond = obj_sol - gamma * step_size * grad_sol.dot(quasi_newton_direction);
+                const bool descend_condition = !std::isnan(obj_next) && obj_next < obj_cond + std::numeric_limits<real>::epsilon();
+                if (descend_condition) {
+                    ls_success = true;
+                    break;
+                }
+                step_size /= 2;
+                x_sol_next = x_sol - step_size * quasi_newton_direction;
+                Sx_sol_next = PdLhsMatrixOp(x_sol_next, additional_dirichlet) -
+                    h2m * ApplyProjectiveDynamicsLocalStepDifferential(q_next,
+                        a, pd_backward_local_element_matrices, pd_backward_local_muscle_matrices, x_sol_next);
+                grad_sol_next = (Sx_sol_next - dl_dq_next_agg).array() * selected.array();
+                obj_next = 0.5 * x_sol_next.dot(Sx_sol_next) - dl_dq_next_agg.dot(x_sol_next);
+                if (verbose_level > 0) std::cout << "Line search iteration: " << j << std::endl;
+                if (verbose_level > 1) {
+                    std::cout << "step size: " << step_size << std::endl;
+                    std::cout << "obj_sol: " << obj_sol << ", "
+                        << "obj_cond: " << obj_cond << ", "
+                        << "obj_next: " << obj_next << ", "
+                        << "obj_cond - obj_sol: " << obj_cond - obj_sol << ", "
+                        << "obj_next - obj_sol: " << obj_next - obj_sol << std::endl;
+                }
+            }
+            if (verbose_level > 1) {
+                Toc("line search");
+                if (!ls_success) {
+                    PrintWarning("Line search fails after " + std::to_string(max_ls_iter) + " trials.");
+                }
+            }
+
+            if (verbose_level > 1) std::cout << "obj_sol = " << obj_sol << ", obj_next = " << obj_next << std::endl;
+            // Update.
+            x_sol = x_sol_next;
+            Sx_sol = Sx_sol_next;
+            grad_sol = grad_sol_next;
+            obj_sol = obj_next;
+        } else {
+            // Update w/o BFGS.
+            // Local step:
+            const VectorXr pd_rhs = (dl_dq_next_agg + h2m * ApplyProjectiveDynamicsLocalStepDifferential(q_next, a,
+                pd_backward_local_element_matrices, pd_backward_local_muscle_matrices, x_sol)
+            ).array() * selected.array();
+            // Global step:
+            x_sol = (PdLhsSolve(method, pd_rhs, additional_dirichlet).array() * selected.array());
+            Sx_sol = PdLhsMatrixOp(x_sol, additional_dirichlet) - h2m * ApplyProjectiveDynamicsLocalStepDifferential(q_next,
+                a, pd_backward_local_element_matrices, pd_backward_local_muscle_matrices, x_sol);
+            grad_sol = (Sx_sol - dl_dq_next_agg).array() * selected.array();
+            obj_sol = 0.5 * x_sol.dot(Sx_sol) - dl_dq_next_agg.dot(x_sol);
+        }
+
+        // Check for convergence --- gradients must be zero.
+        const real abs_error = grad_sol.norm();
+        const real rhs_norm = dl_dq_next_agg.norm();
+        if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
+        if (abs_error <= rel_tol * rhs_norm + abs_tol) {
+            success = true;
+            for (const auto& pair : augmented_dirichlet) x_sol(pair.first) = dl_dq_next_agg(pair.first);
+            break;
         }
     }
-    VectorXr dl_drhs = adjoint;
+    CheckError(success, "PD method fails to converge.");
+    VectorXr dl_drhs = x_sol, adjoint = x_sol;
 
     // dl_drhs already backpropagates q_next_free to rhs_free and q_next_fixed to rhs_fixed.
     // Since q_next_fixed does not depend on rhs_free, it remains to backpropagate q_next_free to rhs_fixed.

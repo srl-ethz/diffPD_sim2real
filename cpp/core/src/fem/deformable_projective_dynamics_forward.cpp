@@ -244,6 +244,9 @@ template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::string& method,
     const VectorXr& q_init, const VectorXr& a, const real h2m, const VectorXr& rhs,
     const std::map<int, real>& additional_dirichlet, const std::map<std::string, real>& options) const {
+    // The goal of this function is to find q_sol so that:
+    // q_sol_fixed = additional_dirichlet \/ dirichlet_.
+    // q_sol_free - h2m * f_pd(q_sol_free; q_sol_fixed) - h2m * f_act(q_sol_free; q_sol_fixed, a) = rhs.
     CheckError(options.find("max_pd_iter") != options.end(), "Missing option max_pd_iter.");
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
@@ -260,7 +263,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
     if (use_bfgs) {
         CheckError(options.find("bfgs_history_size") != options.end(), "Missing option bfgs_history_size");
         bfgs_history_size = static_cast<int>(options.at("bfgs_history_size"));
-        CheckError(bfgs_history_size > 1, "Invalid bfgs_history_size.");
+        CheckError(bfgs_history_size >= 1, "Invalid bfgs_history_size.");
         CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
         max_ls_iter = static_cast<int>(options.at("max_ls_iter"));
         CheckError(max_ls_iter > 0, "Invalid max_ls_iter: " + std::to_string(max_ls_iter));
@@ -278,52 +281,52 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
         q_sol(pair.first) = pair.second;
         selected(pair.first) = 0;
     }
-    auto eval_energy = [&](const VectorXr& q_cur, const VectorXr& f_cur){
-        return ((q_cur - h2m * f_cur - rhs).array() * selected.array()).square().sum();
-    };
     VectorXr force_sol = PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
-    real energy_sol = eval_energy(q_sol, force_sol);
-
-    if (verbose_level > 1) std::cout << "Projective dynamics forward" << std::endl;
+    // We aim to minimize the following energy:
+    // 0.5 * q_next^2 + h2m * (E_pd(q_next) + E_act(q_next, a)) - rhs * q_next.
+    real energy_sol = ComputePdEnergy(q_sol) + ActuationEnergy(q_sol, a);
+    auto eval_obj = [&](const VectorXr& q_cur, const real energy_cur){
+        return 0.5 * q_cur.dot(q_cur) + h2m * energy_cur - rhs.dot(q_cur);
+    };
+    real obj_sol = eval_obj(q_sol, energy_sol);
+    VectorXr grad_sol = (q_sol - rhs - h2m * force_sol).array() * selected.array();
+    // At each iteration, we maintain:
+    // - q_sol
+    // - force_sol
+    // - energy_sol
+    // - obj_sol
+    // - grad_sol
+    bool success = false;
     // Initialize queues for BFGS.
     std::deque<VectorXr> si_history, xi_history;
     std::deque<VectorXr> yi_history, gi_history;
-
-    VectorXr force_next = VectorXr::Zero(dofs_);
-    real energy_next = 0;
-    const real rhs_norm = VectorXr(selected.array() * rhs.array()).norm();
-    const real gamma = ToReal(0.3); // Value recommended in Tiantian's paper.
     for (int i = 0; i < max_pd_iter; ++i) {
-        if (verbose_level > 1) std::cout << "Iteration " << i << std::endl;
-
-        VectorXr q_sol_next = q_sol;
-        // Local step.
-        if (verbose_level > 1) Tic();
-        VectorXr pd_rhs = rhs + h2m * ProjectiveDynamicsLocalStep(q_sol, a, augmented_dirichlet);
-        for (const auto& pair : augmented_dirichlet) pd_rhs(pair.first) = pair.second;
-        if (verbose_level > 1) Toc("Local step");
+        if (verbose_level > 0) std::cout << "PD iteration: " << i << std::endl;
         if (use_bfgs) {
-            // Use q_sol to compute q_sol_next.
-            // BFGS-style update.
-            // See https://en.wikipedia.org/wiki/Limited-memory_BFGS.
-            VectorXr q = PdLhsMatrixOp(q_sol, additional_dirichlet) - pd_rhs;
-            if (static_cast<int>(xi_history.size()) == 0) {
+            // BFGS's direction: quasi_newton_direction = B * grad_sol.
+            VectorXr quasi_newton_direction = VectorXr::Zero(dofs_);
+            // Current solution: q_sol.
+            // Current gradient: grad_sol.
+            const int bfgs_size = static_cast<int>(xi_history.size());
+            if (bfgs_size == 0) {
+                // Initially, the queue is empty. We use A as our initial guess of Hessian (not the inverse!).
                 xi_history.push_back(q_sol);
-                gi_history.push_back(q);
-                q_sol_next = PdLhsSolve(method, pd_rhs, additional_dirichlet);
-                force_next = PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
-                energy_next = eval_energy(q_sol_next, force_next);
+                gi_history.push_back(grad_sol);
+                quasi_newton_direction = PdLhsSolve(method, grad_sol, additional_dirichlet);
             } else {
-                si_history.push_back(q_sol - xi_history.back());
-                yi_history.push_back(q - gi_history.back());
+                const VectorXr q_sol_last = xi_history.back();
+                const VectorXr grad_sol_last = gi_history.back();
                 xi_history.push_back(q_sol);
-                gi_history.push_back(q);
-                if (static_cast<int>(xi_history.size()) == bfgs_history_size + 2) {
+                gi_history.push_back(grad_sol);
+                si_history.push_back(q_sol - q_sol_last);
+                yi_history.push_back(grad_sol - grad_sol_last);
+                if (bfgs_size == bfgs_history_size + 1) {
                     xi_history.pop_front();
                     gi_history.pop_front();
                     si_history.pop_front();
                     yi_history.pop_front();
                 }
+                VectorXr q = grad_sol;
                 std::deque<real> rhoi_history, alphai_history;
                 for (auto sit = si_history.crbegin(), yit = yi_history.crbegin(); sit != si_history.crend(); ++sit, ++yit) {
                     const VectorXr& yi = *yit;
@@ -346,47 +349,74 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
                     const real betai = rhoi * yi.dot(z);
                     z += si * (alphai - betai);
                 }
-                z = -z;
-                real alpha = 2;
-                for (int j = 0; j < max_ls_iter; ++j) {
-                    alpha /= 2;
-                    q_sol_next = q_sol + alpha * z;
-                    force_next = PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
-                    energy_next = eval_energy(q_sol_next, force_next);
-                    if (verbose_level > 1) {
-                        std::cout << "Line search iteration: " << j << ", step size: " << alpha << std::endl;
-                        std::cout << "energ_sol: " << energy_sol << ", " << "energy_next: " << energy_next << std::endl;
-                    }
-                    if (!force_next.hasNaN() && energy_next <= energy_sol + gamma * alpha * z.dot(q)) {
-                        break;
-                    }
+                quasi_newton_direction = z;
+            }
+            // Since BFGS approximates the (inverse of) Hessian as an SPD matrix, there is no need for definiteness fix.
+
+            // Line search --- keep in mind that grad/newton_direction points to the direction that *increases* the objective.
+            if (verbose_level > 1) Tic();
+            real step_size = 1;
+            VectorXr q_sol_next = q_sol - step_size * quasi_newton_direction;
+            real energy_next = ComputePdEnergy(q_sol_next) + ActuationEnergy(q_sol_next, a);
+            real obj_next = eval_obj(q_sol_next, energy_next);
+            const real gamma = ToReal(1e-4);
+            bool ls_success = false;
+            for (int j = 0; j < max_ls_iter; ++j) {
+                // Directional gradient: obj(q_sol - step_size * newton_direction)
+                //                     = obj_sol - step_size * newton_direction.dot(grad_sol)
+                const real obj_cond = obj_sol - gamma * step_size * grad_sol.dot(quasi_newton_direction);
+                const bool descend_condition = !std::isnan(obj_next) && obj_next < obj_cond + std::numeric_limits<real>::epsilon();
+                if (descend_condition) {
+                    ls_success = true;
+                    break;
+                }
+                step_size /= 2;
+                q_sol_next = q_sol - step_size * quasi_newton_direction;
+                energy_next = ComputePdEnergy(q_sol_next) + ActuationEnergy(q_sol_next, a);
+                obj_next = eval_obj(q_sol_next, energy_next);
+                if (verbose_level > 0) std::cout << "Line search iteration: " << j << std::endl;
+                if (verbose_level > 1) {
+                    std::cout << "step size: " << step_size << std::endl;
+                    std::cout << "obj_sol: " << obj_sol << ", "
+                        << "obj_cond: " << obj_cond << ", "
+                        << "obj_next: " << obj_next << ", "
+                        << "obj_cond - obj_sol: " << obj_cond - obj_sol << ", "
+                        << "obj_next - obj_sol: " << obj_next - obj_sol << std::endl;
                 }
             }
-        } else {
-            // Global step.
-            if (verbose_level > 1) Tic();
-            q_sol_next = PdLhsSolve(method, pd_rhs, additional_dirichlet);
-            force_next = PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
-            energy_next = eval_energy(q_sol_next, force_next);
-            if (verbose_level > 1) Toc("Global step");
-        }
+            if (verbose_level > 1) {
+                Toc("line search");
+                if (!ls_success) {
+                    PrintWarning("Line search fails after " + std::to_string(max_ls_iter) + " trials.");
+                }
+            }
 
-        // Check for convergence.
-        if (verbose_level > 1) Tic();
-        const real abs_error = std::sqrt(energy_next);
-        if (verbose_level > 1) Toc("Convergence");
+            if (verbose_level > 1) std::cout << "obj_sol = " << obj_sol << ", obj_next = " << obj_next << std::endl;
+            // Update.
+            q_sol = q_sol_next;
+            energy_sol = energy_next;
+            obj_sol = obj_next;
+        } else {
+            // Update w/o BFGS.
+            // Local step:
+            const VectorXr pd_rhs = (rhs + h2m * ProjectiveDynamicsLocalStep(q_sol, a, augmented_dirichlet)).array() * selected.array();
+            // Global step:
+            q_sol = PdLhsSolve(method, pd_rhs, additional_dirichlet);
+            for (const auto& pair : augmented_dirichlet) q_sol(pair.first) = pair.second;
+        }
+        force_sol = PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
+        grad_sol = (q_sol - rhs - h2m * force_sol).array() * selected.array();
+
+        // Check for convergence --- gradients must be zero.
+        const real abs_error = grad_sol.norm();
+        const real rhs_norm = VectorXr(selected.array() * rhs.array()).norm();
         if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
         if (abs_error <= rel_tol * rhs_norm + abs_tol) {
-            if (verbose_level > 0) std::cout << "Forward converged at iteration " << i << std::endl;
-            return q_sol_next;
+            success = true;
+            return q_sol;
         }
-
-        // Update.
-        q_sol = q_sol_next;
-        force_sol = force_next;
-        energy_sol = energy_next;
     }
-    PrintError("Projective dynamics method fails to converge.");
+    CheckError(success, "PD method fails to converge.");
     return VectorXr::Zero(dofs_);
 }
 

@@ -44,6 +44,11 @@ public:
         return ret;
     }
 
+    // Transformation.
+    void Scale(const real scale_factor) {
+        vertices_ *= scale_factor;
+    }
+
 private:
     void SaveToBinaryFile(const std::string& binary_file_name) const;
     void SaveToObjFile(const std::string& obj_file_name) const;

@@ -11,7 +11,7 @@ from py_diff_pd.common.common import ndarray, create_folder, rpy_to_rotation, rp
 from py_diff_pd.common.common import print_info, print_ok, print_error
 from py_diff_pd.common.grad_check import check_gradients
 from py_diff_pd.core.py_diff_pd_core import StdRealVector
-from py_diff_pd.env.rolling_jelly_env_3d import RollingJellyEnv3d
+from py_diff_pd.env.bunny_env_3d import BunnyEnv3d
 
 def apply_transform(q, R, t):
     q = ndarray(q).reshape((-1, 3))
@@ -20,12 +20,12 @@ def apply_transform(q, R, t):
 
 if __name__ == '__main__':
     seed = 42
-    folder = Path('rolling_jelly_3d')
+    folder = Path('bunny_3d')
     refinement = 4
     youngs_modulus = 1e6
     poissons_ratio = 0.49
     target_com = ndarray([0.5, 0.5, 0.2])
-    env = RollingJellyEnv3d(seed, folder, { 'refinement': refinement,
+    env = BunnyEnv3d(seed, folder, { 'refinement': refinement,
         'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio,
         'target_com': target_com })
@@ -39,8 +39,8 @@ if __name__ == '__main__':
     methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
     opts = (newton_opt, newton_opt, pd_opt)
 
-    dt = 2e-3
-    frame_num = 100
+    dt = 1e-3
+    frame_num = 80
 
     # Initial state.
     dofs = deformable.dofs()

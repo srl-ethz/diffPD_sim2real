@@ -44,7 +44,7 @@ def test_deformable_backward_2d(verbose):
 
     dt = 3e-2
     frame_num = 30
-    eps = 1e-8
+    eps = 1e-4
     atol = 1e-5
     rtol = 5e-2
     def skip_var(dof):
