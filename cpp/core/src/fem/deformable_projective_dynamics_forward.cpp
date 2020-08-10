@@ -263,7 +263,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
     if (use_bfgs) {
         CheckError(options.find("bfgs_history_size") != options.end(), "Missing option bfgs_history_size");
         bfgs_history_size = static_cast<int>(options.at("bfgs_history_size"));
-        CheckError(bfgs_history_size > 1, "Invalid bfgs_history_size.");
+        CheckError(bfgs_history_size >= 1, "Invalid bfgs_history_size.");
         CheckError(options.find("max_ls_iter") != options.end(), "Missing option max_ls_iter.");
         max_ls_iter = static_cast<int>(options.at("max_ls_iter"));
         CheckError(max_ls_iter > 0, "Invalid max_ls_iter: " + std::to_string(max_ls_iter));
