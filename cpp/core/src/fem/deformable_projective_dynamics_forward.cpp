@@ -301,7 +301,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
     std::deque<VectorXr> si_history, xi_history;
     std::deque<VectorXr> yi_history, gi_history;
     for (int i = 0; i < max_pd_iter; ++i) {
-        if (verbose_level > 0) std::cout << "PD iteration: " << i << std::endl;
+        if (verbose_level > 0) PrintInfo("PD iteration: " + std::to_string(i));
         if (use_bfgs) {
             // BFGS's direction: quasi_newton_direction = B * grad_sol.
             VectorXr quasi_newton_direction = VectorXr::Zero(dofs_);
@@ -351,7 +351,11 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
                 }
                 quasi_newton_direction = z;
             }
-            // Since BFGS approximates the (inverse of) Hessian as an SPD matrix, there is no need for definiteness fix.
+            // Technically BFGS ensures the Hessian approximation is SPD as long as you implement the line search algorithm
+            // such that the Wolfe condition is met. Since we didn't implement the Wolfe condition completely, there is a
+            // slim chance that the direction is not descending. In this case, we switch back to gradient descend.
+            if (quasi_newton_direction.dot(grad_sol) <= 0)
+                quasi_newton_direction = grad_sol.array() * selected.array();
 
             // Line search --- keep in mind that grad/newton_direction points to the direction that *increases* the objective.
             if (verbose_level > 1) Tic();
@@ -374,7 +378,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
                 q_sol_next = q_sol - step_size * quasi_newton_direction;
                 energy_next = ComputePdEnergy(q_sol_next) + ActuationEnergy(q_sol_next, a);
                 obj_next = eval_obj(q_sol_next, energy_next);
-                if (verbose_level > 0) std::cout << "Line search iteration: " << j << std::endl;
+                if (verbose_level > 0) PrintInfo("Line search iteration: " + std::to_string(j));
                 if (verbose_level > 1) {
                     std::cout << "step size: " << step_size << std::endl;
                     std::cout << "obj_sol: " << obj_sol << ", "
@@ -460,7 +464,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const std::s
     const VectorXr rhs = q + h * v + h2m * f_ext + h2m * ForwardStateForce(q, v);
     const int max_contact_iter = 5;
     for (int contact_iter = 0; contact_iter < max_contact_iter; ++contact_iter) {
-        if (verbose_level > 0) std::cout << "Contact iteration " << contact_iter << std::endl;
+        if (verbose_level > 0) PrintInfo("Contact iteration: " + std::to_string(contact_iter));
         // Fix dirichlet_ + active_contact_nodes.
         std::map<int, real> additional_dirichlet;
         for (const int idx : active_contact_idx) {

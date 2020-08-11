@@ -252,7 +252,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
     std::deque<VectorXr> si_history, xi_history;
     std::deque<VectorXr> yi_history, gi_history;
     for (int i = 0; i < max_pd_iter; ++i) {
-        if (verbose_level > 0) std::cout << "PD iteration: " << i << std::endl;
+        if (verbose_level > 0) PrintInfo("PD iteration: " + std::to_string(i));
         if (use_bfgs) {
             // At each iteration, we maintain:
             // - x_sol
@@ -308,7 +308,13 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
                 quasi_newton_direction = z;
             }
             quasi_newton_direction = quasi_newton_direction.array() * selected.array();
-            // Since BFGS approximates the (inverse of) Hessian as an SPD matrix, there is no need for definiteness fix.
+            if (quasi_newton_direction.dot(grad_sol) < 0) {
+                // This implies the (inverse of) Hessian is indefinite, which means the objective to be minimized will
+                // become unbounded below. In this case, we choose to switch back to Newton's method.
+                success = false;
+                PrintWarning("Indefinite Hessian. BFGS is minimizing an unbounded objective.");
+                break;
+            }
 
             // Line search --- keep in mind that grad/newton_direction points to the direction that *increases* the objective.
             if (verbose_level > 1) Tic();
@@ -337,7 +343,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
                         a, pd_backward_local_element_matrices, pd_backward_local_muscle_matrices, x_sol_next);
                 grad_sol_next = (Sx_sol_next - dl_dq_next_agg).array() * selected.array();
                 obj_next = 0.5 * x_sol_next.dot(Sx_sol_next) - dl_dq_next_agg.dot(x_sol_next);
-                if (verbose_level > 0) std::cout << "Line search iteration: " << j << std::endl;
+                if (verbose_level > 0) PrintInfo("Line search iteration: " + std::to_string(j));
                 if (verbose_level > 1) {
                     std::cout << "step size: " << step_size << std::endl;
                     std::cout << "obj_sol: " << obj_sol << ", "
@@ -384,8 +390,17 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
             break;
         }
     }
-    CheckError(success, "PD method fails to converge.");
     VectorXr dl_drhs = x_sol, adjoint = x_sol;
+    if (!success) {
+        // Switch back to Newton's method.
+        PrintWarning("PD backward: switching to Cholesky decomposition");
+        Eigen::SimplicialLDLT<SparseMatrix> cholesky;
+        const SparseMatrix op = NewtonMatrix(q_next, a, h2m, augmented_dirichlet);
+        cholesky.compute(op);
+        dl_drhs = cholesky.solve(dl_dq_next_agg);
+        adjoint = dl_drhs;
+        CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
+    }
 
     // dl_drhs already backpropagates q_next_free to rhs_free and q_next_fixed to rhs_fixed.
     // Since q_next_fixed does not depend on rhs_free, it remains to backpropagate q_next_free to rhs_fixed.
