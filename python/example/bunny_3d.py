@@ -24,7 +24,7 @@ if __name__ == '__main__':
     refinement = 4
     youngs_modulus = 1e6
     poissons_ratio = 0.49
-    target_com = ndarray([0.5, 0.5, 0.2])
+    target_com = ndarray([0.15, 0.15, 0.07])
     env = BunnyEnv3d(seed, folder, { 'refinement': refinement,
         'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio,
@@ -32,7 +32,7 @@ if __name__ == '__main__':
     deformable = env.deformable()
 
     # Optimization parameters.
-    thread_ct = 4
+    thread_ct = 8
     newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 20, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
     pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 1, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
@@ -40,7 +40,7 @@ if __name__ == '__main__':
     opts = (newton_opt, newton_opt, pd_opt)
 
     dt = 1e-3
-    frame_num = 80
+    frame_num = 100
 
     # Initial state.
     dofs = deformable.dofs()
@@ -77,8 +77,8 @@ if __name__ == '__main__':
     # Optimization.
     # Variables to be optimized:
     # init_rpy (3D), init_com_q (3D), init_com_v (3D).
-    x_lb = ndarray([-np.pi / 3, -np.pi / 3, -np.pi / 3, -0.01, -0.01, 0.19, -3, -3, -5])
-    x_ub = ndarray([np.pi / 3, np.pi / 3, np.pi / 3, 0.01, 0.01, 0.21, 3, 3, -3])
+    x_lb = ndarray([-np.pi / 3, -np.pi / 3, -np.pi / 3, -0.01, -0.01, 0.19, -1.5, -1.5, -5])
+    x_ub = ndarray([np.pi / 3, np.pi / 3, np.pi / 3, 0.01, 0.01, 0.21, 1.5, 1.5, -3])
     x_init = np.random.uniform(x_lb, x_ub)
     # Visualize initial guess.
     init_q, init_v = variable_to_initial_states(x_init)
