@@ -2,15 +2,14 @@ import sys
 sys.path.append('../')
 
 from pathlib import Path
-import time
 import numpy as np
-import scipy.optimize
 import pickle
 
 from py_diff_pd.common.common import ndarray, create_folder, rpy_to_rotation, rpy_to_rotation_gradient
 from py_diff_pd.common.common import print_info, print_ok, print_error
+from py_diff_pd.common.mesh import hex2obj
 from py_diff_pd.common.grad_check import check_gradients
-from py_diff_pd.core.py_diff_pd_core import StdRealVector
+from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 from py_diff_pd.env.bunny_env_3d import BunnyEnv3d
 
 def apply_transform(q, R, t):
@@ -40,6 +39,12 @@ if __name__ == '__main__':
 
     dt = 1e-3
     frame_num = 100
+
+    # Load results.
+    folder = Path('bunny_3d')
+    thread_ct = 8
+    data_file = folder / 'data_{:04d}_threads.bin'.format(thread_ct)
+    data = pickle.load(open(data_file, 'rb'))
 
     # Initial state.
     dofs = deformable.dofs()
@@ -73,52 +78,44 @@ if __name__ == '__main__':
         grad[6:9] = np.sum(grad_init_v.reshape((-1, 3)), axis=0)
         return grad
 
-    # Optimization.
-    # Variables to be optimized:
-    # init_rpy (3D), init_com_q (3D), init_com_v (3D).
-    x_lb = ndarray([-np.pi / 3, -np.pi / 3, -np.pi / 3, -0.01, -0.01, 0.19, -1.5, -1.5, -5])
-    x_ub = ndarray([np.pi / 3, np.pi / 3, np.pi / 3, 0.01, 0.01, 0.21, 1.5, 1.5, -3])
-    x_init = np.random.uniform(x_lb, x_ub)
-    # Visualize initial guess.
-    init_q, init_v = variable_to_initial_states(x_init)
-    env.simulate(dt, frame_num, methods[0], opts[0], init_q, init_v, a0, f0, require_grad=False, vis_folder='init')
+    def simulate(x, method, opt, vis_folder):
+        init_q, init_v = variable_to_initial_states(x)
+        env.simulate(dt, frame_num, method, opt, init_q, init_v, a0, f0, require_grad=False, vis_folder=vis_folder)
 
-    bounds = scipy.optimize.Bounds(x_lb, x_ub)
-    data = {}
+    # Initial guess.
+    x = data['newton_pcg'][0]['x']
+    simulate(x, methods[0], opts[0], 'init')
+
+    # Load meshes.
+    def generate_mesh(vis_folder, mesh_folder):
+        create_folder(folder / mesh_folder)
+        for i in range(frame_num + 1):
+            mesh_file = folder / vis_folder / '{:04d}.bin'.format(i)
+            mesh = Mesh3d()
+            mesh.Initialize(str(mesh_file))
+            hex2obj(mesh, obj_file_name=folder / mesh_folder / '{:04d}.obj'.format(i), obj_type='tri')
+
+    generate_mesh('init', 'init_mesh')
+
     for method, opt in zip(methods, opts):
-        data[method] = []
-        def loss_and_grad(x):
-            init_q, init_v = variable_to_initial_states(x)
-            loss, grad, info = env.simulate(dt, frame_num, method, opt, init_q, init_v, a0, f0, require_grad=True, vis_folder=None)
-            # Assemble the gradients.
-            grad_init_q = grad[0]
-            grad_init_v = grad[1]
-            grad_x = variable_to_initial_states_gradient(x, grad_init_q, grad_init_v)
-            print('loss: {:8.3f}, |grad|: {:8.3f}, forward time: {:6.3f}s, backward time: {:6.3f}s'.format(
-                loss, np.linalg.norm(grad_x), info['forward_time'], info['backward_time']))
-            single_data = {}
-            single_data['loss'] = loss
-            single_data['grad'] = np.copy(grad_x)
-            single_data['x'] = np.copy(x)
-            single_data['forward_time'] = info['forward_time']
-            single_data['backward_time'] = info['backward_time']
-            data[method].append(single_data)
-            return loss, np.copy(grad_x)
+        # Final result.
+        x_final = data[method][-1]['x']
 
-        # Use the two lines below to sanity check the gradients.
-        # Note that you might need to fine tune the rel_tol in opt to make it work.
-        # from py_diff_pd.common.grad_check import check_gradients
-        # check_gradients(loss_and_grad, x_init, eps=1e-6)
+        simulate(x_final, method, opt, 'final_{}'.format(method))
+        generate_mesh('final_{}'.format(method), 'final_mesh_{}'.format(method))
 
-        t0 = time.time()
-        result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
-            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-3 })
-        t1 = time.time()
-        assert result.success
-        x_final = result.x
-        print_info('Optimizing with {} finished in {:6.3f} seconds'.format(method, t1 - t0))
-        pickle.dump(data, open(folder / 'data_{:04d}_threads.bin'.format(thread_ct), 'wb'))
+    def save_com_sequences(mesh_folder):
+        coms = []
+        for i in range(frame_num + 1):
+            mesh_file = folder / mesh_folder / '{:04d}.bin'.format(i)
+            mesh = Mesh3d()
+            mesh.Initialize(str(mesh_file))
+            q = ndarray(mesh.py_vertices())
+            com = np.mean(q.reshape((-1, 3)), axis=0)
+            coms.append(com)
+        coms = ndarray(coms)
+        np.save(folder / '{}_com'.format(mesh_folder), coms)
 
-        # Visualize results.
-        final_q, final_v = variable_to_initial_states(x_final)
-        env.simulate(dt, frame_num, method, opt, final_q, final_v, a0, f0, require_grad=False, vis_folder=method)
+    save_com_sequences('init')
+    for method in methods:
+        save_com_sequences('final_{}'.format(method))
