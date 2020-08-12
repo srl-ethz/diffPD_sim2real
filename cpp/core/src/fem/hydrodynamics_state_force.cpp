@@ -129,7 +129,9 @@ const VectorXr HydrodynamicsStateForce<2, 2>::ForwardForce(const VectorXr& q, co
         const Vector2r An = Vector2r(p1.y() - p0.y(), -p1.x() + p0.x());
         const Vector2r n = An / A;
         // Compute the angle of attack.
-        const real phi = Pi() / 2 - std::acos(n.dot(d));
+        const real nd = n.dot(d);
+        if (nd < 0.0) continue;
+        const real phi = Pi() / 2 - std::acos(nd);
         const Vector2r f_drag = 0.5 * rho_ * A * Cd(phi) * v_rel_len * v_rel;
         const Vector2r f_thrust = -0.5 * rho_ * Ct(phi) * v_rel_len * v_rel_len * An;
         // Added f_drag and f_thrust back to i0 and i1.
@@ -182,7 +184,9 @@ const VectorXr HydrodynamicsStateForce<3, 4>::ForwardForce(const VectorXr& q, co
         Vector3r n = Vector3r::Zero();
         if (n_norm > eps) n = unnormalized_n / n_norm;
         // Compute the angle of attack.
-        const real phi = Pi() / 2 - std::acos(n.dot(d));
+        const real nd = n.dot(d);
+        if (nd < 0.0) continue;
+        const real phi = Pi() / 2 - std::acos(nd);
         const Vector3r f_drag = 0.5 * rho_ * A * Cd(phi) * v_rel_len * v_rel;
         const Vector3r f_thrust = -0.5 * rho_ * A * Ct(phi) * v_rel_len * v_rel_len * n;
         // Added f_drag and f_thrust back to i0 and i1.
@@ -239,6 +243,7 @@ void HydrodynamicsStateForce<2, 2>::BackwardForce(const VectorXr& q, const Vecto
 
         // Compute the angle of attack.
         const real nd = n.dot(d);
+        if (nd < 0.0) continue;
         const real nd2 = nd * nd;
         const real phi = Pi() / 2 - std::acos(nd);
         const real dacos = -1 / std::sqrt(1 - nd2);
@@ -371,6 +376,7 @@ void HydrodynamicsStateForce<3, 4>::BackwardForce(const VectorXr& q, const Vecto
 
         // Compute the angle of attack.
         const real nd = n.dot(d);
+        if (nd < 0.0) continue;
         const real nd2 = nd * nd;
         const real phi = Pi() / 2 - std::acos(nd);
         const real dacos = -1 / std::sqrt(1 - nd2);
