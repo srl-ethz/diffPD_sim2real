@@ -41,10 +41,10 @@ class PrettyTabular(object):
 
 import shutil
 import os
-def create_folder(folder_name, force=True):
-    if force and os.path.isdir(folder_name):
+def create_folder(folder_name, exist_ok=False):
+    if not exist_ok and os.path.isdir(folder_name):
         shutil.rmtree(folder_name)
-    os.makedirs(folder_name, exist_ok=True)
+    os.makedirs(folder_name, exist_ok=exist_ok)
 
 from py_diff_pd.core.py_diff_pd_core import StdRealVector
 def to_std_real_vector(v):
@@ -55,9 +55,53 @@ def to_std_real_vector(v):
         v_array[i] = v[i]
     return v_array
 
+from py_diff_pd.core.py_diff_pd_core import StdIntVector
+def copy_std_int_vector(v):
+    v2 = StdIntVector(v.size())
+    for i, a in enumerate(v):
+        v2[i] = a
+    return v2
+
 from py_diff_pd.core.py_diff_pd_core import StdMap
 def to_std_map(opt):
     opt_map = StdMap()
     for k, v in opt.items():
         opt_map[k] = float(v)
     return opt_map
+
+# Rotation.
+# Input (rpy): a 3D vector (roll, pitch, yaw).
+# Output (R): a 3 x 3 rotation matrix.
+def rpy_to_rotation(rpy):
+    rpy = ndarray(rpy).ravel()
+    assert rpy.size == 3
+    roll, pitch, yaw = rpy
+
+    cr, sr = np.cos(roll), np.sin(roll)
+    R_roll = ndarray([[1, 0, 0], [0, cr, -sr], [0, sr, cr]])
+    cp, sp = np.cos(pitch), np.sin(pitch)
+    R_pitch = ndarray([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
+    cy, sy = np.cos(yaw), np.sin(yaw)
+    R_yaw = ndarray([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]])
+
+    return R_yaw @ R_pitch @ R_roll
+
+# Gradients of rotation.
+# Input (rpy): a 3D vector (roll, pitch, yaw).
+# Output (R): three 3 x 3 matrices.
+def rpy_to_rotation_gradient(rpy):
+    rpy = ndarray(rpy).ravel()
+    assert rpy.size == 3
+    roll, pitch, yaw = rpy
+
+    cr, sr = np.cos(roll), np.sin(roll)
+    R_roll = ndarray([[1, 0, 0], [0, cr, -sr], [0, sr, cr]])
+    dR_droll = ndarray([[0, 0, 0], [0, -sr, -cr], [0, cr, -sr]])
+    cp, sp = np.cos(pitch), np.sin(pitch)
+    R_pitch = ndarray([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
+    dR_dpitch = ndarray([[-sp, 0, cp], [0, 0, 0], [-cp, 0, -sp]])
+    cy, sy = np.cos(yaw), np.sin(yaw)
+    R_yaw = ndarray([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]])
+    dR_dyaw = ndarray([[-sy, -cy, 0], [cy, -sy, 0], [0, 0, 0]])
+
+    return R_yaw @ R_pitch @ dR_droll, R_yaw @ dR_dpitch @ R_roll, dR_dyaw @ R_pitch @ R_roll
