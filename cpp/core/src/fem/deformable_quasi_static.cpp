@@ -6,6 +6,7 @@
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::GetQuasiStaticState(const std::string& method, const VectorXr& a, const VectorXr& f_ext,
     const std::map<std::string, real>& options, VectorXr& q) const {
+    CheckError(frictional_boundary_vertex_indices_.empty(), "Frictional boundary is not supported in the quasi-static solver.");
     if (BeginsWith(method, "newton")) QuasiStaticStateNewton(method, a, f_ext, options, q);
     else PrintError("Unsupport quasi-static method: " + method);
 }
@@ -52,8 +53,10 @@ void Deformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::stri
         VectorXr dq = VectorXr::Zero(dofs_);
         // Solve for the search direction.
         if (method == "newton_pcg") {
-            Eigen::ConjugateGradient<MatrixOp, Eigen::Lower|Eigen::Upper, Eigen::IdentityPreconditioner> cg;
-            MatrixOp op(dofs_, dofs_, [&](const VectorXr& dq){ return QuasiStaticMatrixOp(q_sol, a, dq); });
+            // Matrix-free operator is only compatible with IdentityPreconditioner and it seems that
+            // matrix operators are more accurate.
+            Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper, Eigen::IncompleteCholesky<real>> cg;
+            const SparseMatrix op = QuasiStaticMatrix(q_sol, a);
             cg.compute(op);
             dq = cg.solve(new_rhs);
             CheckError(cg.info() == Eigen::Success, "CG solver failed.");
@@ -74,7 +77,7 @@ void Deformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::stri
         VectorXr q_sol_next = q_sol + step_size * dq;
         VectorXr force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
         for (int j = 0; j < max_ls_iter; ++j) {
-            if (!force_next.hasNaN()) break;
+            if (!HasFlippedElement(q_sol_next) && !force_next.hasNaN()) break;
             step_size /= 2;
             q_sol_next = q_sol + step_size * dq;
             force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
@@ -112,7 +115,8 @@ template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::QuasiStaticMatrixOp(const VectorXr& q, const VectorXr& a, const VectorXr& dq) const {
     VectorXr dq_w_bonudary = dq;
     for (const auto& pair : dirichlet_) dq_w_bonudary(pair.first) = 0;
-    VectorXr ret = ElasticForceDifferential(q, dq_w_bonudary) + PdEnergyForceDifferential(q, dq_w_bonudary)
+    const int w_dofs = static_cast<int>(pd_element_energies_.size());
+    VectorXr ret = ElasticForceDifferential(q, dq_w_bonudary) + PdEnergyForceDifferential(q, dq_w_bonudary, VectorXr::Zero(w_dofs))
         + ActuationForceDifferential(q, a, dq_w_bonudary, VectorXr::Zero(act_dofs_));
     for (const auto& pair : dirichlet_) ret(pair.first) = dq(pair.first);
     return ret;
@@ -121,7 +125,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::QuasiStaticMatrixOp(const Ve
 template<int vertex_dim, int element_dim>
 const SparseMatrix Deformable<vertex_dim, element_dim>::QuasiStaticMatrix(const VectorXr& q, const VectorXr& a) const {
     SparseMatrixElements nonzeros = ElasticForceDifferential(q);
-    SparseMatrixElements nonzeros_pd = PdEnergyForceDifferential(q);
+    SparseMatrixElements nonzeros_pd, nonzeros_dummy;
+    PdEnergyForceDifferential(q, true, false, nonzeros_pd, nonzeros_dummy);
     SparseMatrixElements nonzeros_act_dq, nonzeros_act_da;
     ActuationForceDifferential(q, a, nonzeros_act_dq, nonzeros_act_da);
     nonzeros.insert(nonzeros.end(), nonzeros_pd.begin(), nonzeros_pd.end());

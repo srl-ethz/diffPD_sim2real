@@ -35,11 +35,12 @@ using real = double;
 #define PRINT_ERROR             1
 #define PRINT_ERROR_AND_WARNING 2
 #define PRINT_ALL               3
-#define PRINT_LEVEL             PRINT_ERROR
+#define PRINT_LEVEL             PRINT_ALL
 
 using Vector2i = Eigen::Matrix<int, 2, 1>;
 using Vector3i = Eigen::Matrix<int, 3, 1>;
 using Vector4i = Eigen::Matrix<int, 4, 1>;
+using VectorXi = Eigen::Matrix<int, -1, 1>;
 using Vector2r = Eigen::Matrix<real, 2, 1>;
 using Vector3r = Eigen::Matrix<real, 3, 1>;
 using Vector4r = Eigen::Matrix<real, 4, 1>;
