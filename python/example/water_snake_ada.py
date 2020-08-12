@@ -30,11 +30,9 @@ from torch.utils.tensorboard import SummaryWriter
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.mesh import generate_hex_mesh, get_boundary_face
-from py_diff_pd.common.display import render_hex_mesh_no_floor, export_gif, Arrow3D
+from py_diff_pd.common.display import export_gif, Arrow3D
 from py_diff_pd.common.sim import Sim
 from py_diff_pd.common.controller import SnakeAdaNNController, AdaNNController, IndNNController
-
-import optuna
 
 
 class Display(object):
@@ -182,10 +180,10 @@ def main():
     youngs_modulus = 1e6
     poissons_ratio = 0.45
     density = 1e3
-    method = 'pd'
+    method = 'pd_eigen'
     opt = {
-        'max_pd_iter': 1000, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0,
-        'thread_ct': 4, 'method': 1, 'bfgs_history_size': 10
+        'max_pd_iter': 1000, 'max_ls_iter': 10, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0,
+        'thread_ct': 4, 'use_bfgs': 1, 'bfgs_history_size': 10
     }
 
     deformable = Deformable3d()
@@ -335,7 +333,7 @@ def main():
 
         loss = loss.clone().detach()
         q_center = q_center.clone().detach()
-        norm = norm.clone().detach()
+        #norm = norm.clone().detach()
 
         ckpt = {
             'state_dict': controller.state_dict(),
@@ -352,10 +350,11 @@ def main():
         writer.add_scalar('q_center/y', q_center[1].item(), epoch)
         writer.add_scalar('q_center/z', q_center[2].item(), epoch)
 
-        if epoch % 10 == 0:
-            display.save(str(video_folder / f'{epoch}.mp4'))
+        #if epoch % 10 == 0:
+        #    display.save(str(video_folder / f'{epoch}.mp4'))
 
-        print(f'{epoch}/{num_epochs} loss: {loss.item():.6e} center: {q_center.numpy()} norm: {norm.item():.3f}') # pylint: disable=no-member
+        #print(f'{epoch}/{num_epochs} loss: {loss.item():.6e} center: {q_center.numpy()} norm: {norm.item():.3f}') # pylint: disable=no-member
+        print(f'{epoch}/{num_epochs} loss: {loss.item():.6e} center: {q_center.numpy()}') # pylint: disable=no-member
 
 
 if __name__ == "__main__":

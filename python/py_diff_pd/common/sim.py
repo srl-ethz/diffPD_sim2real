@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.autograd as autograd
 
-from py_diff_pd.core.py_diff_pd_core import StdRealVector
+from py_diff_pd.core.py_diff_pd_core import StdRealVector, StdIntVector
 from py_diff_pd.common.common import ndarray
 
 
@@ -26,7 +26,7 @@ class SimFunction(autograd.Function):
         v_next_array = StdRealVector(dofs)
 
         deformable.PyForward(
-            method, q_array, v_array, a_array, f_ext_array, dt, option, q_next_array, v_next_array)
+            method, q_array, v_array, a_array, f_ext_array, dt, option, q_next_array, v_next_array, StdIntVector(0))
 
         q_next = torch.as_tensor(ndarray(q_next_array))
         v_next = torch.as_tensor(ndarray(v_next_array))
@@ -55,11 +55,11 @@ class SimFunction(autograd.Function):
         dl_dv_array = StdRealVector(dofs)
         dl_da_array = StdRealVector(act_dofs)
         dl_df_ext_array = StdRealVector(dofs)
-
+        dl_dwi = StdRealVector(2)
         ctx.deformable.PyBackward(
             ctx.method, q_array, v_array, a_array, f_ext_array, ctx.dt,
-            q_next_array, v_next_array, dl_dq_next_array, dl_dv_next_array, ctx.option,
-            dl_dq_array, dl_dv_array, dl_da_array, dl_df_ext_array)
+            q_next_array, v_next_array, StdIntVector(0), dl_dq_next_array, dl_dv_next_array, ctx.option,
+            dl_dq_array, dl_dv_array, dl_da_array, dl_df_ext_array, dl_dwi)
 
         dl_dq = torch.as_tensor(ndarray(dl_dq_array))
         dl_dv = torch.as_tensor(ndarray(dl_dv_array))
