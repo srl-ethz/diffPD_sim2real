@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from py_diff_pd.common.common import PrettyTabular
-from py_diff_pd.common.common import print_info
+from py_diff_pd.common.common import print_info, print_warning
 
 def transpose_list(l, row_num, col_num):
     assert len(l) == row_num * col_num
@@ -29,18 +29,32 @@ if __name__ == '__main__':
 
     folder = Path('benchmark_3d')
     rel_tols, forward_times, backward_times, losses, grads = pickle.load(open(folder / 'table.bin', 'rb'))
-
-    # Parse thread cnt.
-    thread_cts = []
+    # Check out if there are any corrupted data.
+    max_rel_tol_nums = len(rel_tols)
     for method in forward_times:
-        if 'pd' in method:
-            # Extract thread number from pd_XXthreads.
-            thread_cts.append(int(method[3:-7]))
-    thread_cts = sorted(thread_cts)
+        if len(forward_times[method]) < max_rel_tol_nums:
+            max_rel_tol_nums = len(forward_times[method])
+    for method in backward_times:
+        if len(backward_times[method]) < max_rel_tol_nums:
+            max_rel_tol_nums = len(backward_times[method])
+    for method in losses:
+        if len(losses[method]) < max_rel_tol_nums:
+            max_rel_tol_nums = len(losses[method])
+    for method in grads:
+        if len(grads[method]) < max_rel_tol_nums:
+            max_rel_tol_nums = len(grads[method])
+    if max_rel_tol_nums < len(rel_tols):
+        print_warning('Benchmark data corrupted. Showing the first {} only.'.format(max_rel_tol_nums))
+        rel_tols = rel_tols[:max_rel_tol_nums]
 
+    thread_cts = [2, 4, 8]
     forward_backward_times = {}
     for method in forward_times:
         forward_backward_times[method] = np.zeros(len(rel_tols))
+
+    grad_norms = {}
+    for method in grads:
+        grad_norms[method] = [np.linalg.norm(x) for x in grads[method]]
 
     for idx, rel_tol in enumerate(rel_tols):
         print_info('rel_tol: {:3.3e}'.format(rel_tol))
@@ -61,41 +75,77 @@ if __name__ == '__main__':
                 'loss': losses[method][idx],
                 '|grad|': np.linalg.norm(grads[method][idx]) }))
 
+
     fig = plt.figure(figsize=(18, 7))
     ax_fb = fig.add_subplot(131)
     ax_f = fig.add_subplot(132)
     ax_b = fig.add_subplot(133)
     titles = ['forward + backward', 'forward', 'backward']
-    ax_poses = [(0.07, 0.29, 0.25, 0.6),
-        (0.39, 0.29, 0.25, 0.6),
-        (0.71, 0.29, 0.25, 0.6)]
+    ax_poses = [(0.07, 0.33, 0.25, 0.6),
+        (0.39, 0.33, 0.25, 0.6),
+        (0.71, 0.33, 0.25, 0.6)]
     dash_list =[(5, 0), (5, 2), (2, 5), (4, 10), (3, 3, 2, 2), (5, 2, 20, 2), (5, 5), (5, 2, 1, 2)]
     for ax_pos, title, ax, t in zip(ax_poses, titles, (ax_fb, ax_f, ax_b), (forward_backward_times, forward_times, backward_times)):
         ax.set_position(ax_pos)
         ax.set_xlabel('time (s)')
         ax.set_ylabel('relative error')
         ax.set_yscale('log')
-        for method in ['newton_pcg', 'newton_cholesky', 'pd']:
+        for method, method_ref_name in zip(['newton_pcg', 'newton_cholesky', 'pd_eigen', 'pd_no_bfgs'],
+            ['Newton-PCG', 'Newton-Cholesky', 'DiffPD (Ours)', 'DiffPD w/o quasi-Newton']):
+            if 'eigen' in method:
+                color = 'tab:green'
+            elif 'pcg' in method:
+                color = 'tab:blue'
+            elif 'cholesky' in method:
+                color = 'tab:red'
+            elif 'bfgs' in method:
+                color = 'tab:olive'
+            if method == 'pd_no_bfgs' and title != 'backward':
+                continue
+            for idx, thread_ct in enumerate(thread_cts):
+                meth_thread_num = '{} ({} threads)'.format(method_ref_name, thread_ct)
+                ax.plot(t['{}_{}threads'.format(method, thread_ct)], rel_tols, label=meth_thread_num,
+                    color=color, dashes=dash_list[idx], linewidth=2)
+
+        ax.grid(True)
+        ax.set_title(title)
+        handles, labels = ax.get_legend_handles_labels()
+
+    # Share legends.
+    row_num = 4
+    col_num = len(thread_cts)
+    fig.legend(transpose_list(handles, row_num, col_num), transpose_list(labels, row_num, col_num),
+        loc='upper center', ncol=col_num, bbox_to_anchor=(0.5, 0.23))
+    fig.savefig(folder / 'benchmark.pdf')
+    fig.savefig(folder / 'benchmark.png')
+
+    fig_l_g = plt.figure(figsize=(12, 8))
+    ax_loss = fig_l_g.add_subplot(121)
+    ax_grad = fig_l_g.add_subplot(122)
+    ax_loss.set_position((0.09, 0.2, 0.37, 0.6))
+    ax_grad.set_position((0.53, 0.2, 0.37, 0.6))
+    titles_l_g = ['loss', '|grad|']
+    for title, ax, y in zip(titles_l_g, (ax_loss, ax_grad), (losses, grad_norms)):
+        ax.set_xlabel('convergence threshold')
+        ax.set_ylabel('magnitude')
+        ax.set_xscale('log')
+        ax.invert_xaxis()
+        if 'grad' in title:
+            ax.set_yscale('log')
+        for method, method_ref_name in zip(['newton_pcg', 'newton_cholesky', 'pd_eigen'], ['Newton-PCG', 'Newton-Cholesky', 'DiffPD (Ours)']):
             if 'pd' in method:
                 color = 'tab:green'
             elif 'pcg' in method:
                 color = 'tab:blue'
             elif 'cholesky' in method:
                 color = 'tab:red'
-            for thread_ct in thread_cts:
-                idx = thread_cts.index(thread_ct)
-                meth_thread_num = '{}_{}threads'.format(method, thread_ct)
-                ax.plot(t[meth_thread_num], rel_tols, label=meth_thread_num,
-                    color=color, dashes=dash_list[idx], linewidth=2)
+            meth_thread_num = '{}_{}threads'.format(method, thread_cts[-1])
+            ax.plot(rel_tols, y[meth_thread_num], label=method_ref_name, color=color, linewidth=2)
         ax.grid(True)
         ax.set_title(title)
         handles, labels = ax.get_legend_handles_labels()
 
-    # Share legends.
-    row_num = 3
-    col_num = len(thread_cts)
-    fig.legend(transpose_list(handles, row_num, col_num), transpose_list(labels, row_num, col_num),
-        loc='upper center', ncol=col_num, bbox_to_anchor=(0.5, 0.19))
-    fig.savefig(folder / 'benchmark.pdf')
-    fig.savefig(folder / 'benchmark.png')
+    fig_l_g.legend(handles, labels, loc='upper center', ncol=3, bbox_to_anchor=(0.5, 0.1))
+    fig_l_g.savefig(folder / 'benchmark_loss_grad.pdf')
+    fig_l_g.savefig(folder / 'benchmark_loss_grad.png')
     plt.show()

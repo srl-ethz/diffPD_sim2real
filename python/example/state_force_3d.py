@@ -81,7 +81,7 @@ def test_state_force_3d(verbose):
     for state_force in [gravity, collision, hydro,]:
         def l_and_g(x):
             return loss_and_grad(x, f_weight, state_force, dofs)
-        if not check_gradients(l_and_g, np.concatenate([q0, v0]), eps, atol, rtol, verbose):
+        if not check_gradients(l_and_g, np.concatenate([q0, v0]), eps, rtol, atol, verbose):
             print_error('StateForce3d gradients mismatch.')
             return False
 
@@ -103,7 +103,7 @@ def test_state_force_3d(verbose):
     atol = 1e-4
     rtol = 1e-2
     x0 = np.concatenate([q0, v0])
-    grads_equal = check_gradients(forward_and_backward, x0, eps, atol, rtol, verbose)
+    grads_equal = check_gradients(forward_and_backward, x0, eps, rtol, atol, verbose)
     if not grads_equal:
         if verbose:
             print_error('ForwardStateForce and BackwardStateForce do not match.')

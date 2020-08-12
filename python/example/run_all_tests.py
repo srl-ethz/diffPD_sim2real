@@ -10,8 +10,6 @@ if __name__ == '__main__':
         # Display.
         'render_quad_mesh',
         # Numerical check.
-        'elastic_energy_2d',
-        'elastic_energy_3d',
         'state_force_2d',
         'state_force_3d',
         'pd_energy_2d',
@@ -21,10 +19,9 @@ if __name__ == '__main__':
         'pd_forward',
         'deformable_backward_2d',
         'deformable_backward_3d',
+        'collision_2d',
         # Quasi-static solvers.
         'deformable_quasi_static_3d',
-        # Collisions.
-        'collision_3d',
     ]
 
     failure_cnt = 0
