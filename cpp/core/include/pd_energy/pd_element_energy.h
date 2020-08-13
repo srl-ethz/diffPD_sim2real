@@ -22,6 +22,15 @@ public:
     const Eigen::Matrix<real, dim * dim, dim * dim> StressTensorDifferential(
         const Eigen::Matrix<real, dim, dim>& F) const;
 
+    // ProjectToManifold is typically the most expensive function and is reused by all other functions.
+    // As a result, we decompose the functions above into two stages:
+    // - Step 1: compute ProjectToManifold.
+    // - Step 2: use the projection to compute the functions above.
+    const real EnergyDensity(const Eigen::Matrix<real, dim, dim>& F,
+        const Eigen::Matrix<real, dim, dim>& projection) const;
+    const Eigen::Matrix<real, dim, dim> StressTensor(const Eigen::Matrix<real, dim, dim>& F,
+        const Eigen::Matrix<real, dim, dim>& projection) const;
+
     virtual const Eigen::Matrix<real, dim, dim> ProjectToManifold(const Eigen::Matrix<real, dim, dim>& F) const = 0;
     virtual const Eigen::Matrix<real, dim, dim> ProjectToManifoldDifferential(
         const Eigen::Matrix<real, dim, dim>& F, const Eigen::Matrix<real, dim, dim>& dF

@@ -281,10 +281,11 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
         q_sol(pair.first) = pair.second;
         selected(pair.first) = 0;
     }
-    VectorXr force_sol = PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
+    ComputeProjectionToManifold(q_sol);
+    VectorXr force_sol = PdEnergyForce(q_sol, true) + ActuationForce(q_sol, a);
     // We aim to minimize the following energy:
     // 0.5 * q_next^2 + h2m * (E_pd(q_next) + E_act(q_next, a)) - rhs * q_next.
-    real energy_sol = ComputePdEnergy(q_sol) + ActuationEnergy(q_sol, a);
+    real energy_sol = ComputePdEnergy(q_sol, true) + ActuationEnergy(q_sol, a);
     auto eval_obj = [&](const VectorXr& q_cur, const real energy_cur){
         return 0.5 * q_cur.dot(q_cur) + h2m * energy_cur - rhs.dot(q_cur);
     };
@@ -361,7 +362,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
             if (verbose_level > 1) Tic();
             real step_size = 1;
             VectorXr q_sol_next = q_sol - step_size * quasi_newton_direction;
-            real energy_next = ComputePdEnergy(q_sol_next) + ActuationEnergy(q_sol_next, a);
+            ComputeProjectionToManifold(q_sol_next);
+            real energy_next = ComputePdEnergy(q_sol_next, true) + ActuationEnergy(q_sol_next, a);
             real obj_next = eval_obj(q_sol_next, energy_next);
             const real gamma = ToReal(1e-4);
             bool ls_success = false;
@@ -376,7 +378,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
                 }
                 step_size /= 2;
                 q_sol_next = q_sol - step_size * quasi_newton_direction;
-                energy_next = ComputePdEnergy(q_sol_next) + ActuationEnergy(q_sol_next, a);
+                ComputeProjectionToManifold(q_sol_next);
+                energy_next = ComputePdEnergy(q_sol_next, true) + ActuationEnergy(q_sol_next, a);
                 obj_next = eval_obj(q_sol_next, energy_next);
                 if (verbose_level > 0) PrintInfo("Line search iteration: " + std::to_string(j));
                 if (verbose_level > 1) {
@@ -408,7 +411,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
             q_sol = PdLhsSolve(method, pd_rhs, additional_dirichlet);
             for (const auto& pair : augmented_dirichlet) q_sol(pair.first) = pair.second;
         }
-        force_sol = PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
+        force_sol = PdEnergyForce(q_sol, true) + ActuationForce(q_sol, a);
         grad_sol = (q_sol - rhs - h2m * force_sol).array() * selected.array();
 
         // Check for convergence --- gradients must be zero.
@@ -473,7 +476,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const std::s
         }
         // Initial guess.
         const VectorXr q_sol = PdNonlinearSolve(method, q, a, h2m, rhs, additional_dirichlet, options);
-        const VectorXr force_sol = PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
+        const VectorXr force_sol = PdEnergyForce(q_sol, false) + ActuationForce(q_sol, a);
 
         // Now verify the contact conditions.
         std::set<int> past_active_contact_idx;

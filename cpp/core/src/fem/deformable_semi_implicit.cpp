@@ -15,7 +15,7 @@ void Deformable<vertex_dim, element_dim>::ForwardSemiImplicit(const VectorXr& q,
     // v_pred = v + h / m * (f_ext + f_ela(q) + f_state(q, v) + f_pd(q) + f_act(q, a))
     const real mass = density_ * cell_volume_;
     const VectorXr v_pred = v + dt / mass * (f_ext + ElasticForce(q) + ForwardStateForce(q, v)
-        + PdEnergyForce(q) + ActuationForce(q, a));
+        + PdEnergyForce(q, false) + ActuationForce(q, a));
     // Step 2: compute q_next via the semi-implicit rule:
     q_next = q + v_pred * dt;
     // Step 3: enforce dirichlet boundary conditions.
@@ -49,7 +49,7 @@ void Deformable<vertex_dim, element_dim>::BackwardSemiImplicit(const VectorXr& q
     VectorXr dl_dv_pred = VectorXr::Zero(dofs_);
     const real mass = density_ * cell_volume_;
     const VectorXr v_pred = v + dt / mass * (f_ext + ElasticForce(q) + ForwardStateForce(q, v)
-        + PdEnergyForce(q) + ActuationForce(q, a));
+        + PdEnergyForce(q, false) + ActuationForce(q, a));
 
     // Step 3: dirichlet boundaries.
     VectorXr dl_dq_next_pred = dl_dq_next_after_collision;

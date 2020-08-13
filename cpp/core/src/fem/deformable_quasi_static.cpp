@@ -41,7 +41,7 @@ void Deformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::stri
         selected(pair.first) = 0;
         q_sol(pair.first) = pair.second;
     }
-    VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol) + ActuationForce(q_sol, a);
+    VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol, false) + ActuationForce(q_sol, a);
     // Now q_sol is our initial guess.
 
     if (verbose_level > 0) PrintInfo("Newton's method");
@@ -75,12 +75,12 @@ void Deformable<vertex_dim, element_dim>::QuasiStaticStateNewton(const std::stri
         // Line search.
         real step_size = 1;
         VectorXr q_sol_next = q_sol + step_size * dq;
-        VectorXr force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
+        VectorXr force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next, false) + ActuationForce(q_sol_next, a);
         for (int j = 0; j < max_ls_iter; ++j) {
             if (!HasFlippedElement(q_sol_next) && !force_next.hasNaN()) break;
             step_size /= 2;
             q_sol_next = q_sol + step_size * dq;
-            force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next) + ActuationForce(q_sol_next, a);
+            force_next = ElasticForce(q_sol_next) + PdEnergyForce(q_sol_next, false) + ActuationForce(q_sol_next, a);
             if (verbose_level > 1) std::cout << "Line search iteration: " << j << ", step size: " << step_size << std::endl;
             PrintWarning("Newton's method is using < 1 step size: " + std::to_string(step_size));
         }

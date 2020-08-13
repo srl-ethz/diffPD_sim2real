@@ -29,6 +29,18 @@ const Eigen::Matrix<real, dim * dim, dim * dim> PdElementEnergy<dim>::StressTens
 }
 
 template<int dim>
+const real PdElementEnergy<dim>::EnergyDensity(const Eigen::Matrix<real, dim, dim>& F,
+    const Eigen::Matrix<real, dim, dim>& projection) const {
+    return stiffness_ * 0.5 * (F - projection).squaredNorm();
+}
+
+template<int dim>
+const Eigen::Matrix<real, dim, dim> PdElementEnergy<dim>::StressTensor(const Eigen::Matrix<real, dim, dim>& F,
+    const Eigen::Matrix<real, dim, dim>& projection) const {
+    return stiffness_ * (F - projection);
+}
+
+template<int dim>
 const Eigen::Matrix<real, dim * dim, dim * dim> PdElementEnergy<dim>::ProjectToManifoldDifferential(
     const Eigen::Matrix<real, dim, dim>& F) const {
     Eigen::Matrix<real, dim * dim, dim * dim> J;
