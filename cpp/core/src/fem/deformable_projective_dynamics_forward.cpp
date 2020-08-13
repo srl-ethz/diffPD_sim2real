@@ -411,7 +411,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
             q_sol = PdLhsSolve(method, pd_rhs, additional_dirichlet);
             for (const auto& pair : augmented_dirichlet) q_sol(pair.first) = pair.second;
         }
-        force_sol = PdEnergyForce(q_sol, true) + ActuationForce(q_sol, a);
+        force_sol = PdEnergyForce(q_sol, use_bfgs) + ActuationForce(q_sol, a);
         grad_sol = (q_sol - rhs - h2m * force_sol).array() * selected.array();
 
         // Check for convergence --- gradients must be zero.
