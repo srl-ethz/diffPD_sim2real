@@ -103,5 +103,3 @@ dependencies:
   - xz=5.2.5=h7b6447c_0
   - zlib=1.2.11=h7b6447c_3
   - zstd=1.4.5=h9ceee32_0
-prefix: /home/taodu/libraries/miniconda3/envs/diff_pd
-

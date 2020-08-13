@@ -1,6 +1,8 @@
 import math
 from collections import deque
 
+import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,6 +10,8 @@ import torch.autograd as autograd
 
 from py_diff_pd.core.py_diff_pd_core import StdRealVector
 from py_diff_pd.common.common import ndarray
+
+from deep_rl import BaseNet, Config, layer_init
 
 
 class StateNorm(nn.Module):
@@ -92,18 +96,12 @@ class NNController(Controller):
     def update_state_norm(self, states):
         self.get_state_norm().update(states)
 
-    def reset_parameters(self):
+    def reset_parameters(self, gain=1.0):
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                m.reset_parameters()
-                if m is self.layers[-1]:
-                    nn.init.normal_(m.weight, 0.0, 1.0)
-                else:
-                    nn.init.orthogonal_(m.weight)
+                nn.init.orthogonal_(m.weight, gain)
                 if m.bias is not None:
-                    fan_in, _ = nn.init._calculate_fan_in_and_fan_out(m.weight)
-                    bound = 1 / math.sqrt(fan_in)
-                    nn.init.uniform_(m.bias, -bound, bound)
+                    nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.LayerNorm):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
