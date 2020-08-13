@@ -27,9 +27,9 @@ def test_benchmark_3d(verbose):
     opts = ({ 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
         { 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
         # Disable line search in PD: we are using quadratic material models.
-        { 'max_pd_iter': 5000, 'max_ls_iter': 1, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4,
+        { 'max_pd_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4,
             'use_bfgs': 1, 'bfgs_history_size': 10 },
-        { 'max_pd_iter': 5000, 'max_ls_iter': 1, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4,
+        { 'max_pd_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4,
             'use_bfgs': 0, 'bfgs_history_size': 10 })
 
     dofs = deformable.dofs()
@@ -52,7 +52,7 @@ def test_benchmark_3d(verbose):
 
     # Benchmark time.
     print('Reporting time cost. DoFs: {:d}, frames: {:d}, dt: {:3.3e}'.format(dofs, frame_num, dt))
-    rel_tols = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8]
+    rel_tols = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7]
     forward_backward_times = {}
     forward_times = {}
     backward_times = {}
