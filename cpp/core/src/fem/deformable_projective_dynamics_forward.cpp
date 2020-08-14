@@ -546,7 +546,6 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const std::string
     const Eigen::Matrix<real, vertex_dim, -1> rhs_reshape = Eigen::Map<
         const Eigen::Matrix<real, vertex_dim, -1>>(rhs.data(), vertex_dim, vertex_num);
     Eigen::Matrix<real, vertex_dim, -1> sol = Eigen::Matrix<real, vertex_dim, -1>::Zero(vertex_dim, vertex_num);
-    #pragma omp parallel for
     for (int j = 0; j < vertex_dim; ++j) {
         if (method == "pd_eigen") {
             sol.row(j) = pd_eigen_solver_[j].solve(VectorXr(rhs_reshape.row(j)));
