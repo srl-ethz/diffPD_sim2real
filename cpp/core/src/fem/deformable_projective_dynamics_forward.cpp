@@ -281,7 +281,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
         q_sol(pair.first) = pair.second;
         selected(pair.first) = 0;
     }
-    ComputeProjectionToManifold(q_sol);
+    ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol);
     VectorXr force_sol = PdEnergyForce(q_sol, true) + ActuationForce(q_sol, a);
     // We aim to minimize the following energy:
     // 0.5 * q_next^2 + h2m * (E_pd(q_next) + E_act(q_next, a)) - rhs * q_next.
@@ -362,7 +362,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
             if (verbose_level > 1) Tic();
             real step_size = 1;
             VectorXr q_sol_next = q_sol - step_size * quasi_newton_direction;
-            ComputeProjectionToManifold(q_sol_next);
+            ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_next);
             real energy_next = ComputePdEnergy(q_sol_next, true) + ActuationEnergy(q_sol_next, a);
             real obj_next = eval_obj(q_sol_next, energy_next);
             const real gamma = ToReal(1e-4);
@@ -378,7 +378,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
                 }
                 step_size /= 2;
                 q_sol_next = q_sol - step_size * quasi_newton_direction;
-                ComputeProjectionToManifold(q_sol_next);
+                ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_next);
                 energy_next = ComputePdEnergy(q_sol_next, true) + ActuationEnergy(q_sol_next, a);
                 obj_next = eval_obj(q_sol_next, energy_next);
                 if (verbose_level > 0) PrintInfo("Line search iteration: " + std::to_string(j));
@@ -546,6 +546,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const std::string
     const Eigen::Matrix<real, vertex_dim, -1> rhs_reshape = Eigen::Map<
         const Eigen::Matrix<real, vertex_dim, -1>>(rhs.data(), vertex_dim, vertex_num);
     Eigen::Matrix<real, vertex_dim, -1> sol = Eigen::Matrix<real, vertex_dim, -1>::Zero(vertex_dim, vertex_num);
+    #pragma omp parallel for
     for (int j = 0; j < vertex_dim; ++j) {
         if (method == "pd_eigen") {
             sol.row(j) = pd_eigen_solver_[j].solve(VectorXr(rhs_reshape.row(j)));

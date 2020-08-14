@@ -5,20 +5,29 @@
 #include "pd_energy/volume_pd_element_energy.h"
 
 template<int vertex_dim, int element_dim>
-void Deformable<vertex_dim, element_dim>::ComputeProjectionToManifold(const VectorXr& q) const {
-    projections_.resize(pd_element_energies_.size());
+void Deformable<vertex_dim, element_dim>::ComputeDeformationGradientAuxiliaryDataAndProjection(const VectorXr& q) const {
     const int element_num = mesh_.NumOfElements();
     const int sample_num = element_dim;
+    F_auxiliary_.resize(element_num);
+    #pragma omp parallel for
+    for (int i = 0; i < element_num; ++i) {
+        const auto deformed = ScatterToElement(q, i);
+        F_auxiliary_[i].resize(sample_num);
+        for (int j = 0; j < sample_num; ++j) {
+            const auto F = DeformationGradient(deformed, j);
+            F_auxiliary_[i][j].Initialize(F);
+        }
+    }
+
+    projections_.resize(pd_element_energies_.size());
     int energy_cnt = 0;
     for (const auto& energy : pd_element_energies_) {
         projections_[energy_cnt].resize(element_num);
         #pragma omp parallel for
         for (int i = 0; i < element_num; ++i) {
-            const auto deformed = ScatterToElement(q, i);
             projections_[energy_cnt][i].resize(sample_num);
             for (int j = 0; j < sample_num; ++j) {
-                const auto F = DeformationGradient(deformed, j);
-                projections_[energy_cnt][i][j] = energy->ProjectToManifold(F);
+                projections_[energy_cnt][i][j] = energy->ProjectToManifold(F_auxiliary_[i][j]);
             }
         }
         ++energy_cnt;
@@ -71,7 +80,7 @@ void Deformable<vertex_dim, element_dim>::AddPdEnergy(const std::string& energy_
 }
 
 template<int vertex_dim, int element_dim>
-const real Deformable<vertex_dim, element_dim>::ComputePdEnergy(const VectorXr& q, const bool reuse_projections) const {
+const real Deformable<vertex_dim, element_dim>::ComputePdEnergy(const VectorXr& q, const bool use_precomputed_data) const {
     real total_energy = 0;
     for (const auto& pair : pd_vertex_energies_) {
         const auto& energy = pair.first;
@@ -90,8 +99,9 @@ const real Deformable<vertex_dim, element_dim>::ComputePdEnergy(const VectorXr& 
             const auto deformed = ScatterToElement(q, i);
             for (int j = 0; j < sample_num; ++j) {
                 const auto F = DeformationGradient(deformed, j);
-                if (reuse_projections)
-                    element_energy[i] += energy->EnergyDensity(F, projections_[energy_cnt][i][j]) * cell_volume_ / sample_num;
+                if (use_precomputed_data)
+                    element_energy[i] += energy->EnergyDensity(F_auxiliary_[i][j],
+                        projections_[energy_cnt][i][j]) * cell_volume_ / sample_num;
                 else
                     element_energy[i] += energy->EnergyDensity(F) * cell_volume_ / sample_num;
             }
@@ -103,7 +113,7 @@ const real Deformable<vertex_dim, element_dim>::ComputePdEnergy(const VectorXr& 
 }
 
 template<int vertex_dim, int element_dim>
-const VectorXr Deformable<vertex_dim, element_dim>::PdEnergyForce(const VectorXr& q, const bool reuse_projections) const {
+const VectorXr Deformable<vertex_dim, element_dim>::PdEnergyForce(const VectorXr& q, const bool use_precomputed_data) const {
     VectorXr f = VectorXr::Zero(dofs_);
     for (const auto& pair : pd_vertex_energies_) {
         const auto& energy = pair.first;
@@ -127,8 +137,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdEnergyForce(const VectorXr
             for (int j = 0; j < sample_num; ++j) {
                 const auto F = DeformationGradient(deformed, j);
                 Eigen::Matrix<real, vertex_dim, vertex_dim> P;
-                if (reuse_projections)
-                    P = energy->StressTensor(F, projections_[energy_cnt][i][j]);
+                if (use_precomputed_data)
+                    P = energy->StressTensor(F_auxiliary_[i][j], projections_[energy_cnt][i][j]);
                 else
                     P = energy->StressTensor(F);
                 const Eigen::Matrix<real, element_dim * vertex_dim, 1> f_kd = dF_dxkd_flattened_[j] * Flatten(P);

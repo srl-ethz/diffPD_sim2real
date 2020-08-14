@@ -48,7 +48,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
             q_sol(pair.first) = pair.second;
             selected(pair.first) = 0;
         }
-        ComputeProjectionToManifold(q_sol);
+        ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol);
         VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol, true) + ActuationForce(q_sol, a);
         // We aim to use Newton's method to minimize the following energy:
         // 0.5 * q_next^2 + h2m * (E_ela(q_next) + E_pd(q_next) + E_act(q_next, a)) - rhs * q_next.
@@ -120,7 +120,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                     // Check if the gradients make sense.
                     for (const real eps : { 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6 }) {
                         const VectorXr q_sol_perturbed = q_sol - eps * grad_sol;
-                        ComputeProjectionToManifold(q_sol_perturbed);
+                        ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_perturbed);
                         const real energy_sol_perturbed = ElasticEnergy(q_sol_perturbed)
                             + ComputePdEnergy(q_sol_perturbed, true) + ActuationEnergy(q_sol_perturbed, a);
                         const real obj_sol_perturbed = eval_obj(q_sol_perturbed, energy_sol_perturbed);
@@ -140,7 +140,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
             if (verbose_level > 1) Tic();
             real step_size = 1;
             VectorXr q_sol_next = q_sol - step_size * newton_direction;
-            ComputeProjectionToManifold(q_sol_next);
+            ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_next);
             real energy_next = ElasticEnergy(q_sol_next) + ComputePdEnergy(q_sol_next, true) + ActuationEnergy(q_sol_next, a);
             real obj_next = eval_obj(q_sol_next, energy_next);
             const real gamma = ToReal(1e-4);
@@ -156,7 +156,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                 }
                 step_size /= 2;
                 q_sol_next = q_sol - step_size * newton_direction;
-                ComputeProjectionToManifold(q_sol_next);
+                ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_next);
                 energy_next = ElasticEnergy(q_sol_next) + ComputePdEnergy(q_sol_next, true) + ActuationEnergy(q_sol_next, a);
                 obj_next = eval_obj(q_sol_next, energy_next);
                 if (verbose_level > 0) std::cout << "Line search iteration: " << j << std::endl;

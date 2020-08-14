@@ -66,17 +66,22 @@ void PrintSuccess(const std::string& message) {
 }
 
 // Timing.
-static struct timeval t_begin, t_end;
+static std::stack<timeval> t_begins;
 
 void Tic() {
+    timeval t_begin;
     gettimeofday(&t_begin, nullptr);
+    t_begins.push(t_begin);
 }
 
 void Toc(const std::string& message) {
+    timeval t_end;
     gettimeofday(&t_end, nullptr);
+    timeval t_begin = t_begins.top();
     const real t_interval = (t_end.tv_sec - t_begin.tv_sec) + (t_end.tv_usec - t_begin.tv_usec) / 1e6;
     std::cout << CyanHead() << "[Timing] " << message << ": " << t_interval << "s"
               << CyanTail() << std::endl;
+    t_begins.pop();
 }
 
 void CheckError(const bool condition, const std::string& error_message) {
