@@ -5,6 +5,36 @@
 #include "pd_energy/volume_pd_element_energy.h"
 
 template<int vertex_dim, int element_dim>
+void Deformable<vertex_dim, element_dim>::ComputeDeformationGradientAuxiliaryDataAndProjection(const VectorXr& q) const {
+    const int element_num = mesh_.NumOfElements();
+    const int sample_num = element_dim;
+    F_auxiliary_.resize(element_num);
+    #pragma omp parallel for
+    for (int i = 0; i < element_num; ++i) {
+        const auto deformed = ScatterToElement(q, i);
+        F_auxiliary_[i].resize(sample_num);
+        for (int j = 0; j < sample_num; ++j) {
+            const auto F = DeformationGradient(deformed, j);
+            F_auxiliary_[i][j].Initialize(F);
+        }
+    }
+
+    projections_.resize(pd_element_energies_.size());
+    int energy_cnt = 0;
+    for (const auto& energy : pd_element_energies_) {
+        projections_[energy_cnt].resize(element_num);
+        #pragma omp parallel for
+        for (int i = 0; i < element_num; ++i) {
+            projections_[energy_cnt][i].resize(sample_num);
+            for (int j = 0; j < sample_num; ++j) {
+                projections_[energy_cnt][i][j] = energy->ProjectToManifold(F_auxiliary_[i][j]);
+            }
+        }
+        ++energy_cnt;
+    }
+}
+
+template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::AddPdEnergy(const std::string& energy_type, const std::vector<real>& params,
     const std::vector<int>& indices) {
     pd_solver_ready_ = false;
@@ -50,7 +80,7 @@ void Deformable<vertex_dim, element_dim>::AddPdEnergy(const std::string& energy_
 }
 
 template<int vertex_dim, int element_dim>
-const real Deformable<vertex_dim, element_dim>::ComputePdEnergy(const VectorXr& q) const {
+const real Deformable<vertex_dim, element_dim>::ComputePdEnergy(const VectorXr& q, const bool use_precomputed_data) const {
     real total_energy = 0;
     for (const auto& pair : pd_vertex_energies_) {
         const auto& energy = pair.first;
@@ -62,22 +92,28 @@ const real Deformable<vertex_dim, element_dim>::ComputePdEnergy(const VectorXr& 
     const int element_num = mesh_.NumOfElements();
     const int sample_num = element_dim;
     std::vector<real> element_energy(element_num, 0);
+    int energy_cnt = 0;
     for (const auto& energy : pd_element_energies_) {
         #pragma omp parallel for
         for (int i = 0; i < element_num; ++i) {
             const auto deformed = ScatterToElement(q, i);
             for (int j = 0; j < sample_num; ++j) {
                 const auto F = DeformationGradient(deformed, j);
-                element_energy[i] += energy->EnergyDensity(F) * cell_volume_ / sample_num;
+                if (use_precomputed_data)
+                    element_energy[i] += energy->EnergyDensity(F_auxiliary_[i][j],
+                        projections_[energy_cnt][i][j]) * cell_volume_ / sample_num;
+                else
+                    element_energy[i] += energy->EnergyDensity(F) * cell_volume_ / sample_num;
             }
         }
+        ++energy_cnt;
     }
     for (const real e : element_energy) total_energy += e;
     return total_energy;
 }
 
 template<int vertex_dim, int element_dim>
-const VectorXr Deformable<vertex_dim, element_dim>::PdEnergyForce(const VectorXr& q) const {
+const VectorXr Deformable<vertex_dim, element_dim>::PdEnergyForce(const VectorXr& q, const bool use_precomputed_data) const {
     VectorXr f = VectorXr::Zero(dofs_);
     for (const auto& pair : pd_vertex_energies_) {
         const auto& energy = pair.first;
@@ -92,6 +128,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdEnergyForce(const VectorXr
     const int sample_num = element_dim;
     std::array<VectorXr, element_dim> f_ints;
     for (int i = 0; i < element_dim; ++i) f_ints[i] = VectorXr::Zero(dofs_);
+    int energy_cnt = 0;
     for (const auto& energy : pd_element_energies_) {
         #pragma omp parallel for
         for (int i = 0; i < element_num; ++i) {
@@ -99,13 +136,18 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdEnergyForce(const VectorXr
             const auto deformed = ScatterToElement(q, i);
             for (int j = 0; j < sample_num; ++j) {
                 const auto F = DeformationGradient(deformed, j);
-                const auto P = energy->StressTensor(F);
+                Eigen::Matrix<real, vertex_dim, vertex_dim> P;
+                if (use_precomputed_data)
+                    P = energy->StressTensor(F_auxiliary_[i][j], projections_[energy_cnt][i][j]);
+                else
+                    P = energy->StressTensor(F);
                 const Eigen::Matrix<real, element_dim * vertex_dim, 1> f_kd = dF_dxkd_flattened_[j] * Flatten(P);
                 for (int k = 0; k < element_dim; ++k)
                     for (int d = 0; d < vertex_dim; ++d)
                         f_ints[k](vertex_dim * vi(k) + d) += f_kd(k * vertex_dim + d);
             }
         }
+        ++energy_cnt;
     }
 
     for (int i = 0; i < element_dim; ++i) f += f_ints[i];
@@ -160,7 +202,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdEnergyForceDifferential(co
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::PdEnergyForceDifferential(const VectorXr& q, const bool require_dq,
-    const bool require_dw, SparseMatrixElements& dq, SparseMatrixElements& dw) const {
+    const bool require_dw, const bool use_precomputed_data, SparseMatrixElements& dq, SparseMatrixElements& dw) const {
     dq.clear();
     dw.clear();
     for (const auto& pair : pd_vertex_energies_) {
@@ -186,7 +228,6 @@ void Deformable<vertex_dim, element_dim>::PdEnergyForceDifferential(const Vector
                 const auto deformed = ScatterToElement(q, i);
                 #pragma omp parallel for
                 for (int j = 0; j < sample_num; ++j) {
-                    const auto F = DeformationGradient(deformed, j);
                     MatrixXr dF(vertex_dim * vertex_dim, element_dim * vertex_dim); dF.setZero();
                     for (int s = 0; s < element_dim; ++s)
                         for (int t = 0; t < vertex_dim; ++t) {
@@ -195,7 +236,11 @@ void Deformable<vertex_dim, element_dim>::PdEnergyForceDifferential(const Vector
                             dF.col(s * vertex_dim + t) += Flatten(dF_single);
                     }
                     // Gradients w.r.t. F.
-                    const auto dP_from_dF = energy->StressTensorDifferential(F) * dF;
+                    Eigen::Matrix<real, vertex_dim * vertex_dim, element_dim * vertex_dim> dP_from_dF;
+                    if (use_precomputed_data)
+                        dP_from_dF = energy->StressTensorDifferential(F_auxiliary_[i][j], projections_[energy_cnt][i][j]) * dF;
+                    else
+                        dP_from_dF = energy->StressTensorDifferential(DeformationGradient(deformed, j)) * dF;
                     const Eigen::Matrix<real, element_dim * vertex_dim, element_dim * vertex_dim> df_kd_from_dF
                         = dF_dxkd_flattened_[j] * dP_from_dF;
                     const int offset = dq_offset
@@ -229,9 +274,14 @@ void Deformable<vertex_dim, element_dim>::PdEnergyForceDifferential(const Vector
                 const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
                 const auto deformed = ScatterToElement(q, i);
                 for (int j = 0; j < sample_num; ++j) {
-                    const auto F = DeformationGradient(deformed, j);
                     // Gradients w.r.t. stiffness.
-                    const auto dP_from_dw = Flatten(energy->StressTensor(F)) * inv_w;
+                    Eigen::Matrix<real, vertex_dim, vertex_dim> P;
+                    if (use_precomputed_data) {
+                        P = energy->StressTensor(F_auxiliary_[i][j], projections_[energy_cnt][i][j]);
+                    } else {
+                        P = energy->StressTensor(DeformationGradient(deformed, j));
+                    }
+                    const auto dP_from_dw = Flatten(P) * inv_w;
                     const Eigen::Matrix<real, element_dim * vertex_dim, 1> df_kd_from_dw
                         = dF_dxkd_flattened_[j] * dP_from_dw;
                     for (int k = 0; k < element_dim; ++k)
@@ -250,12 +300,12 @@ void Deformable<vertex_dim, element_dim>::PdEnergyForceDifferential(const Vector
 
 template<int vertex_dim, int element_dim>
 const real Deformable<vertex_dim, element_dim>::PyComputePdEnergy(const std::vector<real>& q) const {
-    return ComputePdEnergy(ToEigenVector(q));
+    return ComputePdEnergy(ToEigenVector(q), false);
 }
 
 template<int vertex_dim, int element_dim>
 const std::vector<real> Deformable<vertex_dim, element_dim>::PyPdEnergyForce(const std::vector<real>& q) const {
-    return ToStdVector(PdEnergyForce(ToEigenVector(q)));
+    return ToStdVector(PdEnergyForce(ToEigenVector(q), false));
 }
 
 template<int vertex_dim, int element_dim>
@@ -270,7 +320,7 @@ void Deformable<vertex_dim, element_dim>::PyPdEnergyForceDifferential(
     std::vector<std::vector<real>>& dq, std::vector<std::vector<real>>& dw) const {
     PrintWarning("PyPdEnergyForceDifferential should only be used for small-scale problems and for testing purposes.");
     SparseMatrixElements nonzeros_q, nonzeros_w;
-    PdEnergyForceDifferential(ToEigenVector(q), require_dq, require_dw, nonzeros_q, nonzeros_w);
+    PdEnergyForceDifferential(ToEigenVector(q), require_dq, require_dw, false, nonzeros_q, nonzeros_w);
     dq.resize(dofs_);
     dw.resize(dofs_);
     const int w_dofs = static_cast<int>(pd_element_energies_.size());

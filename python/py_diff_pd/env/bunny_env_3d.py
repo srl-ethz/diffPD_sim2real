@@ -12,7 +12,6 @@ from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 from py_diff_pd.common.project_path import root_path
 
 class BunnyEnv3d(EnvBase):
-    # Refinement is an integer controlling the resolution of the mesh.
     def __init__(self, seed, folder, options):
         EnvBase.__init__(self, folder)
 

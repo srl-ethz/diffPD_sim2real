@@ -10,6 +10,7 @@
 #include "pd_energy/pd_vertex_energy.h"
 #include "pd_energy/pd_element_energy.h"
 #include "pd_energy/pd_muscle_energy.h"
+#include "pd_energy/deformation_gradient_auxiliary_data.h"
 #include "friction/frictional_boundary.h"
 #include "solver/pardiso_spd_solver.h"
 #include "Eigen/SparseCholesky"
@@ -73,11 +74,11 @@ public:
 
     // Add PD energies.
     void AddPdEnergy(const std::string& energy_type, const std::vector<real>& params, const std::vector<int>& indices);
-    const real ComputePdEnergy(const VectorXr& q) const;
-    const VectorXr PdEnergyForce(const VectorXr& q) const;
+    const real ComputePdEnergy(const VectorXr& q, const bool use_precomputed_data) const;
+    const VectorXr PdEnergyForce(const VectorXr& q, const bool use_precomputed_data) const;
     const VectorXr PdEnergyForceDifferential(const VectorXr& q, const VectorXr& dq, const VectorXr& dw) const;
     void PdEnergyForceDifferential(const VectorXr& q, const bool require_dq, const bool require_dw,
-        SparseMatrixElements& dq, SparseMatrixElements& dw) const;
+        const bool use_precomputed_data, SparseMatrixElements& dq, SparseMatrixElements& dw) const;
 
     // Actuation.
     void AddActuation(const real stiffness, const std::array<real, vertex_dim>& fiber_direction,
@@ -180,7 +181,7 @@ private:
     const VectorXr NewtonMatrixOp(const VectorXr& q_sol, const VectorXr& a, const real h2m,
         const std::map<int, real>& dirichlet_with_friction, const VectorXr& dq) const;
     const SparseMatrix NewtonMatrix(const VectorXr& q_sol, const VectorXr& a, const real h2m,
-        const std::map<int, real>& dirichlet_with_friction) const;
+        const std::map<int, real>& dirichlet_with_friction, const bool use_precomputed_data) const;
     const VectorXr QuasiStaticMatrixOp(const VectorXr& q, const VectorXr& a, const VectorXr& dq) const;
     const SparseMatrix QuasiStaticMatrix(const VectorXr& q, const VectorXr& a) const;
 
@@ -205,6 +206,7 @@ private:
     const Eigen::Matrix<real, vertex_dim * element_dim, 1> ScatterToElementFlattened(const VectorXr& q, const int element_idx) const;
     const Eigen::Matrix<real, vertex_dim, vertex_dim> DeformationGradient(const Eigen::Matrix<real, vertex_dim, element_dim>& q,
         const int sample_idx) const;
+    void ComputeDeformationGradientAuxiliaryDataAndProjection(const VectorXr& q) const;
 
     // A dedicate function of using PD to solve the nonlinear systems of equations.
     // - q_next - h2m * (f_pd(q_next) + f_act(q_next, a)) = rhs.
@@ -258,6 +260,12 @@ private:
     // See the paper for the definition of the data members below.
     mutable std::array<MatrixXr, vertex_dim> Acc_;
     mutable std::array<MatrixXr, vertex_dim> AinvIc_;
+
+    // Cache auxiliary data.
+    // F_projections_[element_idx][sample_idx].
+    mutable std::vector<std::vector<DeformationGradientAuxiliaryData<vertex_dim>>> F_auxiliary_;
+    // projections_[energy_cnt][element_idx][sample_idx].
+    mutable std::vector<std::vector<std::vector<Eigen::Matrix<real, vertex_dim, vertex_dim>>>> projections_;
 };
 
 #endif

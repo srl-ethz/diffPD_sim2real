@@ -18,18 +18,16 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsLocalStepDiffer
     pd_backward_local_element_matrices.resize(element_num);
     #pragma omp parallel for
     for (int i = 0; i < element_num; ++i) {
-        const auto deformed = ScatterToElementFlattened(q_cur, i);
         Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim> wAtdBpA; wAtdBpA.setZero();
-        for (int j = 0; j < sample_num; ++j) {    
-            const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
-            const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Eigen::Map<const Eigen::Matrix<real, vertex_dim, vertex_dim>>(
-                F_flattened.data(), vertex_dim, vertex_dim
-            );
+        for (int j = 0; j < sample_num; ++j) {
             Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * vertex_dim> wdBp; wdBp.setZero();
+            int energy_cnt = 0;
             for (const auto& energy : pd_element_energies_) {
                 const real w = energy->stiffness() * cell_volume_ / sample_num;
-                const Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * vertex_dim> dBp = energy->ProjectToManifoldDifferential(F);
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, vertex_dim * vertex_dim> dBp
+                    = energy->ProjectToManifoldDifferential(F_auxiliary_[i][j], projections_[energy_cnt][i][j]);
                 wdBp += w * dBp;
+                ++energy_cnt;
             }
             wAtdBpA += pd_At_[j] * wdBp * pd_A_[j];
         }
@@ -48,14 +46,11 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsLocalStepDiffer
         #pragma omp parallel for
         for (int ei = 0; ei < element_cnt; ++ei) {
             const int i = pair.second[ei];
-            const auto deformed = ScatterToElementFlattened(q_cur, i);
             pd_backward_local_muscle_matrices[energy_idx][ei].setZero();
             for (int j = 0; j < sample_num; ++j) {
-                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
-                const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Unflatten(F_flattened);
                 Eigen::Matrix<real, vertex_dim, vertex_dim * vertex_dim> JF;
                 Eigen::Matrix<real, vertex_dim, 1> Ja;
-                energy->ProjectToManifoldDifferential(F, a_cur(act_idx + ei), JF, Ja);
+                energy->ProjectToManifoldDifferential(F_auxiliary_[i][j].F(), a_cur(act_idx + ei), JF, Ja);
                 pd_backward_local_muscle_matrices[energy_idx][ei] += wi * pd_At_[j] * Mt * JF * pd_A_[j];
             }
         }
@@ -172,6 +167,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
     const real h2m = h * h / (cell_volume_ * density_);
     std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>> pd_backward_local_element_matrices;
     std::vector<std::vector<Eigen::Matrix<real, vertex_dim * element_dim, vertex_dim * element_dim>>> pd_backward_local_muscle_matrices;
+    ComputeDeformationGradientAuxiliaryDataAndProjection(q_next);
     SetupProjectiveDynamicsLocalStepDifferential(q_next, a, pd_backward_local_element_matrices, pd_backward_local_muscle_matrices);
 
     // Forward:
@@ -395,7 +391,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
         // Switch back to Newton's method.
         PrintWarning("PD backward: switching to Cholesky decomposition");
         Eigen::SimplicialLDLT<SparseMatrix> cholesky;
-        const SparseMatrix op = NewtonMatrix(q_next, a, h2m, augmented_dirichlet);
+        const SparseMatrix op = NewtonMatrix(q_next, a, h2m, augmented_dirichlet, true);
         cholesky.compute(op);
         dl_drhs = cholesky.solve(dl_dq_next_agg);
         adjoint = dl_drhs;
@@ -423,12 +419,16 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
     // dl_da += dl_dq_next_agg * inv(C) * h2m * df_act / da.
     SparseMatrixElements nonzeros_q, nonzeros_a;
     ActuationForceDifferential(q_next, a, nonzeros_q, nonzeros_a);
-    dl_da += VectorXr(adjoint.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_a) * h2m);
+    dl_da += VectorSparseMatrixProduct(adjoint, dofs_, act_dofs_, nonzeros_a) * h2m;
+    // Equivalent code:
+    // dl_da += VectorXr(adjoint.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_a) * h2m);
 
     // Backpropagate w -> q_next.
     SparseMatrixElements nonzeros_w;
-    PdEnergyForceDifferential(q_next, false, true, nonzeros_q, nonzeros_w);
-    dl_dw += VectorXr(adjoint.transpose() * ToSparseMatrix(dofs_, w_dofs, nonzeros_w) * h2m);
+    PdEnergyForceDifferential(q_next, false, true, true, nonzeros_q, nonzeros_w);
+    dl_dw += VectorSparseMatrixProduct(adjoint, dofs_, w_dofs, nonzeros_w) * h2m;
+    // Equivalent code:
+    // dl_dw += VectorXr(adjoint.transpose() * ToSparseMatrix(dofs_, w_dofs, nonzeros_w)) * h2m;
 
     // Step 3:
     // rhs = rhs_dirichlet(DoFs in active_contact_idx) = q.

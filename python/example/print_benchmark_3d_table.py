@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from py_diff_pd.common.common import PrettyTabular
-from py_diff_pd.common.common import print_info
+from py_diff_pd.common.common import print_info, print_warning
 
 def transpose_list(l, row_num, col_num):
     assert len(l) == row_num * col_num
@@ -29,8 +29,25 @@ if __name__ == '__main__':
 
     folder = Path('benchmark_3d')
     rel_tols, forward_times, backward_times, losses, grads = pickle.load(open(folder / 'table.bin', 'rb'))
+    # Check out if there are any corrupted data.
+    max_rel_tol_nums = len(rel_tols)
+    for method in forward_times:
+        if len(forward_times[method]) < max_rel_tol_nums:
+            max_rel_tol_nums = len(forward_times[method])
+    for method in backward_times:
+        if len(backward_times[method]) < max_rel_tol_nums:
+            max_rel_tol_nums = len(backward_times[method])
+    for method in losses:
+        if len(losses[method]) < max_rel_tol_nums:
+            max_rel_tol_nums = len(losses[method])
+    for method in grads:
+        if len(grads[method]) < max_rel_tol_nums:
+            max_rel_tol_nums = len(grads[method])
+    if max_rel_tol_nums < len(rel_tols):
+        print_warning('Benchmark data corrupted. Showing the first {} only.'.format(max_rel_tol_nums))
+        rel_tols = rel_tols[:max_rel_tol_nums]
 
-    thread_cts = [2, 4, 8]
+    thread_cts = [4, 8, 12]
     forward_backward_times = {}
     for method in forward_times:
         forward_backward_times[method] = np.zeros(len(rel_tols))

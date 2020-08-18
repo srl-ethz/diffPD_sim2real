@@ -5,9 +5,25 @@
 template<int dim>
 const Eigen::Matrix<real, dim, dim> VolumePdElementEnergy<dim>::ProjectToManifold(
     const Eigen::Matrix<real, dim, dim>& F) const {
-    Eigen::Matrix<real, dim, 1> sig;
-    Eigen::Matrix<real, dim, dim> U, V;
-    Svd(F, U, sig, V);
+    DeformationGradientAuxiliaryData<dim> F_auxiliary;
+    F_auxiliary.Initialize(F);
+    return ProjectToManifold(F_auxiliary);
+}
+
+template<int dim>
+const Eigen::Matrix<real, dim, dim> VolumePdElementEnergy<dim>::ProjectToManifoldDifferential(
+    const Eigen::Matrix<real, dim, dim>& F, const Eigen::Matrix<real, dim, dim>& dF) const {
+    DeformationGradientAuxiliaryData<dim> F_auxiliary;
+    F_auxiliary.Initialize(F);
+    return ProjectToManifoldDifferential(F_auxiliary, Eigen::Matrix<real, dim, dim>::Zero(), dF);
+}
+
+template<int dim>
+const Eigen::Matrix<real, dim, dim> VolumePdElementEnergy<dim>::ProjectToManifold(
+    const DeformationGradientAuxiliaryData<dim>& F_auxiliary) const {
+    const Eigen::Matrix<real, dim, 1>& sig = F_auxiliary.sig();
+    const Eigen::Matrix<real, dim, dim>& U = F_auxiliary.U();
+    const Eigen::Matrix<real, dim, dim>& V = F_auxiliary.V();
     // F = U * sig * V.transpose();
     // Now solve the problem:
     // min \|sig - sig*\|^2
@@ -44,10 +60,12 @@ const Eigen::Matrix<real, dim, dim> VolumePdElementEnergy<dim>::ProjectToManifol
 
 template<int dim>
 const Eigen::Matrix<real, dim, dim> VolumePdElementEnergy<dim>::ProjectToManifoldDifferential(
-    const Eigen::Matrix<real, dim, dim>& F, const Eigen::Matrix<real, dim, dim>& dF) const {
-    Eigen::Matrix<real, dim, 1> sig;
-    Eigen::Matrix<real, dim, dim> U, V;
-    Svd(F, U, sig, V);
+    const DeformationGradientAuxiliaryData<dim>& F_auxiliary, const Eigen::Matrix<real, dim, dim>& projection,
+    const Eigen::Matrix<real, dim, dim>& dF) const {
+    const Eigen::Matrix<real, dim, 1>& sig = F_auxiliary.sig();
+    const Eigen::Matrix<real, dim, dim>& U = F_auxiliary.U();
+    const Eigen::Matrix<real, dim, dim>& V = F_auxiliary.V();
+    const Eigen::Matrix<real, dim, dim>& F = F_auxiliary.F();
     // F = U * sig * V.transpose();
     // Now solve the problem:
     // min \|sig - sig*\|^2

@@ -22,6 +22,19 @@ def generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name):
                 vy = origin[1] + j * dx
                 f.write(struct.pack('d', vy))
 
+        voxel_indices = np.full((nx, ny), -1, dtype=np.int)
+        index = 0
+        for i in range(nx):
+            for j in range(ny):
+                voxel_indices[i, j] = index
+                index += 1
+        vertex_indices = np.full((nx + 1, ny + 1), -1, dtype=np.int)
+        index = 0
+        for i in range(nx + 1):
+            for j in range(ny + 1):
+                vertex_indices[i, j] = index
+                index += 1
+
         # Faces.
         f.write(struct.pack('i', 4))
         f.write(struct.pack('i', element_num))
@@ -38,8 +51,10 @@ def generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name):
             for j in range(ny):
                 f.write(struct.pack('i', (i + 1) * (ny + 1) + j + 1))
 
+    return voxel_indices, vertex_indices
+
 # voxels: an 0-1 array of size cell_x_num * cell_y_num * cell_z_num.
-def generate_hex_mesh(voxels, dx, origin, bin_file_name):
+def generate_hex_mesh(voxels, dx, origin, bin_file_name, write=True):
     origin = np.asarray(origin, dtype=np.float64)
     cell_x, cell_y, cell_z = voxels.shape
     node_x, node_y, node_z = cell_x + 1, cell_y + 1, cell_z + 1
@@ -65,6 +80,9 @@ def generate_hex_mesh(voxels, dx, origin, bin_file_name):
                         origin[2] + dx * k))
                     vertex_cnt += 1
 
+    voxel_indices = np.full((cell_x, cell_y, cell_z), -1, dtype=np.int)
+    index = 0
+
     faces = []
     for i in range(cell_x):
         for j in range(cell_y):
@@ -76,21 +94,27 @@ def generate_hex_mesh(voxels, dx, origin, bin_file_name):
                             for kk in range(2):
                                 face.append(vertex_flag[i + ii][j + jj][k + kk])
                     faces.append(face)
+                    voxel_indices[i, j, k] = index
+                    index += 1
 
     vertices = np.asarray(vertices, dtype=np.float64).T
     faces = np.asarray(faces, dtype=np.int).T
-    with open(bin_file_name, 'wb') as f:
-        f.write(struct.pack('i', 3))
-        f.write(struct.pack('i', 8))
-        # Vertices.
-        f.write(struct.pack('i', 3))
-        f.write(struct.pack('i', vertices.shape[1]))
-        f.write(struct.pack('d' * vertices.size, *list(vertices.ravel())))
 
-        # Faces.
-        f.write(struct.pack('i', 8))
-        f.write(struct.pack('i', faces.shape[1]))
-        f.write(struct.pack('i' * faces.size, *list(faces.ravel())))
+    if write:
+        with open(bin_file_name, 'wb') as f:
+            f.write(struct.pack('i', 3))
+            f.write(struct.pack('i', 8))
+            # Vertices.
+            f.write(struct.pack('i', 3))
+            f.write(struct.pack('i', vertices.shape[1]))
+            f.write(struct.pack('d' * vertices.size, *list(vertices.ravel())))
+
+            # Faces.
+            f.write(struct.pack('i', 8))
+            f.write(struct.pack('i', faces.shape[1]))
+            f.write(struct.pack('i' * faces.size, *list(faces.ravel())))
+
+    return voxel_indices, vertex_flag
 
 # Given a hex mesh, return the following:
 # - vertices: an n x 3 double array.
@@ -230,7 +254,7 @@ def get_contact_vertex(hex_mesh):
 # - Divide the whole bounding box into cells of size dx.
 import trimesh
 
-def voxelize(triangle_mesh_file_name, dx):
+def voxelize(triangle_mesh_file_name, dx, feather=0.0):
     tri_mesh = trimesh.load(triangle_mesh_file_name)
     assert tri_mesh.is_watertight
     bbx_offset = np.min(tri_mesh.vertices, axis=0)
@@ -248,6 +272,6 @@ def voxelize(triangle_mesh_file_name, dx):
             for k in range(cell_num[2]):
                 center = ndarray([i + 0.5, j + 0.5, k + 0.5]) * dx
                 signed_distance = trimesh.proximity.signed_distance(tri_mesh, center.reshape((1, 3)))
-                if signed_distance > 0:
+                if signed_distance > feather:
                     voxels[i][j][k] = 1
     return voxels
