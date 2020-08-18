@@ -476,7 +476,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const std::s
         }
         // Initial guess.
         const VectorXr q_sol = PdNonlinearSolve(method, q, a, h2m, rhs, additional_dirichlet, options);
-        const VectorXr force_sol = PdEnergyForce(q_sol, false) + ActuationForce(q_sol, a);
+        const VectorXr force_sol = PdEnergyForce(q_sol, use_bfgs) + ActuationForce(q_sol, a);
 
         // Now verify the contact conditions.
         std::set<int> past_active_contact_idx;
