@@ -84,7 +84,7 @@ if __name__ == '__main__':
     ax_poses = [(0.07, 0.33, 0.25, 0.6),
         (0.39, 0.33, 0.25, 0.6),
         (0.71, 0.33, 0.25, 0.6)]
-    dash_list =[(5, 0), (5, 2), (2, 5), (4, 10), (3, 3, 2, 2), (5, 2, 20, 2), (5, 5), (5, 2, 1, 2)]
+    dash_list =[(2, 5), (5, 2), (5, 0), (4, 10), (3, 3, 2, 2), (5, 2, 20, 2), (5, 5), (5, 2, 1, 2)]
     for ax_pos, title, ax, t in zip(ax_poses, titles, (ax_fb, ax_f, ax_b), (forward_backward_times, forward_times, backward_times)):
         ax.set_position(ax_pos)
         ax.set_xlabel('time (s)')
@@ -109,6 +109,8 @@ if __name__ == '__main__':
 
         ax.grid(True)
         ax.set_title(title)
+        if title == 'backward':
+            ax.set_xlim([0, 100])
         handles, labels = ax.get_legend_handles_labels()
 
     # Share legends.
