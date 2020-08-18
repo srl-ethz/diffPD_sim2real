@@ -59,7 +59,7 @@ class EnvBase:
 
     # Return: loss, grad_q, grad_v.
     def _loss_and_grad(self, q, v):
-        raise NotImplementedError
+        return 0, np.zeros(q.size), np.zeros(q.size)
 
     def _stepwise_loss_and_grad(self, q, v, i):
         raise NotImplementedError
@@ -139,8 +139,10 @@ class EnvBase:
             if self._stepwise_loss:
                 l, grad_q, grad_v = self._stepwise_loss_and_grad(q_next, v_next, i + 1)
                 loss += l
-            elif i == frame_num - 1:
-                l, grad_q, grad_v = self._loss_and_grad(q_next, v_next)
+            if i == frame_num - 1:
+                l, dl_dq, dl_dv = self._loss_and_grad(q_next, v_next)
+                grad_q += dl_dq
+                grad_v += dl_dv
                 loss += l
             q.append(q_next)
             v.append(v_next)
@@ -157,9 +159,13 @@ class EnvBase:
 
         if vis_folder is not None:
             t_begin = time.time()
-            for i, qi in enumerate(q):
+            if frame_num > 100:
+                frame_skip = int(frame_num / 100)
+            else:
+                frame_skip = 1
+            for i in range(0, frame_num, frame_skip):
                 mesh_file = str(self._folder / vis_folder / '{:04d}.bin'.format(i))
-                self._deformable.PySaveToMeshFile(qi, mesh_file)
+                self._deformable.PySaveToMeshFile(q[i], mesh_file)
                 self._display_mesh(mesh_file, self._folder / vis_folder / '{:04d}.png'.format(i))
             export_gif(self._folder / vis_folder, self._folder / '{}.gif'.format(vis_folder), 5)
 

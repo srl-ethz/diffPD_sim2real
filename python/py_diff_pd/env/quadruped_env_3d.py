@@ -77,9 +77,11 @@ class QuadrupedEnv3d(EnvBase):
                 vx_idx = vx / dx
                 vy_idx = vy / dx
                 if vx_idx < 0.5 or np.abs(vx_idx - refinement) < 0.5 or \
-                    np.abs(vx_idx - (body_x_length - refinement)) < 0.5 or np.abs(vx_idx - body_x_length) < 0.5 or \
+                    np.abs(vx_idx - (body_x_length*refinement - refinement)) < 0.5 or \
+                    np.abs(vx_idx - body_x_length*refinement) < 0.5 or \
                     vy_idx < 0.5 or np.abs(vy_idx - refinement) < 0.5 or \
-                    np.abs(vy_idx - (body_y_length - refinement)) < 0.5 or np.abs(vy_idx - body_y_length) < 0.5:
+                    np.abs(vy_idx - (body_y_length*refinement - refinement)) < 0.5 or \
+                    np.abs(vy_idx - body_y_length * refinement) < 0.5:
                     friction_node_idx.append(i)
         deformable.SetFrictionalBoundary('planar', [0.0, 0.0, 1.0, 0.0], friction_node_idx)
         # Actuation: we have 4 legs and each leg has 4 muscles.
@@ -134,6 +136,7 @@ class QuadrupedEnv3d(EnvBase):
         self._stepwise_loss = False
         self.__node_nums = node_nums
         self._leg_indices = leg_indices
+        self._options = options
 
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)
@@ -157,9 +160,37 @@ class QuadrupedEnv3d(EnvBase):
         # Compute the center of mass.
         com = np.mean(q.reshape((-1, 3)), axis=0)
         loss = -com[0]
+
         grad_q = np.zeros(q.size)
         vertex_num = int(q.size // 3)
         grad_q[::3] = -1 / vertex_num
+
+        grad_v = np.zeros(v.size)
+        return loss, grad_q, grad_v
+
+    def _stepwise_loss_and_grad(self, q, v, i):
+        # Step wise pitch loss
+        options = self._options
+        leg_z_length = options['leg_z_length']
+        body_x_length = options['body_x_length']
+        body_y_length = options['body_y_length']
+        body_z_length = options['body_z_length']
+        refinement = options['refinement']
+
+        #Finds the topmost midpoint on the body face. qb and qf will differ in y initially if refinemnt is odd
+        body_slice = ((leg_z_length + body_z_length) * refinement + 1) * 2 * (refinement + 1) + \
+            (body_z_length * refinement  + 1) * (body_y_length*refinement - 2*refinement - 1)
+        zb_idx = int(np.ceil(body_slice / 2) * 3 + 2)
+        zf_idx = int(-np.floor(body_slice / 2) * 3)
+        zb = q[zb_idx]
+        zf = q[zf_idx]
+
+        grad_q = np.zeros(q.size)
+        loss = 0
+        if abs(zb - zf) > 0.075:
+            loss = 1/200 * (zb - zf) ** 2
+            grad_q[zb_idx] = 1/100 * (zb - zf)
+            grad_q[zf_idx] = 1/100 * (zf - zb)
 
         grad_v = np.zeros(v.size)
         return loss, grad_q, grad_v

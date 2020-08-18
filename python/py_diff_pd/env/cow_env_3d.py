@@ -21,11 +21,12 @@ class CowEnv3d(EnvBase):
 
         youngs_modulus = options['youngs_modulus']
         poissons_ratio = options['poissons_ratio']
+        gait = options['gait'] if 'gait' in options else 'pronk'
 
         # Mesh parameters.
         la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
         mu = youngs_modulus / (2 * (1 + poissons_ratio))
-        density = 5e2
+        density = 7e2
 
         bin_file_name = Path(root_path) / 'asset' / 'mesh' / 'spot.bin'
         mesh = Mesh3d()
@@ -75,6 +76,7 @@ class CowEnv3d(EnvBase):
         leg_z_length = 4
         body_x_length = 9
         body_y_length = 6
+        body_z_length = 4
         foot_x = 2
         foot_y = 2
         x_offset = 1
@@ -113,6 +115,34 @@ class CowEnv3d(EnvBase):
                 count += 1
         deformable.AddActuation(5e5, [0.0, 0.0, 1.0], act_indices)
 
+        spine_indices = {}
+        if gait == 'gallop':
+            act_indices =[]
+            for i in range(element_num):
+                v_idx = ndarray(mesh.py_element(i))
+                # Obtain the center of this cell.
+                com = 0
+                for vi in v_idx:
+                    com += ndarray(mesh.py_vertex(int(vi)))
+                com /= len(v_idx)
+                x_idx, y_idx, z_idx = com / dx
+
+                if z_idx < leg_z_length: continue
+                if z_idx > leg_z_length + body_z_length: continue
+                if x_idx < foot_x + x_offset or \
+                    x_idx >= body_x_length  + x_offset - foot_x: continue
+                # First, determine whether muscle is on Dorsal side (D) or ventral side (V)
+                key = 'D' if z_idx > leg_z_length + body_z_length / 2 else 'V'
+                if key not in spine_indices:
+                    spine_indices[key] = [count, ]
+                    count += 1
+                    act_indices.append(i)
+                else:
+                    spine_indices[key].append(count)
+                    act_indices.append(i)
+                    count += 1
+
+            deformable.AddActuation(5e5, [1.0, 0.0, 0.0], act_indices)
         # Initial states.
         dofs = deformable.dofs()
         act_dofs = deformable.act_dofs()
@@ -129,6 +159,7 @@ class CowEnv3d(EnvBase):
         self._poissons_ratio = poissons_ratio
         self._stepwise_loss = False
         self._leg_indices = leg_indices
+        self._spine_indices = spine_indices
 
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)

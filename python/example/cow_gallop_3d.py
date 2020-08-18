@@ -14,7 +14,7 @@ from py_diff_pd.core.py_diff_pd_core import StdRealVector
 from py_diff_pd.env.cow_env_3d import CowEnv3d
 
 if __name__ == '__main__':
-    seed = 39
+    seed = 48
     folder = Path('cow_3d')
     refinement = 8
     act_max = 2.0
@@ -23,9 +23,11 @@ if __name__ == '__main__':
     target_com = ndarray([0.5, 0.5, 0.2])
     env = CowEnv3d(seed, folder, { 'refinement': refinement,
         'youngs_modulus': youngs_modulus,
-        'poissons_ratio': poissons_ratio })
+        'poissons_ratio': poissons_ratio,
+        'gait': 'gallop' })
     deformable = env.deformable()
     leg_indices = env._leg_indices
+    spine_indices = env._spine_indices
 
     # Optimization parameters.
     thread_ct = 4
@@ -36,29 +38,34 @@ if __name__ == '__main__':
     opts = (newton_opt, newton_opt, pd_opt)
 
     dt = 1e-3
-    frame_num = 75
+    frame_num = 800
 
     # Initial state.
     dofs = deformable.dofs()
     act_dofs = deformable.act_dofs()
     q0 = env.default_init_position()
     v0 = np.zeros(dofs)
-    a0 = [2*np.ones(act_dofs) for _ in range(frame_num)]
+    a0 = [np.ones(act_dofs) for _ in range(frame_num)]
     f0 = [np.zeros(dofs) for _ in range(frame_num)]
 
 
     # Optimization.
-    # Variables to be optimized:
-    x_lb = ndarray([0, 0, 2*np.pi / frame_num])#, 0])
-    x_ub = ndarray([1, 1, 2*np.pi / 14])#, np.pi/2])
-    #x_init = ndarray([1, 1, 2*np.pi/14])
-    x_init = ndarray([np.random.random(), np.random.random(), np.random.uniform(x_lb[2], x_ub[2])])
+    # Variables to be optimized: A_Front, A_Rear, A_Spine, w_legs, w_spine, phi_front, phi_spine
+    x_lb = np.zeros(6)
+    x_ub = ndarray([1, 1, 1, 2*np.pi / 100, np.pi, np.pi])
+    x_init = np.random.uniform(low=0, high=1, size=6)
+    x_init[3:4] *= 2 * np.pi / 100
+    x_init[4:6] *= np.pi
     # Visualize initial guess.
     def variable_to_states(x, return_jac):
         A_f = x[0]
         A_b = x[1]
-        w = x[2]
-        jac = [np.ones((3, act_dofs)) for _ in range(frame_num)]
+        A_s = x[2]
+        w_l = x[3]
+        # phi_f = x[4]
+        phi_s = x[4]
+        phi_b = x[5]
+        jac = [np.zeros((6, act_dofs)) for _ in range(frame_num)]
         a = [np.zeros(act_dofs) for _ in range(frame_num)]
 
         for i in range(frame_num):
@@ -66,19 +73,28 @@ if __name__ == '__main__':
                 if key[-1] == 'F':
                     for idx in indcs:
                         if key[0] == 'F':
-                            a[i][idx] = act_max * (1 + A_f*np.sin(w*i)) / 2
-                            jac[i][:, idx] = [np.sin(w*i), 0, A_f*i*np.cos(w*i)]
+                            a[i][idx] = act_max * (1 + A_f*np.sin(w_l*i)) / 2
+                            jac[i][:, idx] = [np.sin(w_l*i), 0, 0, A_f*i*np.cos(w_l*i), 0, 0]
                         else:
-                            a[i][idx] = act_max * (1 + A_b*np.sin(w*i)) / 2
-                            jac[i][:, idx] = [0, np.sin(w*i), A_b*i*np.cos(w*i)]
+                            a[i][idx] = act_max * (1 + A_b*np.sin(w_l*i - phi_b)) / 2
+                            jac[i][:, idx] = [0, np.sin(w_l*i), 0, A_b*i*np.cos(w_l*i-phi_b), 0, -A_b*np.cos(w_l*i - phi_b)]
                 else:
                     for idx in indcs:
                         if key[0] =='F':
-                            a[i][idx] =  act_max * (1 - A_f*np.sin(w*i)) / 2
-                            jac[i][:, idx] = [-np.sin(w*i), 0, -A_f*i*np.cos(w*i)]
+                            a[i][idx] =  act_max * (1 - A_f*np.sin(w_l*i)) / 2
+                            jac[i][:, idx] = [-np.sin(w_l*i), 0, 0, -A_f*i*np.cos(w_l*i), 0, 0]
                         else:
-                            a[i][idx] = act_max * (1 - A_b*np.sin(w*i)) / 2
-                            jac[i][:, idx] = [0, -np.sin(w*i), -A_b*i*np.cos(w*i)]
+                            a[i][idx] = act_max * (1 - A_b*np.sin(w_l*i - phi_b)) / 2
+                            jac[i][:, idx] = [0, -np.sin(w_l*i), 0, -A_b*i*np.cos(w_l*i-phi_b), 0, A_b*np.cos(w_l*i - phi_b)]
+            for key, indcs in spine_indices.items():
+                if key == 'V':
+                    for idx in indcs:
+                        a[i][idx] = act_max * (1 + A_s*np.sin(w_l*i - phi_s)) / 2
+                        jac[i][:, idx] = [0, 0, np.sin(w_l*i - phi_s), A_s*i*np.cos(w_l*i - phi_s), -A_s*np.cos(w_l*i - phi_s), 0]
+                else:
+                    for idx in indcs:
+                        a[i][idx] = act_max * (1 - A_s*np.sin(w_l*i - phi_s)) / 2
+                        jac[i][:, idx] = [0, 0, -np.sin(w_l*i - phi_s), -A_s*i*np.cos(w_l*i - phi_s), -A_s*np.cos(w_l*i - phi_s), 0]
         jac = [act_max * col / 2 for col in jac]
         if return_jac:
             return a, jac
@@ -86,7 +102,7 @@ if __name__ == '__main__':
 
 
     a_init = variable_to_states(x_init, False)
-    env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a_init, f0, require_grad=False, vis_folder='init')
+    env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a_init, f0, require_grad=False, vis_folder='init_gallop')
 
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
     data = {}
@@ -100,7 +116,7 @@ if __name__ == '__main__':
         grad = ndarray([jac[i].dot(np.transpose(act_grad[i])) for i in range(frame_num)])
         grad = np.sum(grad, axis=0)
 
-        print('loss: {:8.3f}, |grad|: {:8.3f}, A_f: {:8.5f}, A_b: {:8.5f}, w: {:8.5f}, forward time: {:6.3f}s, backward time: {:6.3f}s'.format(
+        print('loss: {:8.3f}, |grad|: {:8.3f}, A_f: {:8.5f}, A_b: {:8.5f}, A_s: {:8.5f}, forward time: {:6.3f}s, backward time: {:6.3f}s'.format(
             loss, np.linalg.norm(grad), x[0], x[1], x[2], info['forward_time'], info['backward_time']))
         single_data = {}
         single_data['loss'] = loss
