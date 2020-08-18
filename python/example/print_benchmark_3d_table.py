@@ -47,7 +47,7 @@ if __name__ == '__main__':
         print_warning('Benchmark data corrupted. Showing the first {} only.'.format(max_rel_tol_nums))
         rel_tols = rel_tols[:max_rel_tol_nums]
 
-    thread_cts = [4, 8, 12]
+    thread_cts = [2, 4, 8]
     forward_backward_times = {}
     for method in forward_times:
         forward_backward_times[method] = np.zeros(len(rel_tols))
