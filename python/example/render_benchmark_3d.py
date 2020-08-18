@@ -15,10 +15,9 @@ if __name__ == '__main__':
     env = BenchmarkEnv3d(seed, folder, { 'refinement': 8 })
     deformable = env.deformable()
 
-    thread_ct = 4
-    method = 'pd'
-    opt = { 'max_pd_iter': 5000, 'max_ls_iter': 1, 'abs_tol': 1e-9, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': 4,
-            'method': 1, 'bfgs_history_size': 10 }
+    method = 'pd_eigen'
+    opt = { 'max_pd_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4,
+            'use_bfgs': 1, 'bfgs_history_size': 10 }
 
     dofs = deformable.dofs()
     act_dofs = deformable.act_dofs()
