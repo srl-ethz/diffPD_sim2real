@@ -109,8 +109,6 @@ if __name__ == '__main__':
 
         ax.grid(True)
         ax.set_title(title)
-        if title == 'backward':
-            ax.set_xlim([0, 100])
         handles, labels = ax.get_legend_handles_labels()
 
     # Share legends.
@@ -143,7 +141,7 @@ if __name__ == '__main__':
                 color = 'tab:red'
             meth_thread_num = '{}_{}threads'.format(method, thread_cts[-1])
             ax.plot(rel_tols, y[meth_thread_num], label=method_ref_name, color=color, linewidth=2)
-        ax.grid(True)
+        ax.grid(True, which='both')
         ax.set_title(title)
         handles, labels = ax.get_legend_handles_labels()
 
