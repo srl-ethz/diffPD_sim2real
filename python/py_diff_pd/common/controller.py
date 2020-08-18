@@ -145,11 +145,13 @@ class IndNNController(NNController):
 
 
 class AdaNNController(NNController):
-    def __init__(self, deformable, widths, norm_type=None, dropout=0.0):
+    def __init__(self, deformable, widths, norm_type=None, dropout=0.0, segment_len=1):
         super(AdaNNController, self).__init__(deformable, widths, norm_type, dropout)
         self.a_init = torch.zeros(self.act_dofs, requires_grad=False)
+        self.segment_len = segment_len
 
     def forward(self, x, prev_a) -> torch.Tensor:
+        segment_len = self.segment_len
         if prev_a is None:
             prev_a = self.a_init
         else:
@@ -170,7 +172,7 @@ class AdaNNController(NNController):
                 for mu, muscle in zip(mu_pair, muscle_pair):
                     prev_a_cord = prev_a[pointer:pointer + len(muscle)]
                     pointer += len(muscle)
-                    a_cord = torch.cat([mu, prev_a_cord[:-1]])
+                    a_cord = torch.cat([mu.expand(self.segment_len), prev_a_cord[:-1]])
                     a.append(a_cord)
         a = torch.cat(a)
         return 1 - a

@@ -393,7 +393,7 @@ def make_starfish_3d(sim_class, seed, rank, *args, **kwargs):
     method = 'pd_eigen'
     opt = {
         'max_pd_iter': 1000, 'max_ls_iter': 10, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0,
-        'thread_ct': 2, 'use_bfgs': 1, 'bfgs_history_size': 10
+        'thread_ct': 1, 'use_bfgs': 1, 'bfgs_history_size': 10
     }
 
     deformable = Deformable3d()
