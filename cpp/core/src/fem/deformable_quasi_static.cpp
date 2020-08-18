@@ -126,7 +126,7 @@ template<int vertex_dim, int element_dim>
 const SparseMatrix Deformable<vertex_dim, element_dim>::QuasiStaticMatrix(const VectorXr& q, const VectorXr& a) const {
     SparseMatrixElements nonzeros = ElasticForceDifferential(q);
     SparseMatrixElements nonzeros_pd, nonzeros_dummy;
-    PdEnergyForceDifferential(q, true, false, nonzeros_pd, nonzeros_dummy);
+    PdEnergyForceDifferential(q, true, false, false, nonzeros_pd, nonzeros_dummy);
     SparseMatrixElements nonzeros_act_dq, nonzeros_act_da;
     ActuationForceDifferential(q, a, nonzeros_act_dq, nonzeros_act_da);
     nonzeros.insert(nonzeros.end(), nonzeros_pd.begin(), nonzeros_pd.end());

@@ -70,7 +70,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
             // Newton's direction: dq = H^{-1} * grad.
             VectorXr newton_direction = VectorXr::Zero(dofs_);
             if (verbose_level > 1) Tic();
-            const SparseMatrix op = NewtonMatrix(q_sol, a, h2m, augmented_dirichlet);
+            const SparseMatrix op = NewtonMatrix(q_sol, a, h2m, augmented_dirichlet, true);
             if (verbose_level > 1) Toc("Assemble NewtonMatrix");
             if (method == "newton_pcg") {
                 // Looks like Matrix operators are more accurate and allow for more advanced preconditioners.
@@ -246,10 +246,10 @@ const VectorXr Deformable<vertex_dim, element_dim>::NewtonMatrixOp(const VectorX
 
 template<int vertex_dim, int element_dim>
 const SparseMatrix Deformable<vertex_dim, element_dim>::NewtonMatrix(const VectorXr& q_sol, const VectorXr& a,
-    const real h2m, const std::map<int, real>& dirichlet_with_friction) const {
+    const real h2m, const std::map<int, real>& dirichlet_with_friction, const bool use_precomputed_data) const {
     SparseMatrixElements nonzeros = ElasticForceDifferential(q_sol);
     SparseMatrixElements nonzeros_pd, nonzeros_dummy;
-    PdEnergyForceDifferential(q_sol, true, false, nonzeros_pd, nonzeros_dummy);
+    PdEnergyForceDifferential(q_sol, true, false, use_precomputed_data, nonzeros_pd, nonzeros_dummy);
     SparseMatrixElements nonzeros_act_dq, nonzeros_act_da;
     ActuationForceDifferential(q_sol, a, nonzeros_act_dq, nonzeros_act_da);
     nonzeros.insert(nonzeros.end(), nonzeros_pd.begin(), nonzeros_pd.end());

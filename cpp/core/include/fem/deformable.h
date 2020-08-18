@@ -78,7 +78,7 @@ public:
     const VectorXr PdEnergyForce(const VectorXr& q, const bool use_precomputed_data) const;
     const VectorXr PdEnergyForceDifferential(const VectorXr& q, const VectorXr& dq, const VectorXr& dw) const;
     void PdEnergyForceDifferential(const VectorXr& q, const bool require_dq, const bool require_dw,
-        SparseMatrixElements& dq, SparseMatrixElements& dw) const;
+        const bool use_precomputed_data, SparseMatrixElements& dq, SparseMatrixElements& dw) const;
 
     // Actuation.
     void AddActuation(const real stiffness, const std::array<real, vertex_dim>& fiber_direction,
@@ -181,7 +181,7 @@ private:
     const VectorXr NewtonMatrixOp(const VectorXr& q_sol, const VectorXr& a, const real h2m,
         const std::map<int, real>& dirichlet_with_friction, const VectorXr& dq) const;
     const SparseMatrix NewtonMatrix(const VectorXr& q_sol, const VectorXr& a, const real h2m,
-        const std::map<int, real>& dirichlet_with_friction) const;
+        const std::map<int, real>& dirichlet_with_friction, const bool use_precomputed_data) const;
     const VectorXr QuasiStaticMatrixOp(const VectorXr& q, const VectorXr& a, const VectorXr& dq) const;
     const SparseMatrix QuasiStaticMatrix(const VectorXr& q, const VectorXr& a) const;
 

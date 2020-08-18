@@ -219,3 +219,16 @@ const VectorXr LoadEigenVectorFromBinaryFile(const std::string& file_name) {
     for (int i = 0; i < n; ++i) v(i) = Load<real>(fin);
     return v;
 }
+
+const VectorXr VectorSparseMatrixProduct(const VectorXr& v,
+    const int row, const int col, const SparseMatrixElements& A) {
+    VectorXr vA = VectorXr::Zero(col);
+    const int nonzeros = static_cast<int>(A.size());
+    for (int i = 0; i < nonzeros; ++i) {
+        const int r = A[i].row();
+        const int c = A[i].col();
+        const real a = A[i].value();
+        vA[c] += v(r) * a;
+    }
+    return vA;
+}
