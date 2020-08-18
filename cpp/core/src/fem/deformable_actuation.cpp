@@ -168,7 +168,7 @@ const std::vector<real> Deformable<vertex_dim, element_dim>::PyActuationForceDif
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::PyActuationForceDifferential(const std::vector<real>& q, const std::vector<real>& a,
     std::vector<std::vector<real>>& dq, std::vector<std::vector<real>>& da) const {
-    PrintWarning("PyPdEnergyForceDifferential should only be used for small-scale problems and for testing purposes.");
+    PrintWarning("PyActuationForceDifferential should only be used for small-scale problems and for testing purposes.");
     SparseMatrixElements nonzeros_dq, nonzeros_da;
     ActuationForceDifferential(ToEigenVector(q), ToEigenVector(a), nonzeros_dq, nonzeros_da);
     dq.resize(dofs_);

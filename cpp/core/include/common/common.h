@@ -52,5 +52,6 @@ void SaveSparseMatrixToBinaryFile(const SparseMatrix& A, const std::string& file
 const SparseMatrix LoadSparseMatrixFromBinaryFile(const std::string& file_name);
 void SaveEigenVectorToBinaryFile(const VectorXr& v, const std::string& file_name);
 const VectorXr LoadEigenVectorFromBinaryFile(const std::string& file_name);
+const VectorXr VectorSparseMatrixProduct(const VectorXr& v, const int row, const int col, const SparseMatrixElements& A);
 
 #endif

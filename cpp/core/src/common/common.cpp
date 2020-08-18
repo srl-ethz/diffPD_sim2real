@@ -66,17 +66,22 @@ void PrintSuccess(const std::string& message) {
 }
 
 // Timing.
-static struct timeval t_begin, t_end;
+static std::stack<timeval> t_begins;
 
 void Tic() {
+    timeval t_begin;
     gettimeofday(&t_begin, nullptr);
+    t_begins.push(t_begin);
 }
 
 void Toc(const std::string& message) {
+    timeval t_end;
     gettimeofday(&t_end, nullptr);
+    timeval t_begin = t_begins.top();
     const real t_interval = (t_end.tv_sec - t_begin.tv_sec) + (t_end.tv_usec - t_begin.tv_usec) / 1e6;
     std::cout << CyanHead() << "[Timing] " << message << ": " << t_interval << "s"
               << CyanTail() << std::endl;
+    t_begins.pop();
 }
 
 void CheckError(const bool condition, const std::string& error_message) {
@@ -213,4 +218,17 @@ const VectorXr LoadEigenVectorFromBinaryFile(const std::string& file_name) {
     VectorXr v = VectorXr::Zero(n);
     for (int i = 0; i < n; ++i) v(i) = Load<real>(fin);
     return v;
+}
+
+const VectorXr VectorSparseMatrixProduct(const VectorXr& v,
+    const int row, const int col, const SparseMatrixElements& A) {
+    VectorXr vA = VectorXr::Zero(col);
+    const int nonzeros = static_cast<int>(A.size());
+    for (int i = 0; i < nonzeros; ++i) {
+        const int r = A[i].row();
+        const int c = A[i].col();
+        const real a = A[i].value();
+        vA[c] += v(r) * a;
+    }
+    return vA;
 }
