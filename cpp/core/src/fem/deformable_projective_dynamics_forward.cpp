@@ -546,14 +546,18 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const std::string
     const Eigen::Matrix<real, vertex_dim, -1> rhs_reshape = Eigen::Map<
         const Eigen::Matrix<real, vertex_dim, -1>>(rhs.data(), vertex_dim, vertex_num);
     Eigen::Matrix<real, vertex_dim, -1> sol = Eigen::Matrix<real, vertex_dim, -1>::Zero(vertex_dim, vertex_num);
+    std::vector<VectorXr> rhs_reshape_rows(vertex_dim), sol_rows(vertex_dim);
+    for (int j = 0; j < vertex_dim; ++j) rhs_reshape_rows[j] = rhs_reshape.row(j);
+    #pragma omp parallel for
     for (int j = 0; j < vertex_dim; ++j) {
         if (method == "pd_eigen") {
-            sol.row(j) = pd_eigen_solver_[j].solve(VectorXr(rhs_reshape.row(j)));
+            sol_rows[j] = pd_eigen_solver_[j].solve(rhs_reshape_rows[j]);
             CheckError(pd_eigen_solver_[j].info() == Eigen::Success, "Cholesky solver failed.");
         } else if (method == "pd_pardiso") {
-            sol.row(j) = pd_pardiso_solver_[j].Solve(VectorXr(rhs_reshape.row(j)));
+            sol_rows[j] = pd_pardiso_solver_[j].Solve(rhs_reshape_rows[j]);
         }
     }
+    for (int j = 0; j < vertex_dim; ++j) sol.row(j) = sol_rows[j];
     const VectorXr y1 = Eigen::Map<const VectorXr>(sol.data(), sol.size());
     if (additional_dirichlet_boundary_condition.empty()) return y1;
 
@@ -625,8 +629,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const std::string
         // y1 has been computed.
         // Compute y2.
         VectorXr y2 = VectorXr::Zero(2 * Ci_num);
-        y2.head(Ci_num) = VectorXr(rhs_reshape.row(d) * B2);
-        y2.tail(Ci_num) = VectorXr(rhs_reshape.row(d) * B1);
+        y2.head(Ci_num) = RowVectorXr(rhs_reshape_rows[d]) * B2;
+        y2.tail(Ci_num) = RowVectorXr(rhs_reshape_rows[d]) * B1;
         // Compute y3.
         const VectorXr y3 = B4.colPivHouseholderQr().solve(y2);
         // Compute solution.
