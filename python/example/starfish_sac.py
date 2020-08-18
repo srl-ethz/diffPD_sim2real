@@ -32,7 +32,7 @@ from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.mesh import generate_hex_mesh, get_boundary_face
 from py_diff_pd.common.display import export_gif, Arrow3D
-from py_diff_pd.common.rl_sim import DiffPDTask, make_water_snake_3d, tensor, MyDeterministicActorCriticNet, get_logger, MeanStdNormalizer, AdaSim, IndSim
+from py_diff_pd.common.rl_sim import DiffPDTask, make_starfish_3d, tensor, MyDeterministicActorCriticNet, get_logger, MeanStdNormalizer, AdaSim, IndSim
 
 from sac_utils.sac import SAC
 from sac_utils.replay_memory import ReplayMemory
@@ -46,7 +46,7 @@ def sac_ada():
     torch.manual_seed(seed)
     torch.set_default_dtype(torch.float64)
 
-    folder = Path('water_snake').resolve() / 'Ada_SAC'
+    folder = Path('starfish').resolve() / 'Ada_SAC'
     ckpt_folder = folder / 'checkpoints'
     video_folder = folder / 'videos'
     folder.mkdir(parents=True, exist_ok=True)
@@ -86,7 +86,7 @@ def sac_ada():
     args = parser.parse_args()
     args.seed = seed
 
-    env = make_water_snake_3d(AdaSim, seed, 0)
+    env = make_starfish_3d(AdaSim, seed, 0)
 
     agent = SAC(env.observation_space.shape[0], env.action_space, args)
 

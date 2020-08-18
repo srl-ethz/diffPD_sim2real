@@ -7,6 +7,7 @@ import math
 import random
 import copy
 from collections import deque
+import logging
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
@@ -19,178 +20,238 @@ from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.proj3d import proj_transform
 import matplotlib.animation as animation
 
-import tensorflow as tf
 import gym
-from torch.utils.tensorboard import SummaryWriter
-tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
-from mpi4py import MPI
-from stable_baselines import PPO1
-from stable_baselines.bench import Monitor
-from stable_baselines.common import set_global_seeds
-from stable_baselines.common.vec_env.vec_normalize import VecNormalize
-from stable_baselines.common.callbacks import BaseCallback
-from stable_baselines.common.policies import MlpPolicy
-from stable_baselines import logger
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.tensorboard import SummaryWriter
 
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.mesh import generate_hex_mesh, get_boundary_face
-from py_diff_pd.common.display import render_hex_mesh_no_floor, export_gif, Arrow3D
-from py_diff_pd.common.rl_sim import Sim
+from py_diff_pd.common.display import export_gif, Arrow3D
+from py_diff_pd.common.rl_sim import DiffPDTask, make_water_snake_3d, tensor, MyGaussianActorCriticNet, get_logger, MeanStdNormalizer, AdaSim, IndSim
+
+from deep_rl.utils import generate_tag, Config, set_one_thread
+from deep_rl.agent import BaseNet, FCBody, PPOAgent
+from deep_rl.network import GaussianActorCriticNet
 
 
-def main():
+def ppo_ada():
 
-    rank = MPI.COMM_WORLD.Get_rank()
-
-    if rank == 0:
-        logger.configure()
-    else:
-        logger.configure(format_strs=[])
-
-    seed = 42 + rank
+    seed = 42
     random.seed(seed)
     np.random.seed(seed)
-    set_global_seeds(seed)
+    torch.manual_seed(seed)
+    torch.set_default_dtype(torch.float64)
 
-    folder = Path('water_snake').resolve()
+    set_one_thread()
+
+    folder = Path('water_snake').resolve() / 'Ada_PPO'
+    ckpt_folder = folder / 'checkpoints'
+    video_folder = folder / 'videos'
     folder.mkdir(parents=True, exist_ok=True)
+    ckpt_folder.mkdir(parents=True, exist_ok=True)
+    video_folder.mkdir(parents=True, exist_ok=True)
 
-    # Mesh parameters.
-    cell_nums = [20, 2, 2]
-    node_nums = [c + 1 for c in cell_nums]
-    dx = 0.1
-    origin = np.zeros((3,))
-    bin_file_name = str(folder / 'water_snake.bin')
-    voxels = np.ones(cell_nums)
-
-    voxel_indices, vertex_indices = generate_hex_mesh(voxels, dx, origin, bin_file_name)
-    mesh = Mesh3d()
-    mesh.Initialize(bin_file_name)
-
-    # FEM parameters.
-    youngs_modulus = 1e6
-    poissons_ratio = 0.45
-    density = 1e3
-    method = 'pd'
-    opt = {
-        'max_pd_iter': 1000, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0,
-        'thread_ct': 2, 'method': 1, 'bfgs_history_size': 10
+    kwargs = {
+        'game': 'water_snake'
     }
 
-    deformable = Deformable3d()
-    deformable.Initialize(bin_file_name, density, 'none', youngs_modulus, poissons_ratio)
-    # Elasticity.
-    deformable.AddPdEnergy('corotated', [youngs_modulus / (1 + poissons_ratio),], [])
-    # Hydrodynamics parameters.
-    rho = 1e3
-    v_water = [0, 0, 0]   # Velocity of the water.
-    # # Cd_points = (angle, coeff) pairs where angle is normalized to [0, 1].
-    Cd_points = ndarray([[0.0, 0.05], [0.4, 0.05], [0.7, 1.85], [1.0, 2.05]])
-    # # Ct_points = (angle, coeff) pairs where angle is normalized to [-1, 1].
-    Ct_points = ndarray([[-1, -0.8], [-0.3, -0.5], [0.3, 0.1], [1, 2.5]])
-    # The current Cd and Ct are similar to Figure 2 in SoftCon.
-    # surface_faces is a list of (v0, v1) where v0 and v1 are the vertex indices of the two endpoints of a boundary edge.
-    # The order of (v0, v1) is determined so that following all v0 -> v1 forms a ccw contour of the deformable body.
-    surface_faces = get_boundary_face(mesh)
-    deformable.AddStateForce(
-        'hydrodynamics', np.concatenate(
-            [[rho,], v_water, Cd_points.ravel(), Ct_points.ravel(), ndarray(surface_faces).ravel()]))
+    generate_tag(kwargs)
+    kwargs.setdefault('log_level', 0)
+    config = Config()
+    config.merge(kwargs)
 
-    # Add actuation.
-    # ******************** <- muscle
-    # |                  | <- body
-    # |                  | <- body
-    # ******************** <- muscle
+    config.num_workers = 4
 
-    all_muscles = []
-    shared_muscles = []
-    for i in [0, cell_nums[2] - 1]:
-        muscle_pair = []
-        for j in [0, cell_nums[1] - 1]:
-            indices = voxel_indices[:, j, i].tolist()
-            deformable.AddActuation(1e5, [1.0, 0.0, 0.0], indices)
-            muscle_pair.append(indices)
-        shared_muscles.append(muscle_pair)
-    all_muscles.append(shared_muscles)
-    deformable.all_muscles = all_muscles
+    config.task_fn = lambda: DiffPDTask(make_water_snake_3d, AdaSim, seed, config.num_workers, False) # pylint: disable=no-member
+    config.eval_env = DiffPDTask(make_water_snake_3d, AdaSim, seed, 1, True)
 
-    # Implement the forward and backward simulation.
-    dt = 3.33e-2
-    num_frames = 200
-    dofs = deformable.dofs()
-    act_dofs = deformable.act_dofs()
-    arrow_target_data = np.array([-1, 0, 0], dtype=np.float64)
+    config.network_fn = lambda: MyGaussianActorCriticNet(
+        config.state_dim, config.action_dim,
+        actor_body=FCBody(config.state_dim, hidden_units=(64, 64), gate=torch.tanh),
+        critic_body=FCBody(config.state_dim, hidden_units=(64, 64), gate=torch.tanh))
+    config.actor_opt_fn = lambda params: torch.optim.Adam(params, 3e-4)
+    config.critic_opt_fn = lambda params: torch.optim.Adam(params, 1e-3)
+    config.discount = 0.99
+    config.use_gae = True
+    config.gae_tau = 0.95
+    config.gradient_clip = 0.5
+    config.rollout_length = 1000
+    config.eval_interval = config.rollout_length * config.num_workers
+    config.optimization_epochs = 10
+    config.mini_batch_size = 64
+    config.ppo_ratio_clip = 0.2
+    config.log_interval = config.rollout_length * config.num_workers
+    config.save_interval = config.rollout_length * config.num_workers * 10
+    config.max_steps = 1e6
+    config.target_kl = 0.01
+    config.state_normalizer = MeanStdNormalizer(read_only=True)
 
-    w_sideward = 10.0
-    w_face = 0.0
+    agent = PPOAgent(config)
+    agent.logger = get_logger(folder)
+    config = agent.config
 
-    mid_x = math.floor(node_nums[0] / 2)
-    mid_y = math.floor(node_nums[1] / 2)
-    mid_z = math.floor(node_nums[2] / 2)
-    mid_line = vertex_indices[:, mid_y, mid_z]
-    center = vertex_indices[mid_x, mid_y, mid_z]
+    init_ckpt = torch.load(folder.parent / 'Ada' / 'checkpoints' / '0.pth', map_location='cpu')['state_dict']
+    with torch.no_grad():
+        for name, param in agent.network.named_parameters():
+            if name == 'actor_body.layers.0.weight':
+                param.copy_(init_ckpt['layers.0.linear.weight'])
+            elif name == 'actor_body.layers.0.bias':
+                param.copy_(init_ckpt['layers.0.linear.bias'])
+            elif name == 'actor_body.layers.1.weight':
+                param.copy_(init_ckpt['layers.1.linear.weight'])
+            elif name == 'actor_body.layers.1.bias':
+                param.copy_(init_ckpt['layers.1.linear.bias'])
+            elif name == 'fc_action.weight':
+                param.copy_(init_ckpt['layers.2.weight'])
+            elif name == 'fc_action.bias':
+                param.copy_(init_ckpt['layers.2.bias'])
 
-    face_head = vertex_indices[0, mid_y, mid_z]
-    face_tail = vertex_indices[2, mid_y, mid_z]
+    print(agent.network)
 
-    def get_state(sim, q_, v_, a_=None, f_ext_=None):
-        q_center = q_.reshape((-1, 3))[center]
-        v_center = v_.reshape((-1, 3))[center]
+    log = []
 
-        q_mid_line_rel = q_.reshape((-1, 3))[mid_line] - q_center
-        v_mid_line = v_.reshape((-1, 3))[mid_line]
-        state = [
-            v_center,
-            q_mid_line_rel.ravel(),
-            v_mid_line.ravel(),
-        ]
-        return np.concatenate(state).copy()
+    t0 = time.time()
+    while True:
+        last_step = config.max_steps and agent.total_steps >= config.max_steps
 
-    def get_reward(sim, q_, v_, a_=None, f_ext_=None):
+        if last_step or agent.total_steps % config.save_interval == 0:
+            agent.save(ckpt_folder / f'{agent.total_steps}.pth')
+        if last_step or agent.total_steps % config.log_interval == 0:
+            agent.logger.info('steps %d, %.2f steps/s' % (agent.total_steps, config.log_interval / (time.time() - t0)))
+            t0 = time.time()
+        if last_step or agent.total_steps % config.eval_interval == 0:
+            config.state_normalizer.set_read_only()
+            state = config.eval_env.reset()
+            total_reward = 0.0
+            with torch.no_grad():
+                while True:
+                    state = config.state_normalizer(state)
+                    action = agent.network(state)['mean'].cpu().detach().numpy()
+                    state, reward, done, info = config.eval_env.step(action)
+                    total_reward += reward
+                    if done:
+                        break
+            agent.logger.add_scalar('episode_reward', total_reward, agent.total_steps)
+            log.append([agent.total_steps, total_reward])
+        if last_step:
+            agent.close()
+            break
+        config.state_normalizer.set_read_only()
+        agent.step()
 
-        v_center = np.mean(v_.reshape((-1, 3))[mid_line], axis=0)
-        face_dir = q_.reshape((-1, 3))[face_head] - q_.reshape((-1, 3))[face_tail]
-        face_dir = face_dir / np.linalg.norm(face_dir)
+    torch.save(log, folder / 'log.pth')
 
-        # forward loss
-        forward_reward = np.dot(v_center, arrow_target_data)
 
-        # sideward loss
-        cross = np.cross(v_center, arrow_target_data)
-        sideward_reward = -np.dot(cross, cross)
+def ppo_ind():
 
-        # face loss
-        face_reward = np.dot(face_dir, arrow_target_data)
+    seed = 42
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.set_default_dtype(torch.float64)
 
-        return forward_reward + w_sideward * sideward_reward + w_face * face_reward
+    set_one_thread()
 
-    def get_done(sim, q_, v_, a_, f_ext_):
-        if sim.frame >= sim.num_frames:
-            return True
-        return False
+    folder = Path('water_snake').resolve() / 'Ind_PPO'
+    ckpt_folder = folder / 'checkpoints'
+    video_folder = folder / 'videos'
+    folder.mkdir(parents=True, exist_ok=True)
+    ckpt_folder.mkdir(parents=True, exist_ok=True)
+    video_folder.mkdir(parents=True, exist_ok=True)
 
-    setattr(Sim, 'get_state', get_state)
-    setattr(Sim, 'get_reward', get_reward)
-    setattr(Sim, 'get_done', get_done)
+    kwargs = {
+        'game': 'water_snake'
+    }
 
-    sim = Sim(
-        deformable, mesh, center, dofs, act_dofs, method, dt, opt, num_frames)
+    generate_tag(kwargs)
+    kwargs.setdefault('log_level', 0)
+    config = Config()
+    config.merge(kwargs)
 
-    action_shape = (len(all_muscles),)
-    sim.set_action_space(action_shape)
+    config.num_workers = 4
 
-    ppo = PPO1(
-        MlpPolicy, sim,
-        timesteps_per_actorbatch=num_frames * 4,
-        verbose=1,
-        tensorboard_log=str(folder) if rank == 0 else None,
-        policy_kwargs=dict(net_arch=[dict(pi=[64, 64], vf=[64, 64])]),
-        seed=seed
-    )
+    config.task_fn = lambda: DiffPDTask(make_water_snake_3d, IndSim, seed, config.num_workers, False) # pylint: disable=no-member
+    config.eval_env = DiffPDTask(make_water_snake_3d, IndSim, seed, 1, True)
 
-    ppo.learn(int(1e6))
+    config.network_fn = lambda: MyGaussianActorCriticNet(
+        config.state_dim, config.action_dim,
+        actor_body=FCBody(config.state_dim, hidden_units=(64, 64), gate=torch.tanh),
+        critic_body=FCBody(config.state_dim, hidden_units=(64, 64), gate=torch.tanh))
+    config.actor_opt_fn = lambda params: torch.optim.Adam(params, 3e-4)
+    config.critic_opt_fn = lambda params: torch.optim.Adam(params, 1e-3)
+    config.discount = 0.99
+    config.use_gae = True
+    config.gae_tau = 0.95
+    config.gradient_clip = 0.5
+    config.rollout_length = 1000
+    config.eval_interval = config.rollout_length * config.num_workers
+    config.optimization_epochs = 10
+    config.mini_batch_size = 64
+    config.ppo_ratio_clip = 0.2
+    config.log_interval = config.rollout_length * config.num_workers
+    config.save_interval = config.rollout_length * config.num_workers * 10
+    config.max_steps = 1e6
+    config.target_kl = 0.01
+    config.state_normalizer = MeanStdNormalizer(read_only=True)
+
+    agent = PPOAgent(config)
+    agent.logger = get_logger(folder)
+    config = agent.config
+
+    init_ckpt = torch.load(folder.parent / 'Ind' / 'checkpoints' / '0.pth', map_location='cpu')['state_dict']
+    with torch.no_grad():
+        for name, param in agent.network.named_parameters():
+            if name == 'actor_body.layers.0.weight':
+                param.copy_(init_ckpt['layers.0.linear.weight'])
+            elif name == 'actor_body.layers.0.bias':
+                param.copy_(init_ckpt['layers.0.linear.bias'])
+            elif name == 'actor_body.layers.1.weight':
+                param.copy_(init_ckpt['layers.1.linear.weight'])
+            elif name == 'actor_body.layers.1.bias':
+                param.copy_(init_ckpt['layers.1.linear.bias'])
+            elif name == 'fc_action.weight':
+                param.copy_(init_ckpt['layers.2.weight'])
+            elif name == 'fc_action.bias':
+                param.copy_(init_ckpt['layers.2.bias'])
+
+    print(agent.network)
+
+    log = []
+
+    t0 = time.time()
+    while True:
+        last_step = config.max_steps and agent.total_steps >= config.max_steps
+
+        if last_step or agent.total_steps % config.save_interval == 0:
+            agent.save(ckpt_folder / f'{agent.total_steps}.pth')
+        if last_step or agent.total_steps % config.log_interval == 0:
+            agent.logger.info('steps %d, %.2f steps/s' % (agent.total_steps, config.log_interval / (time.time() - t0)))
+            t0 = time.time()
+        if last_step or agent.total_steps % config.eval_interval == 0:
+            config.state_normalizer.set_read_only()
+            state = config.eval_env.reset()
+            total_reward = 0.0
+            with torch.no_grad():
+                while True:
+                    state = config.state_normalizer(state)
+                    action = agent.network(state)['mean'].cpu().detach().numpy()
+                    state, reward, done, info = config.eval_env.step(action)
+                    total_reward += reward
+                    if done:
+                        break
+            agent.logger.add_scalar('episode_reward', total_reward, agent.total_steps)
+            log.append([agent.total_steps, total_reward])
+        if last_step:
+            agent.close()
+            break
+        config.state_normalizer.set_read_only()
+        agent.step()
+
+    torch.save(log, folder / 'log.pth')
 
 if __name__ == "__main__":
-    main()
+    ppo_ada()

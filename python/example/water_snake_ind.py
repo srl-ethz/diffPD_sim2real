@@ -30,11 +30,9 @@ from torch.utils.tensorboard import SummaryWriter
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.mesh import generate_hex_mesh, get_boundary_face
-from py_diff_pd.common.display import render_hex_mesh_no_floor, export_gif, Arrow3D
+from py_diff_pd.common.display import export_gif, Arrow3D
 from py_diff_pd.common.sim import Sim
 from py_diff_pd.common.controller import SnakeAdaNNController, AdaNNController, IndNNController
-
-import optuna
 
 
 class Display(object):
@@ -182,10 +180,10 @@ def main():
     youngs_modulus = 1e6
     poissons_ratio = 0.45
     density = 1e3
-    method = 'pd'
+    method = 'pd_eigen'
     opt = {
-        'max_pd_iter': 1000, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0,
-        'thread_ct': 4, 'method': 1, 'bfgs_history_size': 10
+        'max_pd_iter': 1000, 'max_ls_iter': 10, 'abs_tol': 1e-4, 'rel_tol': 1e-3, 'verbose': 0,
+        'thread_ct': 4, 'use_bfgs': 1, 'bfgs_history_size': 10
     }
 
     deformable = Deformable3d()
@@ -281,8 +279,9 @@ def main():
         deformable, [get_state(q0, v0).size(1), 64, 64, len(all_muscles)], None, dropout=0.0)
     controller.reset_parameters()
 
-    num_epochs = 30
+    num_epochs = 1000
     optimizer = optim.Adam(controller.parameters(), lr=0.001, weight_decay=1e-4)
+    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda epoch: 1 - epoch / num_epochs)
 
     q, v = q0, v0
 
@@ -291,9 +290,16 @@ def main():
         controller, get_state, get_plot, (q0, v0), num_frames
     )
 
-    writer = SummaryWriter(sub_folder, purge_step=0)
+    ckpt = {
+        'state_dict': controller.state_dict(),
+        'optimizer': optimizer.state_dict(),
+    }
+    torch.save(ckpt, ckpt_folder / '0.pth')
 
-    for epoch in range(1, num_epochs + 1):
+    writer = SummaryWriter(sub_folder, purge_step=0)
+    log = []
+
+    for epoch in range(num_epochs):
         controller.train(True)
 
         forward_loss = 0
@@ -332,16 +338,16 @@ def main():
         norm = nn.utils.clip_grad_norm_(controller.parameters(), 1.0)
 
         optimizer.step()
+        lr_scheduler.step()
 
         loss = loss.clone().detach()
         q_center = q_center.clone().detach()
-        norm = norm.clone().detach()
 
         ckpt = {
             'state_dict': controller.state_dict(),
             'optimizer': optimizer.state_dict(),
         }
-        torch.save(ckpt, ckpt_folder / f'{epoch}.pth')
+        torch.save(ckpt, ckpt_folder / f'{epoch + 1}.pth')
 
         writer.add_scalar('episode_reward', -loss.item(), epoch * num_frames)
         writer.add_scalar('loss/total', loss.item(), epoch)
@@ -351,11 +357,53 @@ def main():
         writer.add_scalar('q_center/x', q_center[0].item(), epoch)
         writer.add_scalar('q_center/y', q_center[1].item(), epoch)
         writer.add_scalar('q_center/z', q_center[2].item(), epoch)
+        log.append([epoch * num_frames, -loss.item()])
 
-        if epoch % 10 == 0:
-            display.save(str(video_folder / f'{epoch}.mp4'))
+        if (epoch + 1) % 10 == 0:
+            display.save(str(video_folder / f'{epoch + 1}.mp4'))
 
-        print(f'{epoch}/{num_epochs} loss: {loss.item():.6e} center: {q_center.numpy()} norm: {norm.item():.3f}') # pylint: disable=no-member
+        print(f'{epoch + 1}/{num_epochs} loss: {loss.item():.6e} center: {q_center.numpy()} norm: {norm:.3f}') # pylint: disable=no-member
+
+    with torch.no_grad():
+        forward_loss = 0
+        sideward_loss = 0
+        face_loss = 0
+
+        a = None
+        q, v = q0, v0
+        for frame in range(1, num_frames + 1):
+            state = get_state(q, v)
+            a = controller(state, a)
+            q, v = sim(dofs, act_dofs, method, q, v, a, f_ext, dt, opt)
+            v_center = v.view(-1, 3)[mid_line].mean(dim=0)
+            q_center = q.view(-1, 3)[center].detach()
+            face_dir = q.view(-1, 3)[face_head] - q.view(-1, 3)[face_tail]
+            face_dir = face_dir / face_dir.norm()
+
+            # forward loss
+            dot = torch.dot(v_center, arrow_target_data)
+            forward_loss += -dot
+
+            # sideward loss
+            cross = torch.cross(v_center, arrow_target_data)
+            sideward_loss += torch.dot(cross, cross)
+
+            # face loss
+            face_loss += -torch.dot(face_dir, arrow_target_data)
+        loss = forward_loss + w_sideward * sideward_loss + w_face * face_loss
+
+    writer.add_scalar('episode_reward', -loss.item(), num_epochs * num_frames)
+    writer.add_scalar('loss/total', loss.item(), num_epochs)
+    writer.add_scalar('loss/forward', forward_loss.item(), num_epochs)
+    writer.add_scalar('loss/sideward', sideward_loss.item(), num_epochs)
+    writer.add_scalar('loss/face', face_loss.item(), num_epochs)
+    writer.add_scalar('q_center/x', q_center[0].item(), num_epochs)
+    writer.add_scalar('q_center/y', q_center[1].item(), num_epochs)
+    writer.add_scalar('q_center/z', q_center[2].item(), num_epochs)
+    log.append([epoch * num_frames, -loss.item()])
+    writer.flush()
+
+    torch.save(log, sub_folder / 'log.pth')
 
 
 if __name__ == "__main__":
