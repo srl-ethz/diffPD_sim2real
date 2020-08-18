@@ -254,7 +254,7 @@ def get_contact_vertex(hex_mesh):
 # - Divide the whole bounding box into cells of size dx.
 import trimesh
 
-def voxelize(triangle_mesh_file_name, dx):
+def voxelize(triangle_mesh_file_name, dx, feather=0.0):
     tri_mesh = trimesh.load(triangle_mesh_file_name)
     assert tri_mesh.is_watertight
     bbx_offset = np.min(tri_mesh.vertices, axis=0)
@@ -272,6 +272,6 @@ def voxelize(triangle_mesh_file_name, dx):
             for k in range(cell_num[2]):
                 center = ndarray([i + 0.5, j + 0.5, k + 0.5]) * dx
                 signed_distance = trimesh.proximity.signed_distance(tri_mesh, center.reshape((1, 3)))
-                if signed_distance > 0:
+                if signed_distance > feather:
                     voxels[i][j][k] = 1
     return voxels
