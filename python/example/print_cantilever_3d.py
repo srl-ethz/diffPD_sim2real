@@ -15,7 +15,7 @@ if __name__ == '__main__':
         if data_file.exists():
             print_info('Loading {}'.format(data_file))
             data = pickle.load(open(data_file, 'rb'))
-            for method in ['newton_pcg', 'newton_cholesky', 'pd']:
+            for method in ['newton_pcg', 'newton_cholesky', 'pd_eigen']:
                 total_time = 0
                 avg_forward = 0
                 average_backward = 0
@@ -41,13 +41,13 @@ if __name__ == '__main__':
     Es = {}
     nus = {}
     losses = {}
-    for method in ['newton_pcg', 'newton_cholesky', 'pd']:
+    for method in ['newton_pcg', 'newton_cholesky', 'pd_eigen']:
         Es[method] = [d['E'] for d in data[method]]
         nus[method] = [d['nu'] for d in data[method]]
         losses[method] = [d['loss'] for d in data[method]]
 
     fig = plt.figure(figsize=(18, 7))
-    opt_iters = len(Es['pd'])
+    opt_iters = len(Es['pd_eigen'])
     ax_E = fig.add_subplot(131)
     ax_E.set_position((0.07, 0.29, 0.25, 0.6))
     ax_E.plot([1e7 for _ in range(opt_iters)], linestyle='--', label='Ground truth', color='tab:orange', linewidth=2)
@@ -75,7 +75,7 @@ if __name__ == '__main__':
             ax.set_yscale('log')
             ax.grid(True)
         ax.set_xlabel('iterations')
-        for method, method_ref_name, color in zip(['newton_pcg', 'newton_cholesky', 'pd'],
+        for method, method_ref_name, color in zip(['newton_pcg', 'newton_cholesky', 'pd_eigen'],
             ['Newton-PCG', 'Newton-Cholesky', 'DiffPD (Ours)'], ['tab:blue', 'tab:red', 'tab:green']):
             ax.plot(y[method], color=color, label=method_ref_name, linewidth=2)
         ax.set_title(title)
