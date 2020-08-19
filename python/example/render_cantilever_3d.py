@@ -27,7 +27,7 @@ if __name__ == '__main__':
 
     # Optimization parameters.
     method = 'newton_pcg'
-    thread_ct = 4
+    thread_ct = 8
     opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
 
     # Compute the initial state.
