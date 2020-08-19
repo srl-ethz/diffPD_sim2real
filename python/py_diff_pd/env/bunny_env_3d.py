@@ -75,6 +75,7 @@ class BunnyEnv3d(EnvBase):
         self._poissons_ratio = poissons_ratio
         self._stepwise_loss = False
         self._target_com = ndarray(options['target_com'])
+        self._bunny_size = bunny_size
 
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)
@@ -99,11 +100,11 @@ class BunnyEnv3d(EnvBase):
         com = np.mean(q.reshape((-1, 3)), axis=0)
         # Compute loss.
         com_diff = com - self._target_com
-        loss = 0.5 * com_diff.dot(com_diff)
+        loss = 0.5 * com_diff.dot(com_diff) / (self._bunny_size ** 2)
         # Compute grad.
         grad_q = np.zeros(q.size)
         vertex_num = int(q.size // 3)
         for i in range(3):
-            grad_q[i::3] = com_diff[i] / vertex_num
-        grad_v = np.zeros(v.size)
+            grad_q[i::3] = com_diff[i] / vertex_num / (self._bunny_size ** 2)
+        grad_v = np.zeros(v.size) / (self._bunny_size ** 2)
         return loss, grad_q, grad_v
