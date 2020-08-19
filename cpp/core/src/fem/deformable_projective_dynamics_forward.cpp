@@ -580,7 +580,6 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const std::string
         for (int d = 0; d < vertex_dim; ++d)
             CheckError(pair.second[d], "DoF needs initialization.");
 
-    #pragma omp parallel for
     for (int d = 0; d < vertex_dim; ++d) {
         // Compute Acici.
         MatrixXr Acici = MatrixXr::Zero(Ci_num, Ci_num);
@@ -602,16 +601,13 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const std::string
             ++col_cnt;
         }
         // Compute B2.
-        MatrixXr B2 = -B1 * Acici;
+        // MatrixXr B2 = -B1 * Acici;
+        MatrixXr B2 = -MatrixMatrixProduct(B1, Acici);
         col_cnt = 0;
         for (const auto& pair_col : frozen_nodes) {
             B2(pair_col.first, col_cnt) += 1;
             ++col_cnt;
         }
-        // Assemble B3.
-        MatrixXr B3 = MatrixXr::Zero(vertex_num, 2 * Ci_num);
-        B3.leftCols(Ci_num) = B1;
-        B3.rightCols(Ci_num) = B2;
         // Assemble VPt.
         SparseMatrixElements nonzeros_VPt;
         row_cnt = 0;
@@ -623,9 +619,13 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const std::string
             nonzeros_VPt.push_back(Eigen::Triplet<real>(Ci_num + row_cnt, pair.first, 1));
             ++row_cnt;
         }
-        const SparseMatrix VPt = ToSparseMatrix(2 * Ci_num, vertex_num, nonzeros_VPt);
         // Compute B4.
-        const MatrixXr B4 = MatrixXr::Identity(2 * Ci_num, 2 * Ci_num) - VPt * B3;
+        // const SparseMatrix VPt = ToSparseMatrix(2 * Ci_num, vertex_num, nonzeros_VPt);
+        // MatrixXr B4 = -VPt * B3;
+        MatrixXr B4(2 * Ci_num, 2 * Ci_num);
+        B4.leftCols(Ci_num) = -SparseMatrixMatrixProduct(2 * Ci_num, vertex_num, nonzeros_VPt, B1);
+        B4.rightCols(Ci_num) = -SparseMatrixMatrixProduct(2 * Ci_num, vertex_num, nonzeros_VPt, B2);
+        for (int i = 0; i < 2 * Ci_num; ++i) B4(i, i) += 1;
         // y1 has been computed.
         // Compute y2.
         VectorXr y2 = VectorXr::Zero(2 * Ci_num);
@@ -634,7 +634,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const std::string
         // Compute y3.
         const VectorXr y3 = B4.colPivHouseholderQr().solve(y2);
         // Compute solution.
-        sol.row(d) += RowVectorXr(B3 * y3);
+        sol.row(d) += RowVectorXr(B1 * y3.head(Ci_num) + B2 * y3.tail(Ci_num));
     }
     VectorXr x = Eigen::Map<const VectorXr>(sol.data(), sol.size());
     // Enforce boundary conditions.
