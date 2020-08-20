@@ -232,3 +232,27 @@ const VectorXr VectorSparseMatrixProduct(const VectorXr& v,
     }
     return vA;
 }
+
+const MatrixXr SparseMatrixMatrixProduct(const int row, const int col,
+    const SparseMatrixElements& A, const MatrixXr& B) {
+    const int b_col = static_cast<int>(B.cols());
+    MatrixXr AB = MatrixXr::Zero(row, b_col);
+    #pragma omp parallel for
+    for (int j = 0; j < b_col; ++j) {
+        for (const auto& triplet : A) {
+            AB(triplet.row(), j) += triplet.value() * B(triplet.col(), j);
+        }
+    }
+    return AB;
+}
+
+const MatrixXr MatrixMatrixProduct(const MatrixXr& A, const MatrixXr& B) {
+    const int A_rows = static_cast<int>(A.rows());
+    const int B_cols = static_cast<int>(B.cols());
+    MatrixXr AB(A_rows, B_cols);
+    AB.setZero();
+    // Parallelize B_cols.
+    #pragma omp parallel for
+    for (int j = 0; j < B_cols; ++j) AB.col(j) = A * B.col(j);
+    return AB;
+}

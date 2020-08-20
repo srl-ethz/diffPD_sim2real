@@ -22,7 +22,7 @@ if __name__ == '__main__':
     folder = Path('bunny_3d')
     youngs_modulus = 1e6
     poissons_ratio = 0.49
-    target_com = ndarray([0.15, 0.15, 0.07])
+    target_com = ndarray([0.15, 0.15, 0.15])
     env = BunnyEnv3d(seed, folder, {
         'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio,
@@ -31,8 +31,8 @@ if __name__ == '__main__':
 
     # Optimization parameters.
     thread_ct = 8
-    newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 20, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
-    pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 1, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
+    newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
+    pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
     methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
     opts = (newton_opt, newton_opt, pd_opt)
