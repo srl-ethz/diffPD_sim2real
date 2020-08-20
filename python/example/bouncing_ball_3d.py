@@ -16,7 +16,7 @@ from py_diff_pd.env.bouncing_ball_env_3d import BouncingBallEnv3d
 if __name__ == '__main__':
     seed = 42
     folder = Path('bouncing_ball_3d')
-    refinement = 12
+    refinement = 8
     youngs_modulus = 1e6
     poissons_ratio = 0.49
     env = BouncingBallEnv3d(seed, folder, { 'refinement': refinement,
@@ -32,8 +32,8 @@ if __name__ == '__main__':
     methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
     opts = (newton_opt, newton_opt, pd_opt)
 
-    dt = 2e-3
-    frame_num = 50
+    dt = 4e-3
+    frame_num = 25
 
     # Compute the initial state.
     dofs = deformable.dofs()
@@ -48,7 +48,7 @@ if __name__ == '__main__':
     f0 = [np.zeros(dofs) for _ in range(frame_num)]
 
     # Generate groundtruth motion.
-    env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder='groundtruth')
+    env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a0, f0, require_grad=False, vis_folder='groundtruth')
 
     # Optimization.
     # Decision variables: log(E), log(nu).
@@ -56,11 +56,6 @@ if __name__ == '__main__':
     x_ub = ndarray([np.log(5e6), np.log(0.495)])
     x_init = np.random.uniform(low=x_lb, high=x_ub)
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
-    # Generate the initial guess.
-    env_init = BouncingBallEnv3d(seed, folder, { 'refinement': refinement,
-        'youngs_modulus': np.exp(x_init[0]),
-        'poissons_ratio': np.exp(x_init[1]) })
-    env_init.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder='init')
     data = {}
     for method, opt in zip(methods, opts):
         data[method] = []
