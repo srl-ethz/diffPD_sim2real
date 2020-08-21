@@ -28,8 +28,8 @@ if __name__ == '__main__':
                     avg_forward += d['forward_time']
                 avg_forward /= len(data[method])
                 average_backward /= len(data[method])
-                print_info('Optimizing with {} finished in {:6.3f}s. Average Backward time: {:6.3f}s, Average Forward Time = {:6.3f}s'.format(
-                    method, total_time, average_backward, avg_forward))
+                print_info('Optimizing with {} finished in {:6.3f}s with {:d} iterations. Average Backward time: {:6.3f}s, Average Forward Time = {:6.3f}s'.format(
+                    method, total_time, len(data[method]), average_backward, avg_forward))
 
     plt.rc('pdf', fonttype=42)
     plt.rc('font', size=24)             # Controls default text sizes.
@@ -64,12 +64,12 @@ if __name__ == '__main__':
     titles = ['Young\'s modulus estimate', 'Poisson\'s ratio estimate', 'loss']
     for title, ax, y in zip(titles, (ax_E, ax_nu, ax_loss), (Es, nus, losses)):
         if 'modulus' in title:
-            ax.set_ylabel("log(Young\'s modulus) (Pa)")
+            ax.set_ylabel("Young\'s modulus (Pa)")
             ax.set_yscale('log')
             ax.grid(True, which='both')
             ax.yaxis.set_minor_formatter(NullFormatter())
         elif 'Poisson' in title:
-            ax.set_ylabel("log(Poisson\'s ratio)")
+            ax.set_ylabel("Poisson\'s ratio")
             ax.set_yscale('log')
             ax.grid(True, which='both')
             ax.yaxis.set_minor_formatter(ScalarFormatter())
