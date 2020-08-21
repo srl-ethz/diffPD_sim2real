@@ -1,6 +1,7 @@
 import os
 import struct
 import numpy as np
+from py_diff_pd.core.py_diff_pd_core import Mesh3d
 from py_diff_pd.common.common import ndarray
 
 def generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name):
@@ -240,6 +241,51 @@ def get_contact_vertex(hex_mesh):
             contact_vertices.append(i)
         # We could add other cases, e.g., np.sum(v) == 2, if needed.
     return contact_vertices
+
+# Input:
+# - HexMesh
+# - active_elements: a list of elements that you would like to keep.
+# Output:
+# - HexMesh 
+def filter_hex(hex_mesh, active_elements):
+    vertex_num = hex_mesh.NumOfVertices()
+    element_num = hex_mesh.NumOfElements()
+    vertex_indices = np.zeros(vertex_num)
+    for e_idx in active_elements:
+        vertex_indices[list(hex_mesh.py_element(e_idx))] = 1
+    remap = -np.ones(vertex_num)
+    cnt = 0
+    vertices = []
+    for i in range(vertex_num):
+        if vertex_indices[i] == 1:
+            remap[i] = cnt
+            cnt += 1
+            vertices.append(ndarray(hex_mesh.py_vertex(i)))
+    vertices = ndarray(vertices)
+    faces = []
+    for e_idx in active_elements:
+        faces.append([remap[ei] for ei in list(hex_mesh.py_element(e_idx))])
+    faces = ndarray(faces).astype(np.int)
+    tmp_file_name = '.tmp.bin'
+
+    vertices = vertices.T
+    faces = faces.T
+    with open(tmp_file_name, 'wb') as f:
+        f.write(struct.pack('i', 3))
+        f.write(struct.pack('i', 8))
+        # Vertices.
+        f.write(struct.pack('i', 3))
+        f.write(struct.pack('i', vertices.shape[1]))
+        f.write(struct.pack('d' * vertices.size, *list(vertices.ravel())))
+
+        # Faces.
+        f.write(struct.pack('i', 8))
+        f.write(struct.pack('i', faces.shape[1]))
+        f.write(struct.pack('i' * faces.size, *list(faces.ravel())))
+    mesh = Mesh3d()
+    mesh.Initialize(tmp_file_name)
+    os.remove(tmp_file_name)
+    return mesh
 
 # Convert triangle meshes into voxels.
 # Input:

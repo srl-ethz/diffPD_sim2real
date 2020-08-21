@@ -7,7 +7,7 @@ import pickle
 
 from py_diff_pd.common.common import ndarray, create_folder
 from py_diff_pd.common.common import print_info, print_ok, print_error
-from py_diff_pd.common.mesh import hex2obj
+from py_diff_pd.common.mesh import hex2obj, filter_hex
 from py_diff_pd.common.grad_check import check_gradients
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 from py_diff_pd.env.tendon_routing_env_3d import TendonRoutingEnv3d
@@ -75,11 +75,16 @@ if __name__ == '__main__':
     # Load meshes.
     def generate_mesh(vis_folder, mesh_folder):
         create_folder(folder / mesh_folder)
+        for i in range(u_dofs):
+            create_folder(folder / mesh_folder / '{:02d}'.format(i))
         for i in range(frame_num + 1):
             mesh_file = folder / vis_folder / '{:04d}.bin'.format(i)
             mesh = Mesh3d()
             mesh.Initialize(str(mesh_file))
-            hex2obj(mesh, obj_file_name=folder / mesh_folder / '{:04d}.obj'.format(i), obj_type='tri')
+            for j, act_map in enumerate(act_maps):
+                sub_mesh = filter_hex(mesh, act_map)
+                hex2obj(sub_mesh, obj_file_name=folder / mesh_folder / '{:02d}'.format(j) / '{:04d}.obj'.format(i),
+                    obj_type='tri')
 
     generate_mesh('init', 'init_mesh')
 
@@ -105,3 +110,8 @@ if __name__ == '__main__':
     save_endpoint_sequences('init')
     for method in methods:
         save_endpoint_sequences('final_{}'.format(method))
+
+    # Save actuation forces.
+    np.save(folder / 'init_mesh' / 'init_act', data['newton_pcg'][0]['x'])
+    for method in methods:
+        np.save(folder / 'final_mesh_{}'.format(method) / '{}_act'.format(method), data[method][-1]['x'])
