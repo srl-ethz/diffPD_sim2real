@@ -5,155 +5,111 @@ from pathlib import Path
 import time
 import numpy as np
 import scipy.optimize
+import pickle
 
-from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
-from py_diff_pd.common.common import print_info, print_error, create_folder, ndarray
-from py_diff_pd.common.mesh import generate_hex_mesh
-from py_diff_pd.common.display import render_hex_mesh, export_gif
+from py_diff_pd.common.common import ndarray, create_folder, rpy_to_rotation, rpy_to_rotation_gradient
+from py_diff_pd.common.common import print_info, print_ok, print_error
+from py_diff_pd.common.grad_check import check_gradients
+from py_diff_pd.core.py_diff_pd_core import StdRealVector
+from py_diff_pd.env.tendon_routing_env_3d import TendonRoutingEnv3d
 
 if __name__ == '__main__':
-    np.random.seed(42)
-
+    seed = 42
     folder = Path('tendon_routing_3d')
-    create_folder(folder)
-    img_res = (400, 400)
-    sample = 4
-    sanity_check_grad = False
+    youngs_modulus = 5e5
+    poissons_ratio = 0.45
+    target = ndarray([0.2, 0.2, 0.45])
+    refinement = 2
+    muscle_cnt = 4
+    muscle_ext = 4
+    env = TendonRoutingEnv3d(seed, folder, {
+        'muscle_cnt': muscle_cnt,
+        'muscle_ext': muscle_ext,
+        'refinement': refinement,
+        'youngs_modulus': youngs_modulus,
+        'poissons_ratio': poissons_ratio,
+        'target': target })
+    deformable = env.deformable()
 
     # Optimization parameters.
-    methods = ('newton_pcg', 'newton_cholesky', 'pd')
-    opts = (
-        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_pd_iter': 500, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0, 'thread_ct': 4, 'method': 1, 'bfgs_history_size': 10 }
-    )
+    thread_ct = 8
+    newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
+    pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
+        'use_bfgs': 1, 'bfgs_history_size': 10 }
+    methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
+    opts = (newton_opt, newton_opt, pd_opt)
 
-    # Mesh.
-    cell_nums = (2, 2, 16)
-    dx = 0.05
-    origin = ndarray([0.45, 0.45, 0])
-    generate_hex_mesh(np.ones(cell_nums), dx, origin, folder / 'mesh.bin')
-    mesh = Mesh3d()
-    mesh.Initialize(str(folder / 'mesh.bin'))
-
-    # Deformable body.
-    youngs_modulus = 3e5
-    poissons_ratio = 0.45
-    la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
-    mu = youngs_modulus / (2 * (1 + poissons_ratio))
-    density = 1e3
-    deformable = Deformable3d()
-    deformable.Initialize(str(folder / 'mesh.bin'), density, 'none', youngs_modulus, poissons_ratio)
-    # Elasticity.
-    deformable.AddPdEnergy('corotated', [2 * mu,], [])
-    deformable.AddPdEnergy('volume', [la,], [])
-    # Boundary conditions.
-    for i in range(cell_nums[0] + 1):
-        for j in range(cell_nums[1] + 1):
-            idx = i * (cell_nums[1] + 1) * (cell_nums[2] + 1) + j * (cell_nums[2] + 1)
-            vx, vy, vz = mesh.py_vertex(idx)
-            deformable.SetDirichletBoundaryCondition(3 * idx, vx)
-            deformable.SetDirichletBoundaryCondition(3 * idx + 1, vy)
-            deformable.SetDirichletBoundaryCondition(3 * idx + 2, vz)
-    # Actuation.
-    element_num = mesh.NumOfElements()
-    act_indices = [i for i in range(element_num)]
-    deformable.AddActuation(1e5, [0.0, 0.0, 1.0], act_indices)
+    dt = 1e-2
+    frame_num = 100
 
     # Initial state.
     dofs = deformable.dofs()
     act_dofs = deformable.act_dofs()
-    vertex_num = mesh.NumOfVertices()
-    q0 = ndarray(mesh.py_vertices())
+    q0 = env.default_init_position()
     v0 = np.zeros(dofs)
+    f0 = [np.zeros(dofs) for _ in range(frame_num)]
+    act_maps = env.act_maps()
+    u_dofs = len(act_maps)
+    assert u_dofs * (refinement ** 3) * muscle_ext == act_dofs
 
-    dt = 0.01
-    frame_num = 30
-    target_endpoint = origin + ndarray([-6, -4, 10]) * dx 
-    def loss_and_grad(a, method, opt):
-        assert len(a) == act_dofs
-        q = [np.copy(q0),]
-        v = [np.copy(v0),]
-        # Forward simulation.
-        for i in range(frame_num):
-            q_cur = q[-1]
-            v_cur = v[-1]
-            q_next = StdRealVector(dofs)
-            v_next = StdRealVector(dofs)
-            deformable.PyForward(method, q_cur, v_cur, a, np.zeros(dofs), dt, opt, q_next, v_next)
-            q_next = ndarray(q_next)
-            v_next = ndarray(v_next)
-            q.append(q_next)
-            v.append(v_next)
-        # Compute the final loss.
-        endpoint = q[-1][-3:]
-        loss = (endpoint - target_endpoint).dot(endpoint - target_endpoint)
+    def variable_to_act(x):
+        act = np.zeros(act_dofs)
+        for i, a in enumerate(act_maps):
+            act[a] = x[i]
+        return act
+    def variable_to_act_gradient(x, grad_act):
+        grad_u = np.zeros(u_dofs)
+        for i, a in enumerate(act_maps):
+            grad_u[i] = np.sum(grad_act[a])
+        return grad_u
 
-        # Compute gradients.
-        dl_dq_next = np.zeros(dofs)
-        dl_dq_next[-3:] = 2 * (endpoint - target_endpoint)
-        dl_dv_next = np.zeros(dofs)
-        dl_da = np.zeros(act_dofs)
-        for i in reversed(range(frame_num)):
-            q_cur = q[i]
-            v_cur = v[i]
-            q_next = q[i + 1]
-            v_next = v[i + 1]
-            dl_dq = StdRealVector(dofs)
-            dl_dv = StdRealVector(dofs)
-            dl_df = StdRealVector(dofs)
-            dl_dai = StdRealVector(act_dofs)
-            deformable.PyBackward(method, q_cur, v_cur, a, np.zeros(dofs), dt, q_next, v_next,
-                dl_dq_next, dl_dv_next, opt, dl_dq, dl_dv, dl_dai, dl_df)
-            dl_dq_next = ndarray(dl_dq)
-            dl_dv_next = ndarray(dl_dv)
-            dl_da += ndarray(dl_dai) 
+    # Optimization.
+    x_lb = np.zeros(u_dofs)
+    x_ub = np.ones(u_dofs) * 2
+    x_init = np.random.uniform(x_lb, x_ub)
+    # Visualize initial guess.
+    a_init = variable_to_act(x_init)
+    env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, [a_init for _ in range(frame_num)], f0, require_grad=False, vis_folder='init')
 
-        print('loss: {:3.4f}, |grad|: {:3.4f}'.format(loss, np.linalg.norm(dl_da)))
-        return loss, ndarray(dl_da)
-
-    # Visualize results.
-    def visualize(a, f_folder):
-        create_folder(folder / f_folder)
-        assert len(a) == act_dofs
-        q = [np.copy(q0),]
-        v = [np.copy(v0),]
-        # Forward simulation.
-        for i in range(frame_num):
-            q_cur = q[-1]
-            v_cur = v[-1]
-            deformable.PySaveToMeshFile(q_cur, str(folder / f_folder / '{:04d}.bin'.format(i)))
-            mesh = Mesh3d()
-            mesh.Initialize(str(folder / f_folder / '{:04d}.bin'.format(i)))
-            render_hex_mesh(mesh, folder / f_folder / '{:04d}.png'.format(i), img_res, sample)
-
-            q_next = StdRealVector(dofs)
-            v_next = StdRealVector(dofs)
-            deformable.PyForward(method, q_cur, v_cur, a, np.zeros(dofs), dt, opt, q_next, v_next)
-            q_next = ndarray(q_next)
-            v_next = ndarray(v_next)
-            q.append(q_next)
-            v.append(v_next)
-        export_gif(folder / f_folder, '{}.gif'.format(str(folder / f_folder)), fps=10)
-
-    # Optimization --- keep in mind that muscle fiber actuation is bounded by 0 and 1.
-    a0 = np.random.uniform(low=0, high=1, size=act_dofs)
-    if sanity_check_grad:
-        from py_diff_pd.common.grad_check import check_gradients
-        eps = 1e-8
-        atol = 1e-4
-        rtol = 1e-2
-        for method, opt in zip(methods, opts):
-            check_gradients(lambda x: loss_and_grad(x, method, opt), a0, eps, rtol, atol, True)
-
+    bounds = scipy.optimize.Bounds(x_lb, x_ub)
+    data = {}
     for method, opt in zip(methods, opts):
+        data[method] = []
+        def loss_and_grad(x):
+            a = variable_to_act(x)
+            loss, grad, info = env.simulate(dt, frame_num, method, opt, q0, v0, [a for _ in range(frame_num)], f0,
+                require_grad=True, vis_folder=None)
+            # Assemble the gradients.
+            grad_a = 0
+            for ga in grad[2]:
+                grad_a += ga
+            grad_x = variable_to_act_gradient(x, grad_a)
+            print('loss: {:8.3f}, |grad|: {:8.3f}, forward time: {:6.3f}s, backward time: {:6.3f}s'.format(
+                loss, np.linalg.norm(grad_x), info['forward_time'], info['backward_time']))
+            single_data = {}
+            single_data['loss'] = loss
+            single_data['grad'] = np.copy(grad_x)
+            single_data['x'] = np.copy(x)
+            single_data['forward_time'] = info['forward_time']
+            single_data['backward_time'] = info['backward_time']
+            data[method].append(single_data)
+            return loss, np.copy(grad_x)
+
+        # Use the two lines below to sanity check the gradients.
+        # Note that you might need to fine tune the rel_tol in opt to make it work.
+        # from py_diff_pd.common.grad_check import check_gradients
+        # check_gradients(loss_and_grad, x_init, eps=1e-6)
+
         t0 = time.time()
-        result = scipy.optimize.minimize(lambda x: loss_and_grad(x, method, opt), np.copy(a0),
-            method='L-BFGS-B', jac=True, bounds=scipy.optimize.Bounds(np.zeros(act_dofs), np.ones(act_dofs)), options={ 'gtol': 1e-4 })
+        result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
+            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-3 })
         t1 = time.time()
         assert result.success
-        a_final = result.x
-        print_info('Optimizing with {} finished in {:3.3f} seconds'.format(method, t1 - t0))
+        x_final = result.x
+        print_info('Optimizing with {} finished in {:6.3f} seconds'.format(method, t1 - t0))
+        pickle.dump(data, open(folder / 'data_{:04d}_threads.bin'.format(thread_ct), 'wb'))
 
-        visualize(a0, '{}_init'.format(method))
-        visualize(a_final, '{}_final'.format(method))
+        # Visualize results.
+        final_a = variable_to_act(x_final)
+        env.simulate(dt, frame_num, method, opt, q0, v0, [final_a for _ in range(frame_num)], f0,
+            require_grad=False, vis_folder=method)
