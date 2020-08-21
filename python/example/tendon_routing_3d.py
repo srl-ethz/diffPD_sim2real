@@ -19,7 +19,7 @@ if __name__ == '__main__':
     youngs_modulus = 5e5
     poissons_ratio = 0.45
     target = ndarray([0.2, 0.2, 0.45])
-    refinement = 3
+    refinement = 2
     muscle_cnt = 4
     muscle_ext = 4
     env = TendonRoutingEnv3d(seed, folder, {
