@@ -72,6 +72,7 @@ const real HydrodynamicsStateForce<vertex_dim, face_dim>::Cd(const real angle) c
 
 template<int vertex_dim, int face_dim>
 const real HydrodynamicsStateForce<vertex_dim, face_dim>::Ct(const real angle) const {
+    if (angle * 180.0 / Pi() > 85.0) return 0.0;
     const real t = angle / (Pi() / 2) * 0.5 + 0.5;
     // Now t is between 0 and 1.
     return (1 - t) * (1 - t) * (1 - t) * Ct_points_(0, 1) + 3 * (1 - t) * (1 - t) * t * Ct_points_(1, 1)
@@ -97,6 +98,7 @@ const real HydrodynamicsStateForce<vertex_dim, face_dim>::CdDerivative(const rea
 
 template<int vertex_dim, int face_dim>
 const real HydrodynamicsStateForce<vertex_dim, face_dim>::CtDerivative(const real angle) const {
+    if (angle * 180.0 / Pi() > 85.0) return 0.0;
     const real t = angle / (Pi() / 2) * 0.5 + 0.5;
     const real dt = 1 / Pi();
     return 3 * dt * (-(1 - t) * (1 - t) * Ct_points_(0, 1)
