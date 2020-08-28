@@ -24,7 +24,7 @@ class HopperEnv2d(EnvBase):
         cell_nums = (2 * refinement, 4 * refinement)
         node_nums = (cell_nums[0] + 1, cell_nums[1] + 1)
         dx = 0.03 / refinement
-        origin = (0, 0.06)
+        origin = (0, dx)
         bin_file_name = str(folder / 'mesh.bin')
         generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name)
         mesh = Mesh2d()
@@ -35,7 +35,7 @@ class HopperEnv2d(EnvBase):
         poissons_ratio = 0.45
         la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
         mu = youngs_modulus / (2 * (1 + poissons_ratio))
-        density = 1e4
+        density = 1e3
         deformable = Deformable2d()
         deformable.Initialize(bin_file_name, density, 'none', youngs_modulus, poissons_ratio)
 
@@ -54,7 +54,6 @@ class HopperEnv2d(EnvBase):
             right_muscle_indices.append((2 * refinement - 1) * cell_nums[1] + j)
         deformable.AddActuation(1e5, [0.0, 1.0], left_muscle_indices)
         deformable.AddActuation(1e5, [0.0, 1.0], right_muscle_indices)
-
         # Collision.
         friction_node_idx = []
         for i in range(node_nums[0]):
@@ -64,12 +63,16 @@ class HopperEnv2d(EnvBase):
         # Initial conditions.
         dofs = deformable.dofs()
         # Perturb q0 a bit to avoid singular gradients in SVD.
-        q0 = ndarray(mesh.py_vertices()) + np.random.uniform(low=-0.06 * 0.01, high=0.06 * 0.01, size=dofs)
-        v0 = np.zeros(dofs)
+        q0 = ndarray(mesh.py_vertices()) + np.random.uniform(low=-2 * dx * 0.01, high=2 * dx * 0.01, size=dofs)
+
+        # 5 body lengths per second at 45 deg from the horizontal
+        v0_mult = 5 * dx * cell_nums[0]
+        v0 = np.ones(dofs) * v0_mult
         f_ext = np.zeros(dofs)
 
         # Data members.
         self._deformable = deformable
+        self._dx = dx
         self._q0 = q0
         self._v0 = v0
         self._f_ext = f_ext
@@ -93,9 +96,21 @@ class HopperEnv2d(EnvBase):
     def _display_mesh(self, mesh_file, file_name):
         mesh = Mesh2d()
         mesh.Initialize(mesh_file)
-        display_quad_mesh(mesh, xlim=[-0.01, 0.15], ylim=[-0.01, 0.2],
+        display_quad_mesh(mesh, xlim=[-0.01, 0.3], ylim=[0, 0.2],
             file_name=file_name, show=False)
 
     def _loss_and_grad(self, q, v):
-        loss = q.dot(self.__loss_q_grad) + v.dot(self.__loss_v_grad)
-        return loss, np.copy(self.__loss_q_grad), np.copy(self.__loss_v_grad)
+        dx = self._dx
+        # The L2 norm of the difference in pos and vel state compared to a target
+        target_q = np.copy(self._q0)
+        target_q[::2] += 9 * dx
+
+        target_v = np.copy(self._v0)
+
+        q_diff = q - target_q
+        v_diff = v - target_v
+        loss = 0.5 * q_diff.dot(q_diff) + 0.5 * v_diff.dot(v_diff)
+
+        grad_q = q_diff
+        grad_v = v_diff
+        return loss, grad_q, grad_v
