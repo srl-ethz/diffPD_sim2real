@@ -40,6 +40,7 @@ if __name__ == '__main__':
     # Compute the initial state.
     dofs = deformable.dofs()
     act_dofs = deformable.act_dofs()
+    print(act_dofs)
     q0 = env.default_init_position()
     v0 = env.default_init_velocity()
     f0 = [np.zeros(dofs) for _ in range(frame_num)]
@@ -72,7 +73,9 @@ if __name__ == '__main__':
     a0 = variable_to_states(x_init)
     env.simulate(dt, frame_num, methods[1], opts[1], q0, v0, a0, f0, require_grad=False, vis_folder='init')
 
+    data = {}
     for method, opt in zip(methods, opts):
+        data[method] = []
         def loss_and_grad(x):
             a = variable_to_states(x)
 
@@ -82,6 +85,14 @@ if __name__ == '__main__':
 
             print('loss: {:8.3f}, |grad|: {:8.3f}, forward time: {:6.3f}s, backward time: {:6.3f}s'.format(
                 loss, np.linalg.norm(grad), info['forward_time'], info['backward_time']))
+
+            single_data = {}
+            single_data['loss'] = loss
+            single_data['grad'] = np.copy(grad)
+            single_data['x'] = np.copy(x)
+            single_data['forward_time'] = info['forward_time']
+            single_data['backward_time'] = info['backward_time']
+            data[method].append(single_data)
             return loss, np.copy(grad)
 
         t0 = time.time()
@@ -95,6 +106,9 @@ if __name__ == '__main__':
         a_final = variable_to_states(x_final)
         env.simulate(dt, frame_num, method, opt, q0, v0, a_final, f0, require_grad=False, vis_folder=method)
 
+        pickle.dump(data, open(folder / 'data_{:04d}_threads.bin'.format(thread_ct), 'wb'))
+
+    #Test if single hop sequence functions reasonably well for two cycles. If not loss is too high
     for i in range(frame_num):
         a_final.append(a_final[i])
 
