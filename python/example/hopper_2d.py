@@ -79,8 +79,8 @@ if __name__ == '__main__':
         def loss_and_grad(x):
             a = variable_to_states(x)
 
-            loss, _, info = env.simulate(dt, frame_num, method, opt, q0, v0, a, f0, require_grad=True, vis_folder=None)
-            dl_act = info['actuator_gradients']
+            loss, grad, info = env.simulate(dt, frame_num, method, opt, q0, v0, a, f0, require_grad=True, vis_folder=None)
+            dl_act = grad[2]
             grad = variable_to_gradient(dl_act)
 
             print('loss: {:8.3f}, |grad|: {:8.3f}, forward time: {:6.3f}s, backward time: {:6.3f}s'.format(
