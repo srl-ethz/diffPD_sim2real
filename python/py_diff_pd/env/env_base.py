@@ -160,7 +160,7 @@ class EnvBase:
                 mesh_file = str(self._folder / vis_folder / '{:04d}.bin'.format(i))
                 self._deformable.PySaveToMeshFile(qi, mesh_file)
                 self._display_mesh(mesh_file, self._folder / vis_folder / '{:04d}.png'.format(i))
-            export_gif(self._folder / vis_folder, self._folder / '{}.gif'.format(vis_folder), 5)
+            export_gif(self._folder / vis_folder, self._folder / '{}.gif'.format(vis_folder), 20)
 
             t_vis = time.time() - t_begin
             info['visualize_time'] = t_vis
