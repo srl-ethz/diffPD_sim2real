@@ -514,7 +514,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const std::s
             if (repeated) {
                 // We have to propose a different active_contact_idx.
                 std::set<int> new_active_contact_idx_set;
-                if (ProposeNewSet(active_contact_idx_history[contact_iter - 1], active_contact_idx_set, new_active_contact_idx_set)) {
+                if (ProposeNewSet(active_contact_idx_history[contact_iter], active_contact_idx_set, new_active_contact_idx_set)) {
                     active_contact_idx = SetToVector(new_active_contact_idx_set);
                 } else {
                     // We are trapped. Terminate the loop early.

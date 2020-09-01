@@ -213,7 +213,7 @@ const bool ProposeNewSet(const std::set<int>& a, const std::set<int>& b, std::se
             ++idx;
         }
     }
-    return false;
+    return true;
 }
 
 const SparseMatrixElements FromSparseMatrix(const SparseMatrix& A) {
