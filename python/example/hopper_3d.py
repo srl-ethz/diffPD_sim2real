@@ -16,7 +16,7 @@ from py_diff_pd.env.hopper_env_3d import HopperEnv3d
 if __name__ == '__main__':
     seed = 42
     folder = Path('hopper_3d')
-    refinement = 1
+    refinement = 2
     youngs_modulus = 1e6
     poissons_ratio = 0.49
     leg_width = 2
@@ -37,7 +37,7 @@ if __name__ == '__main__':
     deformable = env.deformable()
 
     # Optimization parameters.
-    thread_ct = 4
+    thread_ct = 8
     newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
     pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
