@@ -131,21 +131,10 @@ if __name__ == '__main__':
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
             method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-4 })
         t1 = time.time()
-
-        print(result.success)
-        print_info("Optimization with {} finished in {} seconds.".format(method, t1 - t0))
         x_final = result.x
-        a_final = variable_to_act(x_final)
-        env.simulate(dt, frame_num, method, opt, q0, v0, a_final, f0, require_grad=False, vis_folder=method)
-
+        print_info('Optimizing with {} finished in {:6.3f} seconds'.format(method, t1 - t0))
         pickle.dump(data, open(folder / 'data_{:04d}_threads.bin'.format(thread_ct), 'wb'))
 
-    '''
-    #Test if single hop sequence functions reasonably well for two cycles. If not loss is too high
-    for i in range(frame_num):
-        a_final.append(a_final[i])
-
-    frame_num *= 2
-    f0 = [np.zeros(dofs) for _ in range(frame_num)]
-    env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a_final, f0, require_grad=False, vis_folder='final')
-    '''
+        # Visualize results.
+        a_final = variable_to_act(x_final)
+        env.simulate(dt, frame_num, method, opt, q0, v0, a_final, f0, require_grad=False, vis_folder=method)
