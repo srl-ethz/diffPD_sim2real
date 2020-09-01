@@ -466,6 +466,7 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const std::s
     const real h2m = dt * dt / (cell_volume_ * density_);
     const VectorXr rhs = q + h * v + h2m * f_ext + h2m * ForwardStateForce(q, v);
     const int max_contact_iter = 5;
+    std::vector<std::set<int>> active_contact_idx_history;
     for (int contact_iter = 0; contact_iter < max_contact_iter; ++contact_iter) {
         if (verbose_level > 0) PrintInfo("Contact iteration: " + std::to_string(contact_iter));
         // Fix dirichlet_ + active_contact_nodes.
@@ -479,8 +480,8 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const std::s
         const VectorXr force_sol = PdEnergyForce(q_sol, use_bfgs) + ActuationForce(q_sol, a);
 
         // Now verify the contact conditions.
-        std::set<int> past_active_contact_idx;
-        for (const int idx : active_contact_idx) past_active_contact_idx.insert(idx);
+        const std::set<int> past_active_contact_idx = VectorToSet(active_contact_idx);
+        active_contact_idx_history.push_back(past_active_contact_idx);
         active_contact_idx.clear();
         const VectorXr ext_forces = q_sol - h2m * force_sol - rhs;
         bool good = true;
@@ -504,11 +505,30 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const std::s
                 }
             }
         }
+
+        // Now see if it is necessary to modify active_contact_idx.
+        bool early_terminate = false;
+        if (contact_iter - 1 >= 0) {
+            const std::set<int> active_contact_idx_set = VectorToSet(active_contact_idx);
+            const bool repeated = SameSet(active_contact_idx_history[contact_iter - 1], active_contact_idx_set);
+            if (repeated) {
+                // We have to propose a different active_contact_idx.
+                std::set<int> new_active_contact_idx_set;
+                if (ProposeNewSet(active_contact_idx_history[contact_iter - 1], active_contact_idx_set, new_active_contact_idx_set)) {
+                    active_contact_idx = SetToVector(new_active_contact_idx_set);
+                } else {
+                    // We are trapped. Terminate the loop early.
+                    early_terminate = true;
+                }
+            }
+        }
+
         const bool final_iter = contact_iter == max_contact_iter - 1;
-        if (good || final_iter) {
+        if (good || final_iter || early_terminate) {
             q_next = q_sol;
             v_next = (q_next - q) / h;
-            if (!good && final_iter) PrintWarning("The contact set fails to converge after 5 iterations.");
+            if (!good) PrintWarning("The contact set fails to converge after 5 iterations.");
+            active_contact_idx = SetToVector(past_active_contact_idx);
             return;
         }
     }

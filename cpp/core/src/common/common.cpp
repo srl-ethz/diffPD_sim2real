@@ -162,6 +162,60 @@ const bool EndsWith(const std::string& full, const std::string& ending) {
         full.compare(full.length() - ending.length(), ending.length(), ending) == 0;
 }
 
+const std::set<int> VectorToSet(const std::vector<int>& v) {
+    return std::set<int>(v.begin(), v.end());
+}
+
+const std::vector<int> SetToVector(const std::set<int>& s) {
+    return std::vector<int>(s.begin(), s.end());
+}
+
+const bool SameSet(const std::set<int>& a, const std::set<int>& b) {
+    if (a.size() != b.size()) return false;
+    for (const int e : a)
+        if (b.find(e) == b.end()) return false;
+    return true;
+}
+
+const bool ProposeNewSet(const std::set<int>& a, const std::set<int>& b, std::set<int>& new_set) {
+    std::set<int> a_b_inter, a_comp, b_comp;
+    // a_b_inter = a /\ b.
+    // a_comp = a - a_b_inter.
+    // b_comp = b - a_b_inter.
+    for (const int e : a) {
+        if (b.find(e) != b.end()) a_b_inter.insert(e);
+        else a_comp.insert(e);
+    }
+    for (const int e : b) {
+        if (a_b_inter.find(e) == a_b_inter.end()) b_comp.insert(e);
+    }
+    // Propose a new set by a_b_inter \/ subset of a_comp \/ subset of b_comp.
+    const int a_comp_size = static_cast<int>(a_comp.size());
+    const int b_comp_size = static_cast<int>(b_comp.size());
+    new_set.clear();
+    for (const int e : a_b_inter) new_set.insert(e);
+    if (a_comp_size <= 1 && b_comp_size <= 1) return false;
+    const int a_half_comp_size = a_comp_size / 2;
+    const int b_half_comp_size = b_comp_size / 2;
+    int idx = 0;
+    for (const int e : a_comp) {
+        if (idx == a_half_comp_size) break;
+        else {
+            new_set.insert(e);
+            ++idx;
+        }
+    }
+    idx = 0;
+    for (const int e : b_comp) {
+        if (idx == b_half_comp_size) break;
+        else {
+            new_set.insert(e);
+            ++idx;
+        }
+    }
+    return false;
+}
+
 const SparseMatrixElements FromSparseMatrix(const SparseMatrix& A) {
     SparseMatrixElements nonzeros;
     for (int k = 0; k < A.outerSize(); ++k)

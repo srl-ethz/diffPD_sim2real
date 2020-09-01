@@ -45,6 +45,13 @@ const VectorXr ToEigenVector(const std::vector<real>& v);
 const bool BeginsWith(const std::string& full, const std::string& beginning);
 const bool EndsWith(const std::string& full, const std::string& ending);
 
+// Set/Vector functions.
+const std::set<int> VectorToSet(const std::vector<int>& v);
+const std::vector<int> SetToVector(const std::set<int>& s);
+const bool SameSet(const std::set<int>& a, const std::set<int>& b);
+// Used by the boundary condition algorithm.
+const bool ProposeNewSet(const std::set<int>& a, const std::set<int>& b, std::set<int>& new_set);
+
 // SparseMatrix.
 const SparseMatrixElements FromSparseMatrix(const SparseMatrix& A);
 const SparseMatrix ToSparseMatrix(const int row, const int col, const SparseMatrixElements& nonzeros);
