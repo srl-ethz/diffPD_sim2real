@@ -162,12 +162,9 @@ class HopperEnv3d(EnvBase):
         dx = self._dx
         # The L2 norm of the difference in pos and vel state compared to a target
         target_q = np.copy(self._q0)
-        target_q[::3] += 10 * dx
-
-        target_v = np.copy(self._v0)
+        target_q[::3] += 10 * 0.025
 
         q_diff = q - target_q
-        v_diff = v - target_v
         loss = 0.5 * q_diff.dot(q_diff)
 
         grad_q = q_diff
