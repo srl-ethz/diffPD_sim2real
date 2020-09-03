@@ -16,13 +16,13 @@ from py_diff_pd.env.hopper_env_3d import HopperEnv3d
 if __name__ == '__main__':
     seed = 42
     folder = Path('hopper_3d')
-    refinement = 2
+    refinement = 1
     youngs_modulus = 1e6
     poissons_ratio = 0.49
     leg_width = 2
     half_leg_height = 2
-    waist_height = 1
-    waist_width = 1
+    waist_height = 2
+    waist_width = 2
     thickness = 1
 
     env = HopperEnv3d(seed, folder, { 'refinement': refinement,
@@ -41,8 +41,8 @@ if __name__ == '__main__':
     newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
     pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
-    methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
-    opts = (newton_opt, newton_opt, pd_opt)
+    methods = ('newton_cholesky',)
+    opts = (newton_opt,)
 
     dt = 2e-3
     frame_num = 200
@@ -54,14 +54,14 @@ if __name__ == '__main__':
     q0 = env.default_init_position()
     init_offset = ndarray([0, 0, 0.025])
     q0 = (q0.reshape((-1, 3)) + init_offset).ravel()
-    v0 = env.default_init_velocity()
+    v0 = env.default_init_velocity() * 0.5
     f0 = [np.zeros(dofs) for _ in range(frame_num)]
 
     # Compute actuation.
     control_frame = int(frame_num // control_frame_num)
     x_lb = np.zeros(2 * control_frame)
-    x_ub = np.ones(2 * control_frame) * 2
-    x_init = np.random.uniform(low=x_lb, high=x_ub)
+    x_ub = np.ones(2 * control_frame) * 1.
+    x_init = np.random.uniform(low=x_lb, high=x_ub) * 0.01
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
 
     # Initial guess.
@@ -79,7 +79,7 @@ if __name__ == '__main__':
         return acts
 
     a0 = variable_to_act(x_init)
-    env.simulate(dt, frame_num, methods[1], opts[1], q0, v0, a0, f0, require_grad=False, vis_folder='init')
+    env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a0, f0, require_grad=False, vis_folder='init')
 
     def variable_to_gradient(x, dl_dact):
         x = np.copy(ndarray(x)).reshape((control_frame, 2))
@@ -97,6 +97,7 @@ if __name__ == '__main__':
         return grad.ravel()
 
     # Sanity check.
+    
     random_weight = np.random.normal(size=ndarray(a0).shape)
     def loss_and_grad(x):
         act = variable_to_act(x)
@@ -104,6 +105,7 @@ if __name__ == '__main__':
         grad = variable_to_gradient(x, random_weight)
         return loss, grad
     check_gradients(loss_and_grad, x_init, verbose=True)
+    
 
     # Optimization.
     data = {}

@@ -8,6 +8,7 @@ from py_diff_pd.common.common import create_folder, ndarray
 from py_diff_pd.common.mesh import generate_hex_mesh, get_contact_vertex
 from py_diff_pd.common.display import export_gif, render_hex_mesh
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
+#import IPython
 
 class HopperEnv3d(EnvBase):
     def __init__(self, seed, folder, options):
@@ -162,11 +163,15 @@ class HopperEnv3d(EnvBase):
         dx = self._dx
         # The L2 norm of the difference in pos and vel state compared to a target
         target_q = np.copy(self._q0)
-        target_q[::3] += 10 * 0.025
+        target_q[::3] += 10 * 0.045
 
-        q_diff = q - target_q
-        loss = 0.5 * q_diff.dot(q_diff)
-
-        grad_q = q_diff
+        #q_diff = q - target_q
+        #loss = 0.5 * q_diff.dot(q_diff)
+        q_x = np.reshape(q, (-1, 3))[:, 0]
+        loss = -np.mean(q_x)
+        
+        #grad_q = q_diff
+        grad_q = np.zeros(q.shape)
+        grad_q[::3] = -1.0
         grad_v = np.zeros(v.size)
         return loss, grad_q, grad_v
