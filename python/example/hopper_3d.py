@@ -60,8 +60,8 @@ if __name__ == '__main__':
     # Compute actuation.
     control_frame = int(frame_num // control_frame_num)
     x_lb = np.zeros(2 * control_frame)
-    x_ub = np.ones(2 * control_frame) * 1.
-    x_init = np.random.uniform(low=x_lb, high=x_ub) * 0.01
+    x_ub = np.ones(2 * control_frame) * 1.5
+    x_init = np.random.uniform(low=x_lb, high=x_ub) * 0.001
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
 
     # Initial guess.
