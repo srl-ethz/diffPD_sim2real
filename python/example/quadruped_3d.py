@@ -109,8 +109,8 @@ if __name__ == '__main__':
             'body_x_length': body_x_length,
             'body_y_length': body_y_length,
             'body_z_length': body_z_length })
-        loss, _, info = env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a, f0, require_grad=True)
-        act_grad = info['actuator_gradients']
+        loss, grad, info = env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a, f0, require_grad=True)
+        act_grad = grad[2]
         grad = ndarray([jac[i].dot(np.transpose(act_grad[i])) for i in range(frame_num)])
         grad = np.sum(grad, axis=0)
 

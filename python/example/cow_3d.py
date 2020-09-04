@@ -94,9 +94,9 @@ if __name__ == '__main__':
     data[methods[2]] = []
     def loss_and_grad(x):
         a, jac = variable_to_states(x, True)
-        loss, _, info = env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a, f0, require_grad=True, vis_folder=None)
+        loss, grad, info = env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a, f0, require_grad=True, vis_folder=None)
         # Assemble the gradients.
-        act_grad = info['actuator_gradients']
+        act_grad = grad[2]
         grad = ndarray([jac[i].dot(np.transpose(act_grad[i])) for i in range(frame_num)])
         grad = np.sum(grad, axis=0)
 
