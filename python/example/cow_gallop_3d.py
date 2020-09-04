@@ -16,7 +16,7 @@ from py_diff_pd.env.cow_env_3d import CowEnv3d
 if __name__ == '__main__':
     seed = 48
     folder = Path('cow_3d')
-    refinement = 8
+    refinement = 1
     act_max = 2.0
     youngs_modulus = 1e6
     poissons_ratio = 0.49

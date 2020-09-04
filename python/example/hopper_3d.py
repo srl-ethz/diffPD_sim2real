@@ -16,7 +16,7 @@ from py_diff_pd.env.hopper_env_3d import HopperEnv3d
 if __name__ == '__main__':
     seed = 42
     folder = Path('hopper_3d')
-    refinement = 1
+    refinement = 2
     youngs_modulus = 1e6
     poissons_ratio = 0.49
     leg_width = 2

@@ -21,8 +21,8 @@ if __name__ == '__main__':
     youngs_modulus = 1e6
     poissons_ratio = 0.49
     leg_z_length = 2
-    body_x_length = 3
-    body_y_length = 3
+    body_x_length = 4
+    body_y_length = 4
     body_z_length = 1
     env = QuadrupedEnv3d(seed, folder, { 'refinement': refinement,
         'youngs_modulus': youngs_modulus,
@@ -39,8 +39,8 @@ if __name__ == '__main__':
     newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 20, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
     pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 1, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
-    methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
-    opts = (newton_opt, newton_opt, pd_opt)
+    methods = ('newton_cholesky',)
+    opts = (newton_opt,)
 
     dt = 1e-2
     frame_num = 100
@@ -49,6 +49,8 @@ if __name__ == '__main__':
     dofs = deformable.dofs()
     act_dofs = deformable.act_dofs()
     q0 = env.default_init_position()
+    init_offset = ndarray([0, 0, 0.025])
+    q0 = (q0.reshape((-1, 3)) + init_offset).ravel()
     v0 = np.zeros(dofs)
     f0 = [np.zeros(dofs) for _ in range(frame_num)]
 
@@ -56,7 +58,7 @@ if __name__ == '__main__':
     # Generate groundtruth motion.
     x_lb = ndarray([0.5, 0.5, 2*np.pi / frame_num])#, 0])
     x_ub = ndarray([1, 1, 2*np.pi / 5])#, np.pi/2])
-    x_init = ndarray([0.5* np.random.random() + 0.5, 0.5* np.random.random() + 0.5, np.random.uniform(2*np.pi/frame_num, 2*np.pi/5)])
+    x_init = ndarray([0.5* np.random.random() + 0.5, 0.5* np.random.random() + 0.5, np.random.uniform(2*np.pi/frame_num, 2*np.pi/5)]) * 0.01
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
     def loss_and_grad(x):
         A_f = x[0]
@@ -109,7 +111,7 @@ if __name__ == '__main__':
             'body_x_length': body_x_length,
             'body_y_length': body_y_length,
             'body_z_length': body_z_length })
-        loss, grad, info = env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a, f0, require_grad=True)
+        loss, grad, info = env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a, f0, require_grad=True)
         act_grad = grad[2]
         grad = ndarray([jac[i].dot(np.transpose(act_grad[i])) for i in range(frame_num)])
         grad = np.sum(grad, axis=0)
@@ -125,7 +127,7 @@ if __name__ == '__main__':
     t1 = time.time()
     print(result.success)
     x_final = result.x
-    print_info('Optimizing with {} finished in {:6.3f} seconds'.format(methods[2], t1 - t0))
+    print_info('Optimizing with {} finished in {:6.3f} seconds'.format(methods[0], t1 - t0))
 
     # x_init = [1, 2*np.pi / 30]
     A_f_final = x_final[0]
@@ -184,5 +186,5 @@ if __name__ == '__main__':
         'body_y_length': body_y_length,
         'body_z_length': body_z_length })
 
-    env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a_init, f0, require_grad=False, vis_folder='init')
-    env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a_final, f0, require_grad=False, vis_folder='final')
+    env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a_init, f0, require_grad=False, vis_folder='init')
+    env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a_final, f0, require_grad=False, vis_folder='final')
