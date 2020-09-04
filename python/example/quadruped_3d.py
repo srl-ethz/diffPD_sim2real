@@ -17,7 +17,7 @@ if __name__ == '__main__':
     seed = 42
     folder = Path('quadruped_3d')
     refinement = 2
-    act_max = 1.5
+    act_max = 1.0 #1.5
     youngs_modulus = 1e6
     poissons_ratio = 0.49
     leg_z_length = 2
@@ -56,8 +56,8 @@ if __name__ == '__main__':
 
     #x_init = [1, 2*np.pi / 30]
     # Generate groundtruth motion.
-    x_lb = ndarray([0.5, 0.5, 2*np.pi / frame_num])#, 0])
-    x_ub = ndarray([1, 1, 2*np.pi / 5])#, np.pi/2])
+    x_lb = ndarray([0.5, 0.5, 2*np.pi / frame_num]) #, 0])
+    x_ub = ndarray([1, 1, 2*np.pi / 5]) #, np.pi/2])
     x_init = ndarray([0.5* np.random.random() + 0.5, 0.5* np.random.random() + 0.5, np.random.uniform(2*np.pi/frame_num, 2*np.pi/5)]) * 0.01
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
     def loss_and_grad(x):
