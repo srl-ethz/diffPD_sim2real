@@ -24,7 +24,7 @@ if __name__ == '__main__':
 
     # Normalize data to obtain relative errors.
     grad_base = {}
-    for method in ['semi_implicit', 'pd']:
+    for method in ['semi_implicit', 'pd_eigen']:
         loss_base = all_losses[method][0][len(all_losses[method][0]) // 2]
         for loss in all_losses[method]:
             assert np.isclose(loss_base, loss[len(loss) // 2])
@@ -36,7 +36,7 @@ if __name__ == '__main__':
 
     fig = plt.figure(figsize=(16, 14))
     ax_loss_sample = fig.add_subplot(221)
-    for method, method_ref_name, color in zip(['semi_implicit', 'pd'], ['Semi-Implicit', 'DiffPD (Ours)'], ['tab:cyan', 'tab:green']):
+    for method, method_ref_name, color in zip(['semi_implicit', 'pd_eigen'], ['Semi-Implicit', 'DiffPD (Ours)'], ['tab:cyan', 'tab:green']):
         losses = all_losses[method]
         ax_loss_sample.plot([], [], color=color, label=method_ref_name)
         for loss in losses[:5]:
@@ -47,7 +47,7 @@ if __name__ == '__main__':
     ax_loss_sample.grid(True)
 
     ax_loss_all = fig.add_subplot(222)
-    for method, method_ref_name, color in zip(['semi_implicit', 'pd'], ['Semi-Implicit', 'DiffPD (Ours)'], ['tab:cyan', 'tab:green']):
+    for method, method_ref_name, color in zip(['semi_implicit', 'pd_eigen'], ['Semi-Implicit', 'DiffPD (Ours)'], ['tab:cyan', 'tab:green']):
         losses = all_losses[method]
         ax_loss_all.plot([], [], color=color, label=method_ref_name)
         loss_mean = np.mean(ndarray(losses), axis=0)
@@ -60,7 +60,7 @@ if __name__ == '__main__':
     ax_loss_all.grid(True)
 
     ax_grad_sample = fig.add_subplot(223)
-    for method, method_ref_name, color in zip(['semi_implicit', 'pd'], ['Semi-Implicit', 'DiffPD (Ours)'], ['tab:cyan', 'tab:green']):
+    for method, method_ref_name, color in zip(['semi_implicit', 'pd_eigen'], ['Semi-Implicit', 'DiffPD (Ours)'], ['tab:cyan', 'tab:green']):
         grads = all_grads[method]
         ax_grad_sample.plot([], [], color=color, label=method_ref_name)
         for grad in grads[:5]:
@@ -72,7 +72,7 @@ if __name__ == '__main__':
     ax_grad_sample.grid(True)
 
     ax_grad_all = fig.add_subplot(224)
-    for method, method_ref_name, color in zip(['semi_implicit', 'pd'], ['Semi-Implicit', 'DiffPD (Ours)'], ['tab:cyan', 'tab:green']):
+    for method, method_ref_name, color in zip(['semi_implicit', 'pd_eigen'], ['Semi-Implicit', 'DiffPD (Ours)'], ['tab:cyan', 'tab:green']):
         grads = all_grads[method]
         ax_grad_all.plot([], [], color=color, label=method_ref_name)
         g = ndarray([[np.linalg.norm(g[0]) for g in grad] for grad in grads]) / np.linalg.norm(grad_base[method])

@@ -17,8 +17,8 @@ if __name__ == '__main__':
 
     opts = {}
     opts['semi_implicit'] = { 'thread_ct': 4 }
-    opts['pd'] = { 'max_pd_iter': 5000, 'max_ls_iter': 1, 'abs_tol': 1e-9, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': 4,
-        'method': 1, 'bfgs_history_size': 10 }
+    opts['pd_eigen'] = { 'max_pd_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4,
+        'use_bfgs': 1, 'bfgs_history_size': 10 }
 
     dofs = deformable.dofs()
     act_dofs = deformable.act_dofs()
@@ -37,21 +37,21 @@ if __name__ == '__main__':
 
     dts = {}
     dts['semi_implicit'] = 5e-4
-    dts['pd'] = 1e-2
+    dts['pd_eigen'] = 1e-2
     frame_nums = {}
     frame_nums['semi_implicit'] = 400
-    frame_nums['pd'] = 20
+    frame_nums['pd_eigen'] = 20
 
     ss = np.linspace(-1, 1, 21)
-    all_losses = { 'semi_implicit': [], 'pd': [] }
-    all_grads = { 'semi_implicit': [], 'pd': [] }
+    all_losses = { 'semi_implicit': [], 'pd_eigen': [] }
+    all_grads = { 'semi_implicit': [], 'pd_eigen': [] }
     all_dqs = []
     # Try different directional gradients.
-    for i in range(20):
-        print_info('Generating {}/20 directional gradients...'.format(i))
+    for i in range(16):
+        print_info('Generating {}/16 directional gradients...'.format(i))
         dq = np.random.uniform(low=-0.001, high=0.001, size=dofs)
         all_dqs.append(dq)
-        for method in ['semi_implicit', 'pd']:
+        for method in ['semi_implicit', 'pd_eigen']:
             dt = dts[method]
             frame_num = frame_nums[method]
             losses = []
