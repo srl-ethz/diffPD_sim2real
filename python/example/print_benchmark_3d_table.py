@@ -48,7 +48,7 @@ if __name__ == '__main__':
         print_warning('Benchmark data corrupted. Showing the first {} only.'.format(max_rel_tol_nums))
         rel_tols = rel_tols[:max_rel_tol_nums]
 
-    thread_cts = [4, 8, 12]
+    thread_cts = [2, 4, 8]
     forward_backward_times = {}
     for method in forward_times:
         forward_backward_times[method] = np.zeros(len(rel_tols))
@@ -150,7 +150,7 @@ if __name__ == '__main__':
         ax.invert_xaxis()
         if 'grad' in title:
             ax.set_yscale('log')
-        for method, method_ref_name in zip(['newton_pcg', 'newton_cholesky', 'pd_eigen'], ['Newton-PCG', 'Newton-Cholesky', 'DiffPD (Ours)']):
+        for method, method_ref_name in zip(['newton_pcg', 'newton_cholesky', 'pd_eigen'], ['PCG', 'Cholesky', 'Ours']):
             if 'pd' in method:
                 color = 'tab:green'
             elif 'pcg' in method:

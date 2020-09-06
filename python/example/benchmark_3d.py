@@ -21,7 +21,7 @@ def test_benchmark_3d(verbose):
     deformable = env.deformable()
 
     # Setting thread number.
-    thread_cts = [4, 8, 12]
+    thread_cts = [2, 4, 8, 12]
 
     methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen', 'pd_no_bfgs')
     opts = ({ 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
