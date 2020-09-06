@@ -10,13 +10,13 @@ from py_diff_pd.common.common import ndarray
 
 if __name__ == '__main__':
     plt.rc('pdf', fonttype=42)
-    plt.rc('font', size=16)             # Controls default text sizes.
-    plt.rc('axes', titlesize=16)        # Fontsize of the axes title.
-    plt.rc('axes', labelsize=16)        # Fontsize of the x and y labels.
-    plt.rc('xtick', labelsize=16)       # Fontsize of the tick labels.
-    plt.rc('ytick', labelsize=16)       # Fontsize of the tick labels.
-    plt.rc('legend', fontsize=16)       # Legend fontsize.
-    plt.rc('figure', titlesize=16)      # Fontsize of the figure title.
+    plt.rc('font', size=24)             # Controls default text sizes.
+    plt.rc('axes', titlesize=20)        # Fontsize of the axes title.
+    plt.rc('axes', labelsize=20)        # Fontsize of the x and y labels.
+    plt.rc('xtick', labelsize=20)       # Fontsize of the tick labels.
+    plt.rc('ytick', labelsize=20)       # Fontsize of the tick labels.
+    plt.rc('legend', fontsize=20)       # Legend fontsize.
+    plt.rc('figure', titlesize=24)      # Fontsize of the figure title.
 
     folder = Path('landscape_3d')
     rel_scale = 0.001 / (0.08 * 4)    # This is specific to BenchmarkEnv3d.
@@ -85,7 +85,7 @@ if __name__ == '__main__':
     ax_grad_all.set_ylim([-2.5, 2.5])
     ax_grad_all.grid(True)
     handles, labels = ax_grad_all.get_legend_handles_labels()
-    fig.legend(handles, labels, loc='upper center', ncol=2, bbox_to_anchor=(0.52, 0.08))
+    fig.legend(handles, labels, loc='upper center', ncol=2, bbox_to_anchor=(0.5, 0.06))
 
     fig.savefig(folder / 'landscape_3d.pdf')
     fig.savefig(folder / 'landscape_3d.png')
