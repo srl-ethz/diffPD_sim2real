@@ -91,7 +91,7 @@ if __name__ == '__main__':
         ax.set_xlabel('time (s)')
         ax.set_yscale('log')
         if title == 'forward + backward':
-            ax.set_ylabel('relative error')
+            ax.set_ylabel('convergence threshold')
             ax.set_xticks([0, 100, 200])
         else:
             ax.yaxis.set_major_formatter(NullFormatter())
