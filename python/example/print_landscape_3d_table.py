@@ -25,14 +25,14 @@ if __name__ == '__main__':
     # Normalize data to obtain relative errors.
     grad_base = {}
     for method in ['semi_implicit', 'pd_eigen']:
-        loss_base = all_losses[method][0][len(all_losses[method][0]) // 2]
+        loss_base = np.abs(all_losses[method][0][len(all_losses[method][0]) // 2])
         for loss in all_losses[method]:
-            assert np.isclose(loss_base, loss[len(loss) // 2])
+            assert np.isclose(loss_base, np.abs(loss[len(loss) // 2]))
         all_losses[method] = ndarray(all_losses[method]) / loss_base
 
-        grad_base[method] = all_grads[method][0][len(all_grads[method][0]) // 2][0]
+        grad_base[method] = np.abs(all_grads[method][0][len(all_grads[method][0]) // 2][0])
         for grad in all_grads[method]:
-            assert np.allclose(grad_base[method], grad[len(grad) // 2][0])
+            assert np.allclose(grad_base[method], np.abs(grad[len(grad) // 2][0]))
 
     fig = plt.figure(figsize=(16, 14))
     ax_loss_sample = fig.add_subplot(221)
@@ -43,7 +43,7 @@ if __name__ == '__main__':
             ax_loss_sample.plot((ss * rel_scale) * 100, (loss - 1) * 100, color=color, linewidth=2)
     ax_loss_sample.set_xlabel('step size (%)')
     ax_loss_sample.set_ylabel('relative change (%)')
-    ax_loss_sample.set_ylim([-500, 500])
+    ax_loss_sample.set_ylim([-200, 200])
     ax_loss_sample.grid(True)
 
     ax_loss_all = fig.add_subplot(222)
@@ -56,7 +56,7 @@ if __name__ == '__main__':
         ax_loss_all.fill_between((ss * rel_scale) * 100, (loss_mean - 1 - loss_std) * 100,
             (loss_mean - 1 + loss_std) * 100, color=color, alpha=0.3, linewidth=0)
     ax_loss_all.set_xlabel('step size (%)')
-    ax_loss_all.set_ylim([-500, 500])
+    ax_loss_all.set_ylim([-200, 200])
     ax_loss_all.grid(True)
 
     ax_grad_sample = fig.add_subplot(223)
