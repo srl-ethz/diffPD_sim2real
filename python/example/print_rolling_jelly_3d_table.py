@@ -101,13 +101,13 @@ if __name__ == '__main__':
                 color = 'tab:blue'
             elif 'cholesky' in method:
                 color = 'tab:red'
-            elif 'bfgs' in method:
+            elif 'acc' in method:
                 color = 'tab:olive'
             if method == 'pd_no_bfgs' and title != 'backward':
                 continue
             for idx, thread_ct in enumerate(thread_cts):
                 meth_thread_num = '{}-{}'.format(method_ref_name, thread_ct)
-                if 'bfgs' in method:
+                if 'acc' in method:
                     meth_thread_num = 'Ours-{} (No Acc)'.format(thread_ct)
                 ax.plot(t['{}_{}threads'.format(method, thread_ct)], rel_tols, label=meth_thread_num,
                     color=color, dashes=dash_list[idx], linewidth=3)

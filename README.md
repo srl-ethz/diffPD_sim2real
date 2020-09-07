@@ -66,7 +66,8 @@ Navigate to the `python/example` path and run `python [example_name].py` where t
 - `landscape_3d.py` and `print_landscape_3d_table.py`: generate Fig. 1 of the paper.
 - `benchmark_3d.py` and `print_benchmark_3d_table.py`: generate Figs. 2 and 3 of the paper.
 ![benchmark](python/example/benchmark_3d/benchmark.png)
-![benchmark_loss_and_grad](python/example/benchmark_3d/benchmark_loss_grad.png)
+- `rolling_jelly_3d.py` and `print_rolling_jelly_3d_table.py`: generate Figs. 4 and 5 of the paper.
+![rolling_jelly](python/example/rolling_jelly_3d/rolling_jelly.png)
 - `tendon_routing_3d` implements a simple tendon routing example with forward and backward PD and two Newton baselines. The goal is to let the endpoint of the stick finger reach a target point in the 3D space.
 - `cantilever_3d` and `bouncing_ball_3d` are two system identification demos.
 - `hopper_3d` is a 2.5D hopper demo.
