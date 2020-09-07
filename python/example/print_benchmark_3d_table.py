@@ -23,10 +23,6 @@ if __name__ == '__main__':
     plt.rc('font', size=30)             # Controls default text sizes.
     plt.rc('axes', titlesize=28)        # Fontsize of the axes title.
     plt.rc('axes', labelsize=30)        # Fontsize of the x and y labels.
-    # plt.rc('xtick', labelsize=16)       # Fontsize of the tick labels.
-    # plt.rc('ytick', labelsize=16)       # Fontsize of the tick labels.
-    # plt.rc('legend', fontsize=16)       # Legend fontsize.
-    #plt.rc('figure', titlesize=18)      # Fontsize of the figure title.
 
     folder = Path('benchmark_3d')
     rel_tols, forward_times, backward_times, losses, grads = pickle.load(open(folder / 'table.bin', 'rb'))
@@ -132,10 +128,6 @@ if __name__ == '__main__':
     plt.rc('font', size=20)
     plt.rc('axes', titlesize=20)        # Fontsize of the axes title.
     plt.rc('axes', labelsize=20)
-    # plt.rc('xtick', labelsize=16)       # Fontsize of the tick labels.
-    # plt.rc('ytick', labelsize=16)       # Fontsize of the tick labels.
-    # plt.rc('legend', fontsize=16)       # Legend fontsize.
-    #plt.rc('figure', titlesize=20)
 
     fig_l_g = plt.figure(figsize=(12, 8))
     ax_loss = fig_l_g.add_subplot(121)
