@@ -17,7 +17,7 @@ if __name__ == '__main__':
     seed = 39
     folder = Path('cow_3d')
     refinement = 8
-    act_max = 2.0
+    act_max = 1.5
     youngs_modulus = 1e6
     poissons_ratio = 0.49
     target_com = ndarray([0.5, 0.5, 0.2])
@@ -32,11 +32,11 @@ if __name__ == '__main__':
     newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 20, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
     pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 1, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
-    methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
-    opts = (newton_opt, newton_opt, pd_opt)
+    methods = ('pd_eigen',)
+    opts = (pd_opt,)
 
     dt = 1e-3
-    frame_num = 75
+    frame_num = 600
 
     # Initial state.
     dofs = deformable.dofs()
@@ -86,15 +86,15 @@ if __name__ == '__main__':
 
 
     a_init = variable_to_states(x_init, False)
-    env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a_init, f0, require_grad=False, vis_folder='init')
+    env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a_init, f0, require_grad=False, vis_folder='init')
 
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
     data = {}
     # for method, opt in zip(methods, opts):
-    data[methods[2]] = []
+    data[methods[0]] = []
     def loss_and_grad(x):
         a, jac = variable_to_states(x, True)
-        loss, grad, info = env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a, f0, require_grad=True, vis_folder=None)
+        loss, grad, info = env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a, f0, require_grad=True, vis_folder=None)
         # Assemble the gradients.
         act_grad = grad[2]
         grad = ndarray([jac[i].dot(np.transpose(act_grad[i])) for i in range(frame_num)])
@@ -108,7 +108,7 @@ if __name__ == '__main__':
         single_data['x'] = np.copy(x)
         single_data['forward_time'] = info['forward_time']
         single_data['backward_time'] = info['backward_time']
-        data[methods[2]].append(single_data)
+        data[methods[0]].append(single_data)
         return loss, np.copy(grad)
 
     # Use the two lines below to sanity check the gradients.
@@ -122,9 +122,9 @@ if __name__ == '__main__':
     t1 = time.time()
     print(result.success)
     x_final = result.x
-    print_info('Optimizing with {} finished in {:6.3f} seconds'.format(methods[2], t1 - t0))
+    print_info('Optimizing with {} finished in {:6.3f} seconds'.format(methods[0], t1 - t0))
     pickle.dump(data, open(folder / 'data_{:04d}_threads.bin'.format(thread_ct), 'wb'))
 
     # Visualize results.
     a_final = variable_to_states(x_final, False)
-    env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a_final, f0, require_grad=False, vis_folder=methods[2])
+    env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a_final, f0, require_grad=False, vis_folder=methods[0])
