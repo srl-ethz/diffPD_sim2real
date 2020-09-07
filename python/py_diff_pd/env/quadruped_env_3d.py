@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 
 from py_diff_pd.env.env_base import EnvBase
-from py_diff_pd.common.common import create_folder, ndarray
+from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.display import render_hex_mesh, export_gif
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
@@ -121,6 +121,7 @@ class QuadrupedEnv3d(EnvBase):
 
         # Initial conditions.
         dofs = deformable.dofs()
+        print('Quadruped element: {:d}, DoFs: {:d}.'.format(element_num, dofs))
         act_dofs = deformable.act_dofs()
         q0 = ndarray(mesh.py_vertices())
         v0 = np.zeros(dofs)
