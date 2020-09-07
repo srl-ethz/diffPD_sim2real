@@ -150,6 +150,15 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
         max_ls_iter = static_cast<int>(options.at("max_ls_iter"));
         CheckError(max_ls_iter > 0, "Invalid max_ls_iter: " + std::to_string(max_ls_iter));
     }
+    // Optional flag for using acceleration technique in solving contacts. This should be used for
+    // benchmarking only.
+    bool use_acc = true;
+    if (options.find("use_acc") != options.end()) {
+        use_acc = static_cast<bool>(options.at("use_acc"));
+        if (!use_acc && verbose_level > 0) {
+            PrintWarning("use_acc is disabled. Unless you are benchmarking speed, you should not disable use_acc.");
+        }
+    }
 
     omp_set_num_threads(thread_ct);
     // Pre-factorize the matrix -- it will be skipped if the matrix has already been factorized.
@@ -264,7 +273,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
                 // Initially, the queue is empty. We use A as our initial guess of Hessian (not the inverse!).
                 xi_history.push_back(x_sol);
                 gi_history.push_back(grad_sol);
-                quasi_newton_direction = PdLhsSolve(method, grad_sol, additional_dirichlet);
+                quasi_newton_direction = PdLhsSolve(method, grad_sol, additional_dirichlet, use_acc);
             } else {
                 const VectorXr x_sol_last = xi_history.back();
                 const VectorXr grad_sol_last = gi_history.back();
@@ -290,7 +299,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
                     bfgs_q -= alphai * yi;
                 }
                 // H0k = PdLhsSolve(I);
-                VectorXr z = PdLhsSolve(method, bfgs_q, additional_dirichlet);
+                VectorXr z = PdLhsSolve(method, bfgs_q, additional_dirichlet, use_acc);
                 auto sit = si_history.cbegin(), yit = yi_history.cbegin();
                 auto rhoit = rhoi_history.cbegin(), alphait = alphai_history.cbegin();
                 for (; sit != si_history.cend(); ++sit, ++yit, ++rhoit, ++alphait) {
@@ -369,7 +378,7 @@ void Deformable<vertex_dim, element_dim>::BackwardProjectiveDynamics(const std::
                 pd_backward_local_element_matrices, pd_backward_local_muscle_matrices, x_sol)
             ).array() * selected.array();
             // Global step:
-            x_sol = (PdLhsSolve(method, pd_rhs, additional_dirichlet).array() * selected.array());
+            x_sol = (PdLhsSolve(method, pd_rhs, additional_dirichlet, use_acc).array() * selected.array());
             Sx_sol = PdLhsMatrixOp(x_sol, additional_dirichlet) - h2m * ApplyProjectiveDynamicsLocalStepDifferential(q_next,
                 a, pd_backward_local_element_matrices, pd_backward_local_muscle_matrices, x_sol);
             grad_sol = (Sx_sol - dl_dq_next_agg).array() * selected.array();

@@ -28,12 +28,13 @@ def test_rolling_jelly(verbose):
     # Setting thread number.
     thread_cts = [2, 4, 8]
 
-    methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
+    methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen', 'pd_no_acc')
     opts = ({ 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
         { 'max_newton_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4 },
-        # Disable line search in PD: we are using quadratic material models.
         { 'max_pd_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4,
-            'use_bfgs': 1, 'bfgs_history_size': 10 })
+            'use_bfgs': 1, 'bfgs_history_size': 10 },
+        { 'max_pd_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': 4,
+            'use_bfgs': 1, 'bfgs_history_size': 10, 'use_acc': 0 })
 
     dt = 5e-3
     frame_num = 100
@@ -58,7 +59,8 @@ def test_rolling_jelly(verbose):
     # Visualization.
     if verbose:
         for method, opt in zip(methods, opts):
-            _, _, info = env.simulate(dt, frame_num, method, opt, q0, v0, [a0 for _ in range(frame_num)],
+            _, _, info = env.simulate(dt, frame_num, 'pd_eigen' if method == 'pd_no_acc' else method,
+                opt, q0, v0, [a0 for _ in range(frame_num)],
             [f0 for _ in range(frame_num)], require_grad=True, vis_folder=method)
             print('{}: forward: {:3.3f}s; backward: {:3.3f}s'.format(method, info['forward_time'], info['backward_time']))
             os.system('eog {}.gif'.format(folder / method))
@@ -97,7 +99,7 @@ def test_rolling_jelly(verbose):
             for thread_ct in thread_cts:
                 opt['thread_ct'] = thread_ct
                 meth_thread_num = '{}_{}threads'.format(method, thread_ct)
-                loss, grad, info = env.simulate(dt, frame_num, method,
+                loss, grad, info = env.simulate(dt, frame_num, 'pd_eigen' if method == 'pd_no_acc' else method,
                     opt, q0, v0, [a0 for _ in range(frame_num)],
                     [f0 for _ in range(frame_num)], require_grad=True, vis_folder=None)
                 grad_q, grad_v, grad_a, grad_f = grad

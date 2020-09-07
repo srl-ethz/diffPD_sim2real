@@ -199,7 +199,7 @@ private:
         const VectorXr& dq_cur) const;
     const VectorXr PdLhsMatrixOp(const VectorXr& q, const std::map<int, real>& additional_dirichlet_boundary_condition) const;
     const VectorXr PdLhsSolve(const std::string& method, const VectorXr& rhs,
-        const std::map<int, real>& additional_dirichlet_boundary_condition) const;
+        const std::map<int, real>& additional_dirichlet_boundary_condition, const bool use_acc) const;
 
     // Compute deformation gradient.
     const Eigen::Matrix<real, vertex_dim, element_dim> ScatterToElement(const VectorXr& q, const int element_idx) const;
