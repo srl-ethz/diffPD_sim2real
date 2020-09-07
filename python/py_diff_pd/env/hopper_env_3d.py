@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 
 from py_diff_pd.env.env_base import EnvBase
-from py_diff_pd.common.common import create_folder, ndarray
+from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.mesh import generate_hex_mesh, get_contact_vertex
 from py_diff_pd.common.display import export_gif, render_hex_mesh
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
@@ -103,6 +103,7 @@ class HopperEnv3d(EnvBase):
 
         # Initial conditions.
         dofs = deformable.dofs()
+        print('Hopper element: {:d}, DoFs: {:d}.'.format(element_num, dofs))
         # Perturb q0 a bit to avoid singular gradients in SVD.
         q0 = ndarray(mesh.py_vertices()) + np.random.uniform(low=-0.01 * dx, high=0.01 * dx, size=dofs)
         # 5 body lengths per second horizontally.
