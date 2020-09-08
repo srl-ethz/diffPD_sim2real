@@ -173,6 +173,7 @@ class HopperEnv3d(EnvBase):
         
         #grad_q = q_diff
         grad_q = np.zeros(q.shape)
-        grad_q[::3] = -1.0
+        vertex_num = int(q.size // 3)
+        grad_q[::3] = -1.0 / vertex_num
         grad_v = np.zeros(v.size)
         return loss, grad_q, grad_v

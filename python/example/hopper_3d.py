@@ -41,8 +41,8 @@ if __name__ == '__main__':
     newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
     pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
-    methods = ('newton_cholesky',)
-    opts = (newton_opt,)
+    methods = ('pd_eigen',)
+    opts = (pd_opt,)
 
     dt = 2e-3
     frame_num = 200
@@ -60,8 +60,8 @@ if __name__ == '__main__':
     # Compute actuation.
     control_frame = int(frame_num // control_frame_num)
     x_lb = np.zeros(2 * control_frame)
-    x_ub = np.ones(2 * control_frame) * 1.5
-    x_init = np.random.uniform(low=x_lb, high=x_ub) * 0.001
+    x_ub = np.ones(2 * control_frame) * 1.25
+    x_init = np.random.uniform(low=x_lb, high=x_ub) * 0.001 + (x_ub + x_lb) / 2.0
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
 
     # Initial guess.
