@@ -183,10 +183,12 @@ class CowEnv3d(EnvBase):
         # Compute the center of mass.
         com = np.mean(q.reshape((-1, 3)), axis=0)
         # Compute loss.
-        loss = -com[0]
+        z_weight = 0.3
+        loss = -com[0] - z_weight * com[2]
         # Compute grad.
         grad_q = np.zeros(q.size)
         vertex_num = int(q.size // 3)
         grad_q[::3] = -1 / vertex_num
+        grad_q[2::3] = -1 * z_weight / vertex_num
         grad_v = np.zeros(v.size)
         return loss, grad_q, grad_v
