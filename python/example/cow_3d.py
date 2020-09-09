@@ -102,7 +102,7 @@ if __name__ == '__main__':
 
     data = { 'loss_range': loss_range }
     # This example takes very long. As a result, I reverse the order so that I can see PD results first.
-    for method, opt in reversed(zip(methods, opts)):
+    for method, opt in zip(reversed(methods), reversed(opts)):
         data[method] = []
         def loss_and_grad(x):
             a, jac = variable_to_states(x, True)
