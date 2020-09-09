@@ -14,7 +14,7 @@ from py_diff_pd.core.py_diff_pd_core import StdRealVector
 from py_diff_pd.env.cow_env_3d import CowEnv3d
 
 if __name__ == '__main__':
-    seed = 39
+    seed = 42
     folder = Path('cow_3d')
     refinement = 8
     act_max = 1.5
@@ -85,7 +85,7 @@ if __name__ == '__main__':
 
     # Initial guess.
     a_init = variable_to_states(x_init, False)
-    env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a_init, f0, require_grad=False, vis_folder='init')
+    env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a_init, f0, require_grad=False, vis_folder='init')
 
     # Normalize the loss.
     rand_state = np.random.get_state()
@@ -101,7 +101,8 @@ if __name__ == '__main__':
     np.random.set_state(rand_state)
 
     data = { 'loss_range': loss_range }
-    for method, opt in zip(methods, opts):
+    # This example takes very long. As a result, I reverse the order so that I can see PD results first.
+    for method, opt in reversed(zip(methods, opts)):
         data[method] = []
         def loss_and_grad(x):
             a, jac = variable_to_states(x, True)
@@ -129,7 +130,7 @@ if __name__ == '__main__':
 
         t0 = time.time()
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
-            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-3 })
+            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-3, 'maxfun': 25 })
         t1 = time.time()
         print(result.success)
         x_final = result.x
