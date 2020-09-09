@@ -41,8 +41,8 @@ if __name__ == '__main__':
     newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
     pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
-    methods = ('pd_eigen',)
-    opts = (pd_opt,)
+    methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
+    opts = (newton_opt, newton_opt, pd_opt)
 
     dt = 2e-3
     frame_num = 200
@@ -97,7 +97,6 @@ if __name__ == '__main__':
         return grad.ravel()
 
     # Sanity check.
-    
     random_weight = np.random.normal(size=ndarray(a0).shape)
     def loss_and_grad(x):
         act = variable_to_act(x)
@@ -105,10 +104,22 @@ if __name__ == '__main__':
         grad = variable_to_gradient(x, random_weight)
         return loss, grad
     check_gradients(loss_and_grad, x_init, verbose=True)
-    
+
+    # Normalize the loss.
+    rand_state = np.random.get_state()
+    random_guess_num = 16
+    random_loss = []
+    for _ in range(random_guess_num):
+        x_rand = np.random.uniform(low=x_lb, high=x_ub)
+        act = variable_to_act(x_rand)
+        loss, _ = env.simulate(dt, frame_num, method, opt, q0, v0, act, f0, require_grad=False, vis_folder=None)
+        random_loss.append(loss)
+    loss_range = ndarray([0, np.mean(random_loss)])
+    print_info('Loss range: {:3f}, {:3f}'.format(loss_range[0], loss_range[1]))
+    np.random.set_state(rand_state)
 
     # Optimization.
-    data = {}
+    data = { 'loss_range': loss_range }
     for method, opt in zip(methods, opts):
         data[method] = []
         def loss_and_grad(x):
