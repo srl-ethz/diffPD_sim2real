@@ -145,6 +145,7 @@ class CowEnv3d(EnvBase):
             deformable.AddActuation(5e5, [1.0, 0.0, 0.0], act_indices)
         # Initial states.
         dofs = deformable.dofs()
+        print('Cow element: {:d}, DoFs: {:d}.'.format(element_num, dofs))
         act_dofs = deformable.act_dofs()
         q0 = ndarray(mesh.py_vertices())
         v0 = np.zeros(dofs)
