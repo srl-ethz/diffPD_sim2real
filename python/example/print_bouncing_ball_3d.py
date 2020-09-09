@@ -7,10 +7,19 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter, NullFormatter
 import numpy as np
 
-from py_diff_pd.common.common import print_info
+from py_diff_pd.common.common import print_info, print_error
 
 if __name__ == '__main__':
     folder = Path('bouncing_ball_3d')
+    try:
+        data = pickle.load(open('bouncing_ball_3d/data_0008_threads.bin', 'rb'))
+    except:
+        print_error('Log file not found.')
+    loss_l, loss_h = data['loss_range']
+    print_info('Loss range: {:3f}, {:3f}'.format(loss_l, loss_h))
+    def normalize_loss(unnormalized_loss):
+        return (unnormalized_loss - loss_l) / (loss_h - loss_l)
+
     for thread_ct in [2, 4, 8]:
         data_file = Path('bouncing_ball_3d') / 'data_{:04d}_threads.bin'.format(thread_ct)
         if data_file.exists():
@@ -21,6 +30,7 @@ if __name__ == '__main__':
                 avg_forward = 0
                 average_backward = 0
                 for d in data[method]:
+                    d['loss'] = normalize_loss(d['loss'])
                     print('loss: {:8.3f}, |grad|: {:8.3f}, E: {:8.3e}, nu: {:4.3f}, forward time: {:6.3f}s, backward time: {:6.3f}s'.format(
                         d['loss'], np.linalg.norm(d['grad']), d['E'], d['nu'], d['forward_time'], d['backward_time']))
                     total_time += d['forward_time'] + d['backward_time']
