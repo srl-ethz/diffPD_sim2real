@@ -82,9 +82,22 @@ if __name__ == '__main__':
     # Visualize initial guess.
     init_q, init_v = variable_to_initial_states(x_init)
     env.simulate(dt, frame_num, methods[0], opts[0], init_q, init_v, a0, f0, require_grad=False, vis_folder='init')
-
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
-    data = {}
+
+    # Normalize the loss.
+    rand_state = np.random.get_state()
+    random_guess_num = 16
+    random_loss = []
+    for _ in range(random_guess_num):
+        x_rand = np.random.uniform(low=x_lb, high=x_ub)
+        init_q, init_v = variable_to_initial_states(x_rand)
+        loss, _ = env.simulate(dt, frame_num, methods[2], opts[2], init_q, init_v, a0, f0, require_grad=False, vis_folder=None)
+        random_loss.append(loss)
+    loss_range = ndarray([0, np.mean(random_loss)])
+    print_info('Loss range: {:3f}, {:3f}'.format(loss_range[0], loss_range[1]))
+    np.random.set_state(rand_state)
+
+    data = { 'loss_range': loss_range }
     for method, opt in zip(methods, opts):
         data[method] = []
         def loss_and_grad(x):
