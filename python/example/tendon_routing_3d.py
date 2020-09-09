@@ -72,7 +72,22 @@ if __name__ == '__main__':
     env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, [a_init for _ in range(frame_num)], f0, require_grad=False, vis_folder='init')
 
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
-    data = {}
+
+    # Normalize the loss.
+    rand_state = np.random.get_state()
+    random_guess_num = 16
+    random_loss = []
+    for _ in range(random_guess_num):
+        x_rand = np.random.uniform(low=x_lb, high=x_ub)
+        a = variable_to_act(x_rand)
+        loss, _ = env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, [a for _ in range(frame_num)], f0,
+            require_grad=False, vis_folder=None)
+        random_loss.append(loss)
+    loss_range = ndarray([0, np.mean(random_loss)])
+    print_info('Loss range: {:3f}, {:3f}'.format(loss_range[0], loss_range[1]))
+    np.random.set_state(rand_state)
+
+    data = { 'loss_range': loss_range }
     for method, opt in zip(methods, opts):
         data[method] = []
         def loss_and_grad(x):
