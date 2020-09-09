@@ -112,7 +112,7 @@ if __name__ == '__main__':
     for _ in range(random_guess_num):
         x_rand = np.random.uniform(low=x_lb, high=x_ub)
         act = variable_to_act(x_rand)
-        loss, _ = env.simulate(dt, frame_num, method, opt, q0, v0, act, f0, require_grad=False, vis_folder=None)
+        loss, _ = env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, act, f0, require_grad=False, vis_folder=None)
         random_loss.append(loss)
     loss_range = ndarray([0, np.mean(random_loss)])
     print_info('Loss range: {:3f}, {:3f}'.format(loss_range[0], loss_range[1]))
