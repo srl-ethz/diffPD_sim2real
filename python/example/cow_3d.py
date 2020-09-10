@@ -16,12 +16,10 @@ from py_diff_pd.env.cow_env_3d import CowEnv3d
 if __name__ == '__main__':
     seed = 42
     folder = Path('cow_3d')
-    refinement = 8
     act_max = 1.5
     youngs_modulus = 1e6
     poissons_ratio = 0.49
-    target_com = ndarray([0.5, 0.5, 0.2])
-    env = CowEnv3d(seed, folder, { 'refinement': refinement,
+    env = CowEnv3d(seed, folder, {
         'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio })
     deformable = env.deformable()
@@ -35,8 +33,8 @@ if __name__ == '__main__':
     methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
     opts = (newton_opt, newton_opt, pd_opt)
 
-    dt = 1e-3
-    frame_num = 600
+    dt = 3e-3
+    frame_num = 200
 
     # Initial state.
     dofs = deformable.dofs()
