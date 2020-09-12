@@ -16,7 +16,7 @@ from py_diff_pd.env.quadruped_env_3d import QuadrupedEnv3d
 if __name__ == '__main__':
     seed = 42
     folder = Path('quadruped_3d')
-    refinement = 2
+    refinement = 3
     act_max = 1.0
     youngs_modulus = 1e6
     poissons_ratio = 0.49
@@ -36,8 +36,8 @@ if __name__ == '__main__':
 
     # Optimization parameters.
     thread_ct = 8
-    newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': thread_ct }
-    pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': thread_ct,
+    newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
+    pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
     methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
     opts = (newton_opt, newton_opt, pd_opt)
