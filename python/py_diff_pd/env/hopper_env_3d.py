@@ -126,6 +126,7 @@ class HopperEnv3d(EnvBase):
         self._right_leg_left_fiber = right_leg_left_fiber
         self._right_leg_right_fiber = right_leg_right_fiber
         self.__node_nums = node_nums
+        self.__element_num = element_num
 
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)
@@ -136,6 +137,9 @@ class HopperEnv3d(EnvBase):
 
     def is_dirichlet_dof(self, dof):
         return False
+
+    def element_num(self):
+        return self.__element_num
 
     def left_leg_left_fiber(self):
         return self._left_leg_left_fiber
