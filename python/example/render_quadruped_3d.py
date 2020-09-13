@@ -11,30 +11,29 @@ from py_diff_pd.common.common import print_info, print_ok, print_error
 from py_diff_pd.common.mesh import hex2obj, filter_hex
 from py_diff_pd.common.grad_check import check_gradients
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
-from py_diff_pd.env.hopper_env_3d import HopperEnv3d
+from py_diff_pd.env.quadruped_env_3d import QuadrupedEnv3d
 
 if __name__ == '__main__':
     seed = 42
-    folder = Path('hopper_3d')
-    refinement = 2
+    folder = Path('quadruped_3d')
+    refinement = 3
+    act_max = 1.0
     youngs_modulus = 1e6
     poissons_ratio = 0.49
-    leg_width = 2
-    half_leg_height = 2
-    waist_height = 2
-    waist_width = 2
-    thickness = 1
-
-    env = HopperEnv3d(seed, folder, { 'refinement': refinement,
+    leg_z_length = 2
+    body_x_length = 4
+    body_y_length = 4
+    body_z_length = 1
+    env = QuadrupedEnv3d(seed, folder, { 'refinement': refinement,
         'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio,
-        'leg_width': leg_width,
-        'half_leg_height': half_leg_height,
-        'waist_height': waist_height,
-        'waist_width': waist_width,
-        'thickness': thickness
-    })
+        'leg_z_length': leg_z_length,
+        'body_x_length': body_x_length,
+        'body_y_length': body_y_length,
+        'body_z_length': body_z_length })
     deformable = env.deformable()
+    leg_indices = env.leg_indices()
+    act_indices = env.act_indices()
 
     # Optimization parameters.
     thread_ct = 8
@@ -44,41 +43,45 @@ if __name__ == '__main__':
     methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
     opts = (newton_opt, newton_opt, pd_opt)
 
-    dt = 2e-3
-    frame_num = 200
-    control_frame_num = 10
-    assert frame_num % control_frame_num == 0
+    dt = 1e-2
+    frame_num = 100
 
     # Load results.
-    folder = Path('hopper_3d')
+    folder = Path('quadruped_3d')
     thread_ct = 8
     data_file = folder / 'data_{:04d}_threads.bin'.format(thread_ct)
     data = pickle.load(open(data_file, 'rb'))
 
     # Compute the initial state.
     dofs = deformable.dofs()
+    act_dofs = deformable.act_dofs()
     q0 = env.default_init_position()
     init_offset = ndarray([0, 0, 0.025])
     q0 = (q0.reshape((-1, 3)) + init_offset).ravel()
-    v0 = env.default_init_velocity() * 0.5
+    v0 = np.zeros(dofs)
     f0 = [np.zeros(dofs) for _ in range(frame_num)]
 
-    control_frame = int(frame_num // control_frame_num)
-    def variable_to_act(x):
-        x = np.copy(ndarray(x)).reshape((control_frame, 2))
-        acts = []
-        for u in x:
-            frame_act = np.concatenate([
-                np.ones(len(env.left_leg_left_fiber())) * u[0],
-                np.ones(len(env.left_leg_right_fiber())) * (2 - u[0]),
-                np.ones(len(env.right_leg_left_fiber())) * u[1],
-                np.ones(len(env.right_leg_right_fiber())) * (2 - u[1]),
-            ])
-            acts += [np.copy(frame_act) for _ in range(control_frame_num)]
-        return acts
+    def variable_to_acts(x):
+        A_f, A_b, w = x
+        a = [np.zeros(act_dofs) for _ in range(frame_num)]
+        for i in range(frame_num):
+            for key, indcs in leg_indices.items():
+                if key[-1] == 'F':
+                    for idx in indcs:
+                        if key[0] == 'F':
+                            a[i][idx] = act_max * (1 + A_f * np.sin(w * i)) / 2
+                        else:
+                            a[i][idx] = act_max * (1 + A_b * np.sin(w * i)) / 2
+                else:
+                    for idx in indcs:
+                        if key[0] =='F':
+                            a[i][idx] = act_max * (1 - A_f * np.sin(w * i)) / 2
+                        else:
+                            a[i][idx] = act_max * (1 - A_b * np.sin(w * i)) / 2
+        return a
 
     def simulate(x, method, opt, vis_folder):
-        a = variable_to_act(x)
+        a = variable_to_acts(x)
         env.simulate(dt, frame_num, method, opt, q0, v0, a, f0, require_grad=False, vis_folder=vis_folder)
 
     # Initial guess.
@@ -86,8 +89,7 @@ if __name__ == '__main__':
     simulate(x, methods[0], opts[0], 'init')
 
     # Assemble muscles.
-    muscle_idx = env.left_leg_left_fiber() + env.left_leg_right_fiber() + \
-        env.right_leg_left_fiber() + env.right_leg_right_fiber()
+    muscle_idx = act_indices
     not_muscle_idx = []
     all_idx = np.zeros(env.element_num())
     for idx in muscle_idx:
@@ -99,7 +101,7 @@ if __name__ == '__main__':
     # Load meshes.
     def generate_mesh(vis_folder, mesh_folder, x_var):
         create_folder(folder / mesh_folder)
-        act = ndarray(variable_to_act(x_var))
+        act = variable_to_acts(x_var)
         for i in range(frame_num):
             frame_folder = folder / mesh_folder / '{:d}'.format(i)
             create_folder(frame_folder)

@@ -136,7 +136,9 @@ class QuadrupedEnv3d(EnvBase):
         self._poissons_ratio = poissons_ratio
         self._stepwise_loss = False
         self.__node_nums = node_nums
+        self.__element_num = element_num
         self._leg_indices = leg_indices
+        self._act_indices = act_indices
         self._options = options
 
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
@@ -148,6 +150,15 @@ class QuadrupedEnv3d(EnvBase):
 
     def is_dirichlet_dof(self, dof):
         return False
+
+    def element_num(self):
+        return self.__element_num
+
+    def leg_indices(self):
+        return self._leg_indices
+
+    def act_indices(self):
+        return self._act_indices
 
     def _display_mesh(self, mesh_file, file_name):
         mesh = Mesh3d()
