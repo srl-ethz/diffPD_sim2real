@@ -39,31 +39,22 @@ if __name__ == '__main__':
     q0 = env.default_init_position()
     v0 = np.zeros(dofs)
     dt = 1e-2
-    frame_num = 5
+    frame_num = 3
     a0 = [np.zeros(act_dofs) for _ in range(frame_num)]
     vertex_num = int(dofs // 3)
     f0 = np.zeros((vertex_num, 3))
-    f0[:, 0] = 1
+    f0[:, 0] = -1
     f0 = f0.ravel()
     f0 = [f0 for _ in range(frame_num)]
     _, info = env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False,
         vis_folder='initial_condition')
     # Pick the frame where the center of mass is the highest.    
     q0 = info['q'][-1]
-    max_com_x = -np.inf
-    max_i = -1
-    for i, q in enumerate(info['q']):
-        com_x = np.mean(np.copy(q).reshape((-1, 3))[:, 0])
-        if com_x > max_com_x:
-            max_com_x = com_x
-            q0 = np.copy(q)
-            max_i = i
-    print_info('Initial frames are chosen from frame {}'.format(max_i))
     v0 = np.zeros(dofs)
     f0 = [np.zeros(dofs) for _ in range(frame_num)]
 
     # Generate groudtruth motion.
-    frame_num = 100
+    frame_num = 200
     a0 = [np.zeros(act_dofs) for _ in range(frame_num)]
     f0 = [np.zeros(dofs) for _ in range(frame_num)]
     env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder='groundtruth')
