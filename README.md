@@ -63,10 +63,17 @@ Navigate to the `python/example` path and run `python [example_name].py` where t
 - `deformable_quasi_static_3d` solves the quasi-static state of a 3D hex mesh. The hex mesh's bottom and top faces are fixed but the top face is twisted.
 
 ### Demos
+#### Sec. 6.1
 - `landscape_3d.py` and `print_landscape_3d_table.py`: generate Fig. 1 of the paper.
+
+#### Sec. 6.2
 - `benchmark_3d.py` and `print_benchmark_3d_table.py`: generate Figs. 2 and 3 of the paper.
 ![benchmark](python/example/benchmark_3d/benchmark.png)
 - `rolling_jelly_3d.py` and `print_rolling_jelly_3d_table.py`: generate Figs. 4 and 5 of the paper.
 ![rolling_jelly](python/example/rolling_jelly_3d/rolling_jelly.png)
 - `render_benchmark_3d.py`: generate mesh data for the `Benchmark` video.
 - `render_rolling_jelly_3d.py`: generated mesh data for the `Rolling sphere` video.
+
+#### Sec. 7.1
+- `cantilever_3d.py`: run the `Cantilever` example on GCP (Google Cloud Platform).
+- `render_cantilever_3d.py`: generate mesh data for the `Cantilever` video.
