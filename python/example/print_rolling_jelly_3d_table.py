@@ -151,7 +151,7 @@ if __name__ == '__main__':
                 color = 'tab:red'
             meth_thread_num = '{}_{}threads'.format(method, thread_cts[-1])
             ax.plot(rel_tols, y[meth_thread_num], label=method_ref_name, color=color, linewidth=4)
-        ax.grid(True, which='both')
+        ax.grid(True, which='major')
         ax.set_title(title)
         handles, labels = ax.get_legend_handles_labels()
 

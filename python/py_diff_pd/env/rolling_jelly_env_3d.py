@@ -89,6 +89,8 @@ class RollingJellyEnv3d(EnvBase):
         self.__radius = radius
         self.__contact_dofs = len(friction_node_idx) * 3
 
+        self.__spp = options['spp'] if 'spp' in options else 4
+
     def radius(self):
         return self.__radius
 
@@ -109,9 +111,12 @@ class RollingJellyEnv3d(EnvBase):
         mesh = Mesh3d()
         mesh.Initialize(mesh_file)
         render_hex_mesh(mesh, file_name=file_name,
-            resolution=(400, 400), sample=8, transforms=[
+            resolution=(400, 400), sample=self.__spp,
+            camera_pos=(2, -2.2, 1.5),
+            transforms=[
+                ('t', (-0.05, 0, 0)),
                 ('s', 6)
-            ])
+            ], render_voxel_edge=True)
 
     def _loss_and_grad(self, q, v):
         loss = q.dot(self.__loss_q_grad) + v.dot(self.__loss_v_grad)
