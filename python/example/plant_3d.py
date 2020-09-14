@@ -16,9 +16,8 @@ from py_diff_pd.env.plant_env_3d import PlantEnv3d
 if __name__ == '__main__':
     seed = 42
     folder = Path('plant_3d')
-    youngs_modulus = 5e7
-    poissons_ratio = 0.45
-    twist_angle = 0
+    youngs_modulus = 1e6
+    poissons_ratio = 0.4
     env = PlantEnv3d(seed, folder, {
         'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio })
@@ -71,8 +70,8 @@ if __name__ == '__main__':
 
     # Optimization.
     # Decision variables: log(E), log(nu).
-    x_lb = ndarray([np.log(1e7), np.log(0.25)])
-    x_ub = ndarray([np.log(1e8), np.log(0.49)])
+    x_lb = ndarray([np.log(5e5), np.log(0.25)])
+    x_ub = ndarray([np.log(5e6), np.log(0.49)])
     x_init = np.random.uniform(x_lb, x_ub)
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
 
@@ -85,7 +84,7 @@ if __name__ == '__main__':
         E = np.exp(x_rand[0])
         nu = np.exp(x_rand[1])
         env_opt = PlantEnv3d(seed, folder, { 'youngs_modulus': E, 'poissons_ratio': nu })
-        loss, _ = env_opt.simulate(dt, frame_num, method[2], opt[2], q0, v0, a0, f0, require_grad=False, vis_folder=None)
+        loss, _ = env_opt.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder=None)
         random_loss.append(loss)
     loss_range = ndarray([0, np.mean(random_loss)])
     print_info('Loss range: {:3f}, {:3f}'.format(loss_range[0], loss_range[1]))
@@ -114,7 +113,7 @@ if __name__ == '__main__':
             return loss, grad
         t0 = time.time()
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
-            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-3, 'maxiter': 25 })
+            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-4, 'maxiter': 25 })
         t1 = time.time()
         assert result.success
         x_final = result.x
