@@ -159,9 +159,9 @@ def export_gif(folder_name, gif_name, fps, name_prefix=''):
 def render_hex_mesh(hex_mesh, file_name,
     resolution=(800, 800), sample=128, max_depth=4,
     camera_pos=(2, -2.2, 2), camera_lookat=(0.5, 0.5, 0.5), camear_up=(0, 0, 1), fov=33,
-    transforms=None):
+    transforms=None, render_voxel_edge=False):
     from py_diff_pd.common.project_path import root_path
-    from py_diff_pd.common.mesh import hex2obj
+    from py_diff_pd.common.mesh import hex2obj, hex2obj_with_textures
 
     file_name = str(file_name)
     assert file_name.endswith('.png') or file_name.endswith('.exr')
@@ -173,14 +173,18 @@ def render_hex_mesh(hex_mesh, file_name,
     obj_file_name = '.tmp.obj'
     error_file_name = '.tmp.error'
     scene_file_name = '.scene.pbrt'
-    hex2obj(hex_mesh, obj_file_name)
-    os.system('{} {} {} 2>{}'.format(str(root / 'external/pbrt_build/obj2pbrt'), obj_file_name, scene_file_name, error_file_name))
+
+    if render_voxel_edge:
+        hex2obj_with_textures(hex_mesh, pbrt_file_name=scene_file_name)
+    else:
+        hex2obj(hex_mesh, obj_file_name)
+        os.system('{} {} {} 2>{}'.format(str(root / 'external/pbrt_build/obj2pbrt'), obj_file_name, scene_file_name, error_file_name))
 
     x_res, y_res = resolution
     with open(pbrt_script, 'w') as f:
         f.write('Film "image" "integer xresolution" [{:d}] "integer yresolution" [{:d}]\n'.format(x_res, y_res))
         f.write('    "string filename" "{:s}.exr"\n'.format(file_name_only))
-        
+
         f.write('\n')
         f.write('Sampler "halton" "integer pixelsamples" [{:d}]\n'.format(sample))
         f.write('Integrator "path" "integer maxdepth" {:d}\n'.format(max_depth))
@@ -207,9 +211,6 @@ def render_hex_mesh(hex_mesh, file_name,
 
         f.write('\n')
         f.write('AttributeBegin\n')
-        f.write('Texture "lines" "color" "imagemap" "string filename" "{}"\n'.format(
-            str(root / 'asset/texture/lines.exr')
-        ))
         f.write('Material "plastic"\n')
         f.write('    "color Kd" [.1 .1 .1] "color Ks" [.7 .7 .7] "float roughness" .1\n')
         f.write('Shape "trianglemesh"\n')
@@ -218,7 +219,14 @@ def render_hex_mesh(hex_mesh, file_name,
 
         f.write('\n')
         f.write('AttributeBegin\n')
-        f.write('Material "plastic" "color Kd" [.4 .4 .4] "color Ks" [.4 .4 .4] "float roughness" .03\n')
+        if render_voxel_edge:
+            f.write('Texture "grid" "color" "imagemap" "string filename" ["{}"]\n'.format(
+                str(root / 'asset/texture/grid.png')
+            ))
+            f.write('Texture "sgrid" "color" "scale" "texture tex1" "grid" "color tex2" [.4 .4 .4]\n')
+            f.write('Material "matte" "texture Kd" "sgrid"\n')
+        else:
+            f.write('Material "plastic" "color Kd" [.4 .4 .4] "color Ks" [.4 .4 .4] "float roughness" .03\n')
         # Flipped y because pbrt uses a left-handed system.
         f.write('Scale 1 -1 1\n')
         if transforms is not None:
@@ -242,9 +250,12 @@ def render_hex_mesh(hex_mesh, file_name,
     os.system('convert {}.exr {}.png'.format(file_name_only, file_name_only))
 
     os.remove('{}.exr'.format(file_name_only))
-    os.remove(scene_file_name)
-    os.remove(error_file_name)
-    os.remove(obj_file_name)
+    if render_voxel_edge:
+        os.remove(scene_file_name)
+    else:
+        os.remove(scene_file_name)
+        os.remove(error_file_name)
+        os.remove(obj_file_name)
     os.remove(pbrt_script)
 
 class Arrow3D(FancyArrowPatch):

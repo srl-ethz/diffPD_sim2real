@@ -96,6 +96,8 @@ class BenchmarkEnv3d(EnvBase):
         self.__loss_v_grad = np.random.normal(size=dofs)
         self.__node_nums = node_nums
 
+        self.__spp = options['spp'] if 'spp' in options else 4
+
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)
         jac_total = np.zeros((2, 2))
@@ -111,11 +113,12 @@ class BenchmarkEnv3d(EnvBase):
         mesh = Mesh3d()
         mesh.Initialize(mesh_file)
         render_hex_mesh(mesh, file_name=file_name,
-            resolution=(400, 400), sample=4, transforms=[
-                ('t', (0, 0, 0.1)),
-                ('t', (0, 0.16, 0)),
-                ('s', 4)
-            ])
+            resolution=(400, 400), sample=self.__spp, transforms=[
+                ('t', (-0.16, 0.16, 0.05)),
+                ('s', 6)
+            ],
+            camera_pos=(2, -2.2, 1.4),
+            render_voxel_edge=True)
 
     def _loss_and_grad(self, q, v):
         loss = q.dot(self.__loss_q_grad) + v.dot(self.__loss_v_grad)

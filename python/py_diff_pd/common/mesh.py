@@ -117,6 +117,85 @@ def generate_hex_mesh(voxels, dx, origin, bin_file_name, write=True):
 
     return voxel_indices, vertex_flag
 
+# Given a hex mesh, save it as an obj file with texture coordinates.
+def hex2obj_with_textures(hex_mesh, obj_file_name=None, pbrt_file_name=None):
+    vertex_num = hex_mesh.NumOfVertices()
+    element_num = hex_mesh.NumOfElements()
+
+    face_dict = {}
+    face_idx = [
+        (0, 1, 3, 2),
+        (4, 6, 7, 5),
+        (0, 4, 5, 1),
+        (2, 3, 7, 6),
+        (1, 5, 7, 3),
+        (0, 2, 6, 4)
+    ]
+    for i in range(element_num):
+        fi = ndarray(hex_mesh.py_element(i))
+        for f in face_idx:
+            vidx = [int(fi[fij]) for fij in f]
+            vidx_key = tuple(sorted(vidx))
+            if vidx_key in face_dict:
+                del face_dict[vidx_key]
+            else:
+                face_dict[vidx_key] = vidx
+
+    f = []
+    for _, vidx in face_dict.items():
+        f.append(vidx)
+    f = ndarray(f).astype(int)
+    # Now f is a list of quads.
+
+    v_out = []
+    f_out = []
+    v_cnt = 0
+    for fi in f:
+        fi_out = [v_cnt, v_cnt + 1, v_cnt + 2, v_cnt + 3]
+        f_out.append(fi_out)
+        v_cnt += 4
+        for vi in fi:
+            v_out.append(ndarray(hex_mesh.py_vertex(int(vi))))
+
+    if obj_file_name is not None:
+        with open(obj_file_name, 'w') as f_obj:
+            for vv in v_out:
+                f_obj.write('v {:6f} {:6f} {:6f}\n'.format(vv[0], vv[1], vv[2]))
+            f_obj.write('vt 0 0\n')
+            f_obj.write('vt 1 0\n')
+            f_obj.write('vt 1 1\n')
+            f_obj.write('vt 0 1\n')
+            for ff in f_out:
+                f_obj.write('f {:d}/1 {:d}/2 {:d}/3\n'.format(ff[0] + 1, ff[1] + 1, ff[2] + 1))
+                f_obj.write('f {:d}/1 {:d}/3 {:d}/4\n'.format(ff[0] + 1, ff[2] + 1, ff[3] + 1))
+
+    if pbrt_file_name is not None:
+        with open(pbrt_file_name, 'w') as f_pbrt:
+            f_pbrt.write('AttributeBegin\n')
+            f_pbrt.write('Shape "trianglemesh"\n')
+
+            # Log point data.
+            f_pbrt.write('  "point3 P" [\n')
+            for vv in v_out:
+                f_pbrt.write('  {:6f} {:6f} {:6f}\n'.format(vv[0], vv[1], vv[2]))
+            f_pbrt.write(']\n')
+
+            # Log texture data.
+            f_pbrt.write('  "float uv" [\n')
+            for _ in range(int(len(v_out) / 4)):
+                f_pbrt.write('  0 0\n')
+                f_pbrt.write('  1 0\n')
+                f_pbrt.write('  1 1\n')
+                f_pbrt.write('  0 1\n')
+            f_pbrt.write(']\n')
+
+            # Log face data.
+            f_pbrt.write('  "integer indices" [\n')
+            for ff in f_out:
+                f_pbrt.write('  {:d} {:d} {:d} {:d} {:d} {:d}\n'.format(ff[0], ff[1], ff[2], ff[0], ff[2], ff[3]))
+            f_pbrt.write(']\n')
+            f_pbrt.write('AttributeEnd\n')
+
 # Given a hex mesh, return the following:
 # - vertices: an n x 3 double array.
 # - faces: an m x 4 integer array.

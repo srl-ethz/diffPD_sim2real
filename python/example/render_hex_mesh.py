@@ -34,9 +34,6 @@ def test_render_hex_mesh(verbose):
     resolution = (400, 400)
     sample_num = 64
     render_hex_mesh(mesh, folder / 'render_hex_mesh_1.png', resolution=resolution, sample=sample_num)
-
-    # Test if first render matches.
-    render_result = image_to_numpy_array(folder / 'render_hex_mesh_1.png')
     if verbose:
         os.system('eog {}'.format(folder / 'render_hex_mesh_1.png'))
 
@@ -45,9 +42,8 @@ def test_render_hex_mesh(verbose):
     sample_num = 16
     # Scale the cube by 0.5, rotate along the vertical axis by 30 degrees, and translate by (0.5, 0.5, 0).
     transforms = [('s', 0.5), ('r', (np.pi / 6, 0, 0, 1)), ('t', (0.5, 0.5, 0))]
-    render_hex_mesh(mesh, folder / 'render_hex_mesh_2.png', resolution=resolution, sample=sample_num, transforms=transforms)
-    # Test if second render matches.
-    render_result = image_to_numpy_array(folder / 'render_hex_mesh_2.png')
+    render_hex_mesh(mesh, folder / 'render_hex_mesh_2.png', resolution=resolution, sample=sample_num, transforms=transforms,
+        render_voxel_edge=True)
     if verbose:
         os.system('eog {}'.format(folder / 'render_hex_mesh_2.png'))
 
