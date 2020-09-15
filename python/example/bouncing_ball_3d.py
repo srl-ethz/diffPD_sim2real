@@ -18,7 +18,7 @@ if __name__ == '__main__':
     folder = Path('bouncing_ball_3d')
     refinement = 8
     youngs_modulus = 2e6
-    poissons_ratio = 0.49
+    poissons_ratio = 0.4
     env = BouncingBallEnv3d(seed, folder, { 'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio })
     deformable = env.deformable()
@@ -32,13 +32,13 @@ if __name__ == '__main__':
     opts = (newton_opt, newton_opt, pd_opt)
 
     dt = 4e-3
-    frame_num = 80
+    frame_num = 125
 
     # Compute the initial state.
     dofs = deformable.dofs()
     act_dofs = deformable.act_dofs()
-    q_gt = ndarray([0.0, 0.0, 0.15])
-    v_gt = ndarray([2, 0.5, -8])
+    q_gt = ndarray([0.0, 0.0, 0.07])
+    v_gt = ndarray([1.5, 0.5, -1])
     q0 = env.default_init_position()
     q0 = (q0.reshape((-1, 3)) + q_gt).ravel()
     v0 = np.zeros(dofs)
@@ -51,9 +51,9 @@ if __name__ == '__main__':
 
     # Optimization.
     # Decision variables: log(E), log(nu).
-    x_lb = ndarray([np.log(2e5), np.log(0.4)])
-    x_ub = ndarray([np.log(3e6), np.log(0.495)])
-    x_init = np.random.uniform(low=x_lb, high=x_ub)
+    x_lb = ndarray([np.log(1e6), np.log(0.2)])
+    x_ub = ndarray([np.log(1e7), np.log(0.45)])
+    x_init = np.random.uniform(x_lb, x_ub)
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
 
     # Generate initial motion.
@@ -101,9 +101,9 @@ if __name__ == '__main__':
             return loss, grad
         t0 = time.time()
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
-            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-3, 'maxiter': 10 })
+            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-2, 'maxiter': 10 })
         t1 = time.time()
-        assert result.success
+        print(result.success)
         x_final = result.x
         print_info('Optimizing with {} finished in {:6.3f} seconds'.format(method, t1 - t0))
         pickle.dump(data, open(folder / 'data_{:04d}_threads.bin'.format(thread_ct), 'wb'))
