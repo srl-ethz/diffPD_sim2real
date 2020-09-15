@@ -13,6 +13,18 @@ import os
 import numpy as np
 
 if __name__ == '__main__':
+    # Torus.
+    torus_file_name = Path(root_path) / 'asset' / 'mesh' / 'torus_tri_mesh.obj'
+    dx = 0.05
+    voxels = voxelize(torus_file_name, dx)
+    origin = ndarray([0, 0, 0])
+    mesh_file_name = Path(root_path) / 'asset' / 'mesh' / 'torus.bin'
+    generate_hex_mesh(voxels, dx, origin, mesh_file_name)
+    mesh = Mesh3d()
+    mesh.Initialize(str(mesh_file_name))
+    hex2obj(mesh, Path(root_path) / 'asset' / 'mesh' / 'torus.obj', 'tri')
+    print_info('torus processed: elements: {}, dofs: {}'.format(mesh.NumOfElements(), mesh.NumOfVertices() * 3))
+
     # Use this link to generate lookup table:
     # https://drububu.com/miscellaneous/voxelizer/?out=obj
     shutil.copyfile(Path(root_path) / 'asset/mesh/lock.py', 'lock.py')
@@ -51,6 +63,7 @@ if __name__ == '__main__':
     os.remove('plant.py')
     print_info('plant processed: elements: {}, dofs: {}'.format(mesh.NumOfElements(), mesh.NumOfVertices() * 3))
 
+    # Generate Bunny.
     bunny_file_name = Path(root_path) / 'asset' / 'mesh' / 'bunny_watertight.obj'
     dx = 0.05
     voxels = voxelize(bunny_file_name, dx)

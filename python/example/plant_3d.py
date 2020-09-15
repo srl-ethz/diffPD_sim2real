@@ -62,9 +62,15 @@ if __name__ == '__main__':
     # Optimization.
     # Decision variables: log(E), log(nu).
     x_lb = ndarray([np.log(1e4), np.log(0.2)])
-    x_ub = ndarray([np.log(5e6), np.log(0.49)])
+    x_ub = ndarray([np.log(5e6), np.log(0.45)])
     x_init = np.random.uniform(x_lb, x_ub)
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
+
+    # Generate initial motion.
+    E = np.exp(x_init[0])
+    nu = np.exp(x_init[1])
+    env_opt = PlantEnv3d(seed, folder, { 'youngs_modulus': E, 'poissons_ratio': nu })
+    env_opt.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder='init')
 
     # Normalize the loss.
     rand_state = np.random.get_state()
@@ -76,6 +82,7 @@ if __name__ == '__main__':
         nu = np.exp(x_rand[1])
         env_opt = PlantEnv3d(seed, folder, { 'youngs_modulus': E, 'poissons_ratio': nu })
         loss, _ = env_opt.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder=None)
+        print('E: {:3e}, nu: {:3f}, loss: {:3f}'.format(E, nu, loss))
         random_loss.append(loss)
     loss_range = ndarray([0, np.mean(random_loss)])
     print_info('Loss range: {:3f}, {:3f}'.format(loss_range[0], loss_range[1]))
@@ -104,9 +111,9 @@ if __name__ == '__main__':
             return loss, grad
         t0 = time.time()
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
-            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-3, 'maxiter': 10 })
+            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-2, 'maxiter': 10 })
         t1 = time.time()
-        assert result.success
+        print(result.success)
         x_final = result.x
         print_info('Optimizing with {} finished in {:6.3f} seconds'.format(method, t1 - t0))
         pickle.dump(data, open(folder / 'data_{:04d}_threads.bin'.format(thread_ct), 'wb'))
