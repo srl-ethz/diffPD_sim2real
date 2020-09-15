@@ -104,7 +104,7 @@ if __name__ == '__main__':
             return loss, grad
         t0 = time.time()
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
-            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-4, 'maxiter': 25 })
+            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-3, 'maxiter': 10 })
         t1 = time.time()
         assert result.success
         x_final = result.x
