@@ -73,7 +73,7 @@ if __name__ == '__main__':
 
     def simulate(E_opt, nu_opt, vis_folder):
         env_opt = PlantEnv3d(seed, folder, { 'youngs_modulus': E_opt, 'poissons_ratio': nu_opt, 'spp': 64 })
-        env_opt.simulate(dt, frame_num, method, opt, q0, v0, a0, f0, require_grad=True, vis_folder=vis_folder)
+        env_opt.simulate(dt, frame_num, method, opt, q0, v0, a0, f0, require_grad=False, vis_folder=vis_folder)
 
     simulate(E_init, nu_init, 'init')
     simulate(E_final, nu_final, 'final')
@@ -87,7 +87,6 @@ if __name__ == '__main__':
             mesh.Initialize(str(mesh_file))
             hex2obj(mesh, obj_file_name=folder / mesh_folder / '{:04d}.obj'.format(i), obj_type='tri')
 
-    generate_mesh('initial_condition', 'initial_condition_mesh')
     generate_mesh('groundtruth', 'groundtruth_mesh')
     generate_mesh('init', 'init_mesh')
     generate_mesh('final', 'final_mesh')
