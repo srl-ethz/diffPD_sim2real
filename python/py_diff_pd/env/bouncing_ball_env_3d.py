@@ -16,7 +16,6 @@ class BouncingBallEnv3d(EnvBase):
     def __init__(self, seed, folder, options):
         EnvBase.__init__(self, folder)
 
-        np.random.seed(seed)
         create_folder(folder, exist_ok=True)
 
         youngs_modulus = options['youngs_modulus'] if 'youngs_modulus' in options else 1e6
@@ -57,7 +56,7 @@ class BouncingBallEnv3d(EnvBase):
         act_dofs = deformable.act_dofs()
         q0 = ndarray(mesh.py_vertices())
         v0 = np.zeros(dofs)
-        f_ext = np.random.normal(scale=0.1, size=dofs) * density * (dx ** 3)
+        f_ext = np.zeros(dofs)
 
         # Data members.
         self._deformable = deformable

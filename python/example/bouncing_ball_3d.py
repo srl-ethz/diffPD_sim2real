@@ -72,6 +72,7 @@ if __name__ == '__main__':
         nu = np.exp(x_rand[1])
         env_opt = BouncingBallEnv3d(seed, folder, { 'youngs_modulus': E, 'poissons_ratio': nu })
         loss, _ = env_opt.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder=None)
+        print('E: {:3e}, nu: {:3f}, loss: {:3f}'.format(E, nu, loss))
         random_loss.append(loss)
     loss_range = ndarray([0, np.mean(random_loss)])
     print_info('Loss range: {:3f}, {:3f}'.format(loss_range[0], loss_range[1]))
