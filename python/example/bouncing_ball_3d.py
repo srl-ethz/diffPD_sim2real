@@ -17,10 +17,9 @@ if __name__ == '__main__':
     seed = 42
     folder = Path('bouncing_ball_3d')
     refinement = 8
-    youngs_modulus = 1e6
+    youngs_modulus = 2e6
     poissons_ratio = 0.49
-    env = BouncingBallEnv3d(seed, folder, { 'refinement': refinement,
-        'youngs_modulus': youngs_modulus,
+    env = BouncingBallEnv3d(seed, folder, { 'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio })
     deformable = env.deformable()
 
@@ -33,7 +32,7 @@ if __name__ == '__main__':
     opts = (newton_opt, newton_opt, pd_opt)
 
     dt = 4e-3
-    frame_num = 25
+    frame_num = 80
 
     # Compute the initial state.
     dofs = deformable.dofs()
@@ -48,14 +47,20 @@ if __name__ == '__main__':
     f0 = [np.zeros(dofs) for _ in range(frame_num)]
 
     # Generate groundtruth motion.
-    env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a0, f0, require_grad=False, vis_folder='groundtruth')
+    env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder='groundtruth')
 
     # Optimization.
     # Decision variables: log(E), log(nu).
-    x_lb = ndarray([np.log(5e5), np.log(0.45)])
-    x_ub = ndarray([np.log(5e6), np.log(0.495)])
+    x_lb = ndarray([np.log(2e5), np.log(0.4)])
+    x_ub = ndarray([np.log(3e6), np.log(0.495)])
     x_init = np.random.uniform(low=x_lb, high=x_ub)
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
+
+    # Generate initial motion.
+    E = np.exp(x_init[0])
+    nu = np.exp(x_init[1])
+    env_opt = BouncingBallEnv3d(seed, folder, { 'youngs_modulus': E, 'poissons_ratio': nu })
+    env_opt.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder='init')
 
     # Normalize the loss.
     rand_state = np.random.get_state()
@@ -65,8 +70,7 @@ if __name__ == '__main__':
         x_rand = np.random.uniform(low=x_lb, high=x_ub)
         E = np.exp(x_rand[0])
         nu = np.exp(x_rand[1])
-        env_opt = BouncingBallEnv3d(seed, folder, { 'refinement': refinement, 'youngs_modulus': E,
-            'poissons_ratio': nu })
+        env_opt = BouncingBallEnv3d(seed, folder, { 'youngs_modulus': E, 'poissons_ratio': nu })
         loss, _ = env_opt.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder=None)
         random_loss.append(loss)
     loss_range = ndarray([0, np.mean(random_loss)])
@@ -74,12 +78,12 @@ if __name__ == '__main__':
     np.random.set_state(rand_state)
 
     data = { 'loss_range': loss_range }
-    for method, opt in zip(methods, opts):
+    for method, opt in zip(reversed(methods), reversed(opts)):
         data[method] = []
         def loss_and_grad(x):
             E = np.exp(x[0])
             nu = np.exp(x[1])
-            env_opt = BouncingBallEnv3d(seed, folder, { 'refinement': refinement, 'youngs_modulus': E,
+            env_opt = BouncingBallEnv3d(seed, folder, { 'youngs_modulus': E,
                 'poissons_ratio': nu })
             loss, _, info = env_opt.simulate(dt, frame_num, method, opt, q0, v0, a0, f0, require_grad=True, vis_folder=None)
             grad = info['material_parameter_gradients']
@@ -97,7 +101,7 @@ if __name__ == '__main__':
             return loss, grad
         t0 = time.time()
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
-            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-3 })
+            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-3, 'maxiter': 10 })
         t1 = time.time()
         assert result.success
         x_final = result.x
