@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from py_diff_pd.common.common import create_folder, print_info
-from py_diff_pd.common.mesh import hex2obj
+from py_diff_pd.common.mesh import hex2obj_with_textures
 from py_diff_pd.core.py_diff_pd_core import Mesh3d
 from py_diff_pd.env.plant_env_3d import PlantEnv3d
 
@@ -85,7 +85,7 @@ if __name__ == '__main__':
             mesh_file = folder / vis_folder / '{:04d}.bin'.format(i)
             mesh = Mesh3d()
             mesh.Initialize(str(mesh_file))
-            hex2obj(mesh, obj_file_name=folder / mesh_folder / '{:04d}.obj'.format(i), obj_type='tri')
+            hex2obj_with_textures(mesh, obj_file_name=folder / mesh_folder / '{:04d}.obj'.format(i))
 
     generate_mesh('groundtruth', 'groundtruth_mesh')
     generate_mesh('init', 'init_mesh')
