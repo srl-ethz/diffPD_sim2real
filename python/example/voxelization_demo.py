@@ -15,6 +15,23 @@ import numpy as np
 if __name__ == '__main__':
     # Use this link to generate lookup table:
     # https://drububu.com/miscellaneous/voxelizer/?out=obj
+    shutil.copyfile(Path(root_path) / 'asset/mesh/lock.py', 'lock.py')
+    from lock import widthGrid, heightGrid, depthGrid, lookup
+    voxels = np.zeros((widthGrid + 1, heightGrid + 1, depthGrid + 1))
+    for voxel in lookup:
+        x, y, z = voxel['x'], voxel['y'], voxel['z']
+        voxels[x, y, z] = 1
+    dx = 1.0 / np.max([widthGrid + 1, depthGrid + 1, heightGrid + 1])
+    origin = ndarray([0, 0, 0])
+    mesh_file_name = Path(root_path) / 'asset/mesh/lock.bin'
+    generate_hex_mesh(voxels, dx, origin, mesh_file_name)
+    mesh = Mesh3d()
+    mesh.Initialize(str(mesh_file_name))
+    hex2obj(mesh, Path(root_path) / 'asset/mesh/lock.obj', 'tri')
+    os.remove('lock.py')
+    print_info('lock processed: elements: {}, dofs: {}'.format(mesh.NumOfElements(), mesh.NumOfVertices() * 3))
+
+    # Generate Plant.
     shutil.copyfile(Path(root_path) / 'asset/mesh/plant.py', 'plant.py')
     from plant import widthGrid, heightGrid, depthGrid, lookup
     voxels = np.zeros((widthGrid + 1, heightGrid + 1, depthGrid + 1))
