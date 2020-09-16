@@ -15,6 +15,7 @@ from py_diff_pd.env.torus_env_3d import TorusEnv3d
 
 if __name__ == '__main__':
     seed = 42
+    np.random.seed(seed)
     folder = Path('torus_3d')
     youngs_modulus = 5e5
     poissons_ratio = 0.4
@@ -31,9 +32,9 @@ if __name__ == '__main__':
     methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
     thread_ct = 8
     opts = (
-        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct },
-        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct },
-        { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
+        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': thread_ct },
+        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': thread_ct },
+        { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': thread_ct,
             'use_bfgs': 1, 'bfgs_history_size': 10 },
     )
 
@@ -70,9 +71,6 @@ if __name__ == '__main__':
             acts += [np.copy(frame_act) for _ in range(control_frame_num)]
         return acts
 
-    a0 = variable_to_act(x_init)
-    env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder='init')
-
     def variable_to_gradient(x, dl_dact):
         grad = np.zeros(x.shape)
         for c in range(control_frame):
@@ -84,6 +82,28 @@ if __name__ == '__main__':
                         grad[(i - c) % act_group_num] += grad_act[j]
         return grad.ravel()
 
+    # Normalize the loss.
+    rand_state = np.random.get_state()
+    random_guess_num = 16
+    random_loss = []
+    # Since this example is easily trapped in local minima, we pick the best random guesses as the initial state.
+    x_init = None
+    best_loss = np.inf
+    for _ in range(random_guess_num):
+        x_rand = np.random.uniform(low=x_lb, high=x_ub)
+        act = variable_to_act(x_rand)
+        loss, _ = env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, act, f0, require_grad=False, vis_folder=None)
+        print('loss: {:3f}'.format(loss))
+        random_loss.append(loss)
+        if loss < best_loss:
+            best_loss = loss
+            x_init = x_rand
+    loss_range = ndarray([0, np.mean(random_loss)])
+    print_info('Loss range: {:3f}, {:3f}'.format(loss_range[0], loss_range[1]))
+    np.random.set_state(rand_state)
+
+    # Initial state after selecting the best from random guesses.
+    a0 = variable_to_act(x_init)
     # Sanity check.
     random_weight = np.random.normal(size=ndarray(a0).shape)
     def loss_and_grad(x):
@@ -92,20 +112,7 @@ if __name__ == '__main__':
         grad = variable_to_gradient(x, random_weight)
         return loss, grad
     check_gradients(loss_and_grad, x_init, verbose=True)
-
-    # Normalize the loss.
-    rand_state = np.random.get_state()
-    random_guess_num = 16
-    random_loss = []
-    for _ in range(random_guess_num):
-        x_rand = np.random.uniform(low=x_lb, high=x_ub)
-        act = variable_to_act(x_rand)
-        loss, _ = env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, act, f0, require_grad=False, vis_folder=None)
-        print('loss: {:3f}'.format(loss))
-        random_loss.append(loss)
-    loss_range = ndarray([0, np.mean(random_loss)])
-    print_info('Loss range: {:3f}, {:3f}'.format(loss_range[0], loss_range[1]))
-    np.random.set_state(rand_state)
+    env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder='init')
 
     # Optimization.
     data = { 'loss_range': loss_range }
