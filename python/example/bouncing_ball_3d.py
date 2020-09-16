@@ -15,6 +15,7 @@ from py_diff_pd.env.bouncing_ball_env_3d import BouncingBallEnv3d
 
 if __name__ == '__main__':
     seed = 42
+    np.random.seed(seed)
     folder = Path('bouncing_ball_3d')
     refinement = 8
     youngs_modulus = 2e6
