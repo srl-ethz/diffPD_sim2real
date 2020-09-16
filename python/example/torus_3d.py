@@ -54,20 +54,19 @@ if __name__ == '__main__':
 
     # Compute actuation.
     control_frame = int(frame_num // control_frame_num)
-    x_lb = np.zeros(act_group_num * control_frame)
-    x_ub = np.ones(act_group_num * control_frame) * 2
+    x_lb = np.zeros(act_group_num)
+    x_ub = np.ones(act_group_num) * 2
     x_init = np.random.uniform(low=x_lb, high=x_ub)
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
 
     act_groups = env.act_groups()
     def variable_to_act(x):
-        x = np.copy(ndarray(x)).reshape((control_frame, act_group_num))
         acts = []
-        for u in x:
+        for c in range(control_frame):
             frame_act = np.zeros(act_dofs)
             for i, group in enumerate(act_groups):
                 for j in group:
-                    frame_act[j] = u[i]
+                    frame_act[j] = x[(i - c) % act_group_num]
             acts += [np.copy(frame_act) for _ in range(control_frame_num)]
         return acts
 
@@ -75,19 +74,17 @@ if __name__ == '__main__':
     env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder='init')
 
     def variable_to_gradient(x, dl_dact):
-        x = np.copy(ndarray(x)).reshape((control_frame, act_group_num))
         grad = np.zeros(x.shape)
-        for cf_idx, u in enumerate(x):
+        for c in range(control_frame):
             for f in range(control_frame_num):
-                f_idx = cf_idx * control_frame_num + f
+                f_idx = c * control_frame_num + f
                 grad_act = dl_dact[f_idx]
                 for i, group in enumerate(act_groups):
                     for j in group:
-                        grad[cf_idx, i] += grad_act[j]
+                        grad[(i - c) % act_group_num] += grad_act[j]
         return grad.ravel()
 
     # Sanity check.
-    '''
     random_weight = np.random.normal(size=ndarray(a0).shape)
     def loss_and_grad(x):
         act = variable_to_act(x)
@@ -95,9 +92,9 @@ if __name__ == '__main__':
         grad = variable_to_gradient(x, random_weight)
         return loss, grad
     check_gradients(loss_and_grad, x_init, verbose=True)
-    '''
 
     # Normalize the loss.
+    '''
     rand_state = np.random.get_state()
     random_guess_num = 16
     random_loss = []
@@ -113,11 +110,13 @@ if __name__ == '__main__':
 
     # Optimization.
     data = { 'loss_range': loss_range }
+    '''
+    data = {}
     for method, opt in zip(reversed(methods), reversed(opts)):
         data[method] = []
         def loss_and_grad(x):
             act = variable_to_act(x)
-            loss, grad, info = env.simulate(dt, frame_num, method, opt, q0, v0, act, f0, require_grad=True, vis_folder=None)
+            loss, grad, info = env.simulate(dt, frame_num, method, opt, q0, v0, act, f0, require_grad=True, vis_folder='middle')
             dl_act = grad[2]
             grad = variable_to_gradient(x, dl_act)
 
