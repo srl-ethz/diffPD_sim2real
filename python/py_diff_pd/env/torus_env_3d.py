@@ -70,6 +70,9 @@ class TorusEnv3d(EnvBase):
         element_num = mesh.NumOfElements()
         act_stiffness = options['act_stiffness']
         com = np.mean(q0.reshape((-1, 3)), axis=0)
+        act_group_num = options['act_group_num']
+        act_groups = [[] for _ in range(act_group_num)]
+        delta = np.pi * 2 / act_group_num
         for i in range(element_num):
             fi = ndarray(mesh.py_element(i))
             e_com = 0
@@ -81,6 +84,9 @@ class TorusEnv3d(EnvBase):
             e_dir = np.cross(e_offset, ndarray([0, 1, 0]))
             e_dir = e_dir / np.linalg.norm(e_dir)
             deformable.AddActuation(act_stiffness, e_dir, [i,])
+            angle = np.arctan2(e_offset[2], e_offset[0])
+            idx = np.clip(int(angle / delta), 0, act_group_num - 1)
+            act_groups[idx].append(i)
 
         # Data members.
         self._deformable = deformable
@@ -90,6 +96,7 @@ class TorusEnv3d(EnvBase):
         self._youngs_modulus = youngs_modulus
         self._poissons_ratio = poissons_ratio
         self._stepwise_loss = False
+        self.__act_groups = act_groups
 
         self.__spp = options['spp'] if 'spp' in options else 4
 
@@ -102,6 +109,9 @@ class TorusEnv3d(EnvBase):
 
     def is_dirichlet_dof(self, dof):
         return False
+
+    def act_groups(self):
+        return self.__act_groups
 
     def _display_mesh(self, mesh_file, file_name):
         mesh = Mesh3d()

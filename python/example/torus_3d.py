@@ -19,9 +19,11 @@ if __name__ == '__main__':
     youngs_modulus = 5e5
     poissons_ratio = 0.4
     act_stiffness = 2e5
+    act_group_num = 12
     env = TorusEnv3d(seed, folder, { 'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio,
-        'act_stiffness': act_stiffness
+        'act_stiffness': act_stiffness,
+        'act_group_num': act_group_num
     })
     deformable = env.deformable()
 
@@ -52,29 +54,36 @@ if __name__ == '__main__':
 
     # Compute actuation.
     control_frame = int(frame_num // control_frame_num)
-    x_lb = np.zeros(act_dofs * control_frame)
-    x_ub = np.ones(act_dofs * control_frame) * 5
+    x_lb = np.zeros(act_group_num * control_frame)
+    x_ub = np.ones(act_group_num * control_frame) * 2
     x_init = np.random.uniform(low=x_lb, high=x_ub)
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
 
+    act_groups = env.act_groups()
     def variable_to_act(x):
-        x = np.copy(ndarray(x)).reshape((control_frame, act_dofs))
+        x = np.copy(ndarray(x)).reshape((control_frame, act_group_num))
         acts = []
         for u in x:
-            acts += [np.copy(u) for _ in range(control_frame_num)]
+            frame_act = np.zeros(act_dofs)
+            for i, group in enumerate(act_groups):
+                for j in group:
+                    frame_act[j] = u[i]
+            acts += [np.copy(frame_act) for _ in range(control_frame_num)]
         return acts
 
     a0 = variable_to_act(x_init)
     env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder='init')
 
     def variable_to_gradient(x, dl_dact):
-        x = np.copy(ndarray(x)).reshape((control_frame, act_dofs))
+        x = np.copy(ndarray(x)).reshape((control_frame, act_group_num))
         grad = np.zeros(x.shape)
         for cf_idx, u in enumerate(x):
             for f in range(control_frame_num):
                 f_idx = cf_idx * control_frame_num + f
                 grad_act = dl_dact[f_idx]
-                grad[cf_idx] += grad_act
+                for i, group in enumerate(act_groups):
+                    for j in group:
+                        grad[cf_idx, i] += grad_act[j]
         return grad.ravel()
 
     # Sanity check.
