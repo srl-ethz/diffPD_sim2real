@@ -15,7 +15,7 @@ from py_diff_pd.env.plant_env_3d import PlantEnv3d
 
 if __name__ == '__main__':
     seed = 42
-    np.random.seed(42)
+    np.random.seed(seed)
     folder = Path('plant_3d')
     youngs_modulus = 1e6
     poissons_ratio = 0.4
