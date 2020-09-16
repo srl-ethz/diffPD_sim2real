@@ -75,8 +75,20 @@ Navigate to the `python/example` path and run `python [example_name].py` where t
 - `render_rolling_jelly_3d.py`: generated mesh data for the `Rolling sphere` video.
 
 #### Sec. 7.1
+**Cantilever**
 Note that the `Cantilever` example is deprecated and not included in the paper.
 - `cantilever_3d.py`: run the `Cantilever` example on GCP (Google Cloud Platform).
 - `render_cantilever_3d.py`: generate mesh data for the `Cantilever` video.
+
+**Plant**
 - `plant_3d.py`: run the `Plant` example on GCP.
 - `render_plant_3d.py`: generate mesh data for the `Plant` video.
+
+**Bouncing ball**
+- `bouncing_ball_3d.py`: run the `Bouncing ball` example on GCP.
+- `print_bouncing_ball_3d.py`: generate data for Table 3.
+- `render_bouncing_ball_3d.py`: generate mesh data for the `Bouncing ball` video.
+
+#### Sec. 7.3
+**Torus**
+- `torus_3d.py`: run the `Torus` example on GCP.

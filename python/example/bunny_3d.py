@@ -92,6 +92,7 @@ if __name__ == '__main__':
         x_rand = np.random.uniform(low=x_lb, high=x_ub)
         init_q, init_v = variable_to_initial_states(x_rand)
         loss, _ = env.simulate(dt, frame_num, methods[2], opts[2], init_q, init_v, a0, f0, require_grad=False, vis_folder=None)
+        print('loss: {:3f}'.format(loss))
         random_loss.append(loss)
     loss_range = ndarray([0, np.mean(random_loss)])
     print_info('Loss range: {:3f}, {:3f}'.format(loss_range[0], loss_range[1]))

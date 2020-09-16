@@ -20,7 +20,7 @@ if __name__ == '__main__':
     def normalize_loss(unnormalized_loss):
         return (unnormalized_loss - loss_l) / (loss_h - loss_l)
 
-    for thread_ct in [2, 4, 8]:
+    for thread_ct in [8,]:
         data_file = Path('bouncing_ball_3d') / 'data_{:04d}_threads.bin'.format(thread_ct)
         if data_file.exists():
             print_info('Loading {}'.format(data_file))

@@ -67,6 +67,8 @@ class BouncingBallEnv3d(EnvBase):
         self._poissons_ratio = poissons_ratio
         self._stepwise_loss = True
 
+        self.__spp = options['spp'] if 'spp' in options else 4
+
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)
         jac_total = np.zeros((2, 2))
@@ -81,9 +83,11 @@ class BouncingBallEnv3d(EnvBase):
         mesh = Mesh3d()
         mesh.Initialize(mesh_file)
         render_hex_mesh(mesh, file_name=file_name,
-            resolution=(400, 400), sample=8, transforms=[
-                ('s', 1.5)
-            ], render_voxel_edge=True)
+            resolution=(400, 400), sample=self.__spp, transforms=[
+                ('s', 2.5)
+            ],
+            camera_pos=(2.2, -2.2, 1.6),
+            render_voxel_edge=True)
 
     def _stepwise_loss_and_grad(self, q, v, i):
         mesh_file = self._folder / 'groundtruth' / '{:04d}.bin'.format(i)
