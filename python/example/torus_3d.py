@@ -94,7 +94,6 @@ if __name__ == '__main__':
     check_gradients(loss_and_grad, x_init, verbose=True)
 
     # Normalize the loss.
-    '''
     rand_state = np.random.get_state()
     random_guess_num = 16
     random_loss = []
@@ -110,13 +109,11 @@ if __name__ == '__main__':
 
     # Optimization.
     data = { 'loss_range': loss_range }
-    '''
-    data = {}
     for method, opt in zip(reversed(methods), reversed(opts)):
         data[method] = []
         def loss_and_grad(x):
             act = variable_to_act(x)
-            loss, grad, info = env.simulate(dt, frame_num, method, opt, q0, v0, act, f0, require_grad=True, vis_folder='middle')
+            loss, grad, info = env.simulate(dt, frame_num, method, opt, q0, v0, act, f0, require_grad=True, vis_folder=None)
             dl_act = grad[2]
             grad = variable_to_gradient(x, dl_act)
 
