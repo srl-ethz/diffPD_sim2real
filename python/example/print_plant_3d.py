@@ -10,9 +10,9 @@ import numpy as np
 from py_diff_pd.common.common import print_info, print_error
 
 if __name__ == '__main__':
-    folder = Path('bouncing_ball_3d')
+    folder = Path('plant_3d')
     try:
-        data = pickle.load(open('bouncing_ball_3d/data_0008_threads.bin', 'rb'))
+        data = pickle.load(open('plant_3d/data_0008_threads.bin', 'rb'))
     except:
         print_error('Log file not found.')
     loss_l, loss_h = data['loss_range']
@@ -21,7 +21,7 @@ if __name__ == '__main__':
         return (unnormalized_loss - loss_l) / (loss_h - loss_l)
 
     for thread_ct in [8,]:
-        data_file = Path('bouncing_ball_3d') / 'data_{:04d}_threads.bin'.format(thread_ct)
+        data_file = Path('plant_3d') / 'data_{:04d}_threads.bin'.format(thread_ct)
         if data_file.exists():
             print_info('Loading {}'.format(data_file))
             data = pickle.load(open(data_file, 'rb'))
@@ -41,6 +41,7 @@ if __name__ == '__main__':
                 print_info('Optimizing with {} finished in {:6.3f}s with {:d} iterations. Average Backward time: {:6.3f}s, Average Forward Time = {:6.3f}s'.format(
                     method, total_time, len(data[method]), average_backward, avg_forward))
 
+    '''
     plt.rc('pdf', fonttype=42)
     plt.rc('font', size=24)             # Controls default text sizes.
     plt.rc('axes', titlesize=28)        # Fontsize of the axes title.
@@ -100,3 +101,4 @@ if __name__ == '__main__':
     fig.savefig(folder / 'parameter_est_bouncing_ball.pdf')
     fig.savefig(folder / 'parameter_est_bouncing_ball.png')
     plt.show()
+    '''

@@ -22,7 +22,8 @@ if __name__ == '__main__':
     env = CantileverEnv3d(seed, folder, { 'refinement': refinement,
         'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio,
-        'twist_angle': twist_angle })
+        'twist_angle': twist_angle,
+        'spp': 64 })
     deformable = env.deformable()
 
     # Optimization parameters.

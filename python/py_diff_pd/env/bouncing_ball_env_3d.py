@@ -2,22 +2,22 @@ import time
 from pathlib import Path
 
 import numpy as np
+import os
 
 from py_diff_pd.env.env_base import EnvBase
 from py_diff_pd.common.common import create_folder, ndarray
-from py_diff_pd.common.mesh import generate_hex_mesh
+from py_diff_pd.common.mesh import generate_hex_mesh, get_contact_vertex
 from py_diff_pd.common.display import render_hex_mesh, export_gif
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
+from py_diff_pd.common.project_path import root_path
 
 class BouncingBallEnv3d(EnvBase):
     # Refinement is an integer controlling the resolution of the mesh.
     def __init__(self, seed, folder, options):
         EnvBase.__init__(self, folder)
 
-        np.random.seed(seed)
         create_folder(folder, exist_ok=True)
 
-        refinement = options['refinement'] if 'refinement' in options else 2
         youngs_modulus = options['youngs_modulus'] if 'youngs_modulus' in options else 1e6
         poissons_ratio = options['poissons_ratio'] if 'poissons_ratio' in options else 0.45
 
@@ -27,25 +27,19 @@ class BouncingBallEnv3d(EnvBase):
         density = 1e3
 
         # Shape of the rolling jelly.
-        cell_nums = (refinement, refinement, refinement)
-        origin = ndarray([0, 0, 0])
-        node_nums = [n + 1 for n in cell_nums]
-        radius = 0.05
-        dx = radius * 2 / refinement
-        bin_file_name = folder / 'mesh.bin'
-        voxels = np.ones(cell_nums)
-        for i in range(cell_nums[0]):
-            for j in range(cell_nums[1]):
-                for k in range(cell_nums[2]):
-                    cell_center = ndarray([(i + 0.5) * dx, (j + 0.5) * dx, (k + 0.5) * dx])
-                    if np.linalg.norm(cell_center - ndarray([radius, radius, radius])) > radius:
-                        voxels[i][j][k] = 0
-        generate_hex_mesh(voxels, dx, origin, bin_file_name)
+        bin_file_name = Path(root_path) / 'asset' / 'mesh' / 'lock.bin'
         mesh = Mesh3d()
         mesh.Initialize(str(bin_file_name))
-
+        # Rescale the mesh.
+        mesh.Scale(0.2)
+        tmp_bin_file_name = '.tmp.bin'
+        mesh.SaveToFile(tmp_bin_file_name)
         deformable = Deformable3d()
-        deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
+        deformable.Initialize(tmp_bin_file_name, density, 'none', youngs_modulus, poissons_ratio)
+        os.remove(tmp_bin_file_name)
+        # Obtain dx.
+        fi = ndarray(mesh.py_element(0))
+        dx = np.linalg.norm(ndarray(mesh.py_vertex(int(fi[0]))) - ndarray(mesh.py_vertex(int(fi[1]))))
         # State-based forces.
         deformable.AddStateForce('gravity', [0, 0, -9.81])
         # Elasticity.
@@ -53,41 +47,16 @@ class BouncingBallEnv3d(EnvBase):
         deformable.AddPdEnergy('volume', [la,], [])
 
         # Collisions.
-        vertex_num = mesh.NumOfVertices()
-        v_bottom = []
-        v_bottom_idx = []
-        for i in range(vertex_num):
-            v = ndarray(mesh.py_vertex(i))
-            if v[2] < dx:
-                v_bottom.append(v)
-                v_bottom_idx.append(i)
-        v_bottom = ndarray(v_bottom)
-        vx_min = np.min(v_bottom[:, 0])
-        vx_max = np.max(v_bottom[:, 0])
-        vy_min = np.min(v_bottom[:, 1])
-        vy_max = np.max(v_bottom[:, 1])
-        # From v_bottom find points whose dim = value_dim. These points form a straight line. Pick its two endpoints.
-        def find_endpoints(dim, value_dim):
-            line = []
-            for v, idx in zip(v_bottom, v_bottom_idx):
-                if np.abs(v[dim] - value_dim) < 0.5 * dx:
-                    line.append((v[1 - dim], idx))
-            line = sorted(line, key=lambda x: x[0])
-            return [l[1] for l in line]
-
-        friction_node_idx = find_endpoints(0, vx_min) \
-            + find_endpoints(0, vx_max) \
-            + find_endpoints(1, vx_min) \
-            + find_endpoints(1, vx_max)
-        friction_node_idx = list(dict.fromkeys(friction_node_idx))
+        friction_node_idx = get_contact_vertex(mesh)
         deformable.SetFrictionalBoundary('planar', [0.0, 0.0, 1.0, 0.0], friction_node_idx)
 
         # Initial state set by rotating the cuboid kinematically.
         dofs = deformable.dofs()
+        print('Bouncing ball element: {:d}, DoFs: {:d}.'.format(mesh.NumOfElements(), dofs))
         act_dofs = deformable.act_dofs()
         q0 = ndarray(mesh.py_vertices())
         v0 = np.zeros(dofs)
-        f_ext = np.random.normal(scale=0.1, size=dofs) * density * (dx ** 3)
+        f_ext = np.zeros(dofs)
 
         # Data members.
         self._deformable = deformable
@@ -97,9 +66,8 @@ class BouncingBallEnv3d(EnvBase):
         self._youngs_modulus = youngs_modulus
         self._poissons_ratio = poissons_ratio
         self._stepwise_loss = True
-        self.__loss_q_grad = np.random.normal(size=dofs)
-        self.__loss_v_grad = np.random.normal(size=dofs)
-        self.__node_nums = node_nums
+
+        self.__spp = options['spp'] if 'spp' in options else 4
 
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)
@@ -115,9 +83,11 @@ class BouncingBallEnv3d(EnvBase):
         mesh = Mesh3d()
         mesh.Initialize(mesh_file)
         render_hex_mesh(mesh, file_name=file_name,
-            resolution=(400, 400), sample=8, transforms=[
-                ('s', 4)
-            ])
+            resolution=(400, 400), sample=self.__spp, transforms=[
+                ('s', 2.5)
+            ],
+            camera_pos=(2.2, -2.2, 1.6),
+            render_voxel_edge=True)
 
     def _stepwise_loss_and_grad(self, q, v, i):
         mesh_file = self._folder / 'groundtruth' / '{:04d}.bin'.format(i)

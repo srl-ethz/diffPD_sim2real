@@ -4,74 +4,54 @@ from pathlib import Path
 import numpy as np
 
 from py_diff_pd.env.env_base import EnvBase
-from py_diff_pd.common.common import create_folder, ndarray
+from py_diff_pd.common.common import create_folder, ndarray, print_info
 from py_diff_pd.common.mesh import generate_hex_mesh
 from py_diff_pd.common.display import render_hex_mesh, export_gif
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
+from py_diff_pd.common.project_path import root_path
 
-class CantileverEnv3d(EnvBase):
-    # Refinement is an integer controlling the resolution of the mesh.
+class PlantEnv3d(EnvBase):
     def __init__(self, seed, folder, options):
         EnvBase.__init__(self, folder)
 
-        np.random.seed(seed)
         create_folder(folder, exist_ok=True)
 
-        refinement = options['refinement'] if 'refinement' in options else 2
         youngs_modulus = options['youngs_modulus'] if 'youngs_modulus' in options else 1e6
         poissons_ratio = options['poissons_ratio'] if 'poissons_ratio' in options else 0.45
-        twist_angle = options['twist_angle'] if 'twist_angle' in options else 0
-
+    
         # Mesh parameters.
         la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
         mu = youngs_modulus / (2 * (1 + poissons_ratio))
         density = 5e3
-        cell_nums = (4 * refinement, refinement, refinement)
-        origin = ndarray([0, 0.12, 0.20])
-        node_nums = (cell_nums[0] + 1, cell_nums[1] + 1, cell_nums[2] + 1)
-        dx = 0.08 / refinement
-        bin_file_name = folder / 'mesh.bin'
-        voxels = np.ones(cell_nums)
-        generate_hex_mesh(voxels, dx, origin, bin_file_name)
+
+        bin_file_name = Path(root_path) / 'asset' / 'mesh' / 'plant.bin'
         mesh = Mesh3d()
         mesh.Initialize(str(bin_file_name))
-
         deformable = Deformable3d()
         deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
+        # Obtain dx.
+        fi = ndarray(mesh.py_element(0))
+        dx = np.linalg.norm(ndarray(mesh.py_vertex(int(fi[0]))) - ndarray(mesh.py_vertex(int(fi[1]))))
         # Boundary conditions.
-        for j in range(node_nums[1]):
-            for k in range(node_nums[2]):
-                node_idx = j * node_nums[2] + k
-                vx, vy, vz = mesh.py_vertex(node_idx)
-                deformable.SetDirichletBoundaryCondition(3 * node_idx, vx)
-                deformable.SetDirichletBoundaryCondition(3 * node_idx + 1, vy)
-                deformable.SetDirichletBoundaryCondition(3 * node_idx + 2, vz)
-        # State-based forces.
-        deformable.AddStateForce('gravity', [0, 0, -9.81])
+        vertex_num = mesh.NumOfVertices()
+        dirichlet_dof = []
+        for vi in range(vertex_num):
+            vx, vy, vz = mesh.py_vertex(vi)
+            if vz < dx / 2:
+                deformable.SetDirichletBoundaryCondition(3 * vi, vx)
+                deformable.SetDirichletBoundaryCondition(3 * vi + 1, vy)
+                deformable.SetDirichletBoundaryCondition(3 * vi + 2, vz)
+                dirichlet_dof.append(vi)
         # Elasticity.
         deformable.AddPdEnergy('corotated', [2 * mu,], [])
         deformable.AddPdEnergy('volume', [la,], [])
 
-        # Initial state set by rotating the cuboid kinematically.
         dofs = deformable.dofs()
+        print('Plant element: {:d}, DoFs: {:d}.'.format(mesh.NumOfElements(), dofs))
         act_dofs = deformable.act_dofs()
-        vertex_num = mesh.NumOfVertices()
         q0 = ndarray(mesh.py_vertices())
-        max_theta = twist_angle
-        for i in range(1, node_nums[0]):
-            theta = max_theta * i / (node_nums[0] - 1)
-            c, s = np.cos(theta), np.sin(theta)
-            R = ndarray([[1, 0, 0],
-                [0, c, -s],
-                [0, s, c]])
-            center = ndarray([i * dx, cell_nums[1] / 2 * dx, cell_nums[2] / 2 * dx]) + origin
-            for j in range(node_nums[1]):
-                for k in range(node_nums[2]):
-                    idx = i * node_nums[1] * node_nums[2] + j * node_nums[2] + k
-                    v = ndarray(mesh.py_vertex(idx))
-                    q0[3 * idx:3 * idx + 3] = R @ (v - center) + center
         v0 = np.zeros(dofs)
-        f_ext = np.random.normal(scale=0.1, size=dofs) * density * (dx ** 3)
+        f_ext = np.zeros(dofs)
 
         # Data members.
         self._deformable = deformable
@@ -81,9 +61,7 @@ class CantileverEnv3d(EnvBase):
         self._youngs_modulus = youngs_modulus
         self._poissons_ratio = poissons_ratio
         self._stepwise_loss = True
-        self.__loss_q_grad = np.random.normal(size=dofs)
-        self.__loss_v_grad = np.random.normal(size=dofs)
-        self.__node_nums = node_nums
+        self.__dirichlet_dof = dirichlet_dof
 
         self.__spp = options['spp'] if 'spp' in options else 4
 
@@ -95,16 +73,17 @@ class CantileverEnv3d(EnvBase):
         return jac_total
 
     def is_dirichlet_dof(self, dof):
-        i = dof // (self.__node_nums[1] * self.__node_nums[2])
-        return i == 0
+        return dof in self.__dirichlet_dof
 
     def _display_mesh(self, mesh_file, file_name):
         mesh = Mesh3d()
         mesh.Initialize(mesh_file)
         render_hex_mesh(mesh, file_name=file_name,
-            resolution=(400, 400), sample=self.__spp, transforms=[
-                ('s', 3)
-            ], render_voxel_edge=True)
+            resolution=(400, 400), sample=self.__spp,
+            transforms=[
+                ('s', 1.4)
+            ],
+            render_voxel_edge=True)
 
     def _stepwise_loss_and_grad(self, q, v, i):
         mesh_file = self._folder / 'groundtruth' / '{:04d}.bin'.format(i)
