@@ -54,7 +54,9 @@ if __name__ == '__main__':
     # Decision variables: log(E), log(nu).
     x_lb = ndarray([np.log(1e6), np.log(0.2)])
     x_ub = ndarray([np.log(1e7), np.log(0.45)])
-    x_init = np.random.uniform(x_lb, x_ub)
+    # For this example, we intentionally pick an initial guess far from the ground truth so that the initial motion
+    # is distinguishable enough from the ground truth motion.
+    x_init = ndarray([np.log(1e7) - 0.01, np.log(0.45) - 0.01])
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
 
     # Generate initial motion.
