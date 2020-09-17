@@ -55,23 +55,25 @@ if __name__ == '__main__':
 
     # Compute actuation.
     control_frame = int(frame_num // control_frame_num)
-    x_lb = np.zeros(act_group_num)
-    x_ub = np.ones(act_group_num) * 2
+    x_lb = np.zeros(act_group_num * control_frame)
+    x_ub = np.ones(act_group_num * control_frame) * 2
     x_init = np.random.uniform(low=x_lb, high=x_ub)
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
 
     act_groups = env.act_groups()
     def variable_to_act(x):
+        x = ndarray(x.ravel()).reshape((control_frame, act_group_num))
         acts = []
         for c in range(control_frame):
             frame_act = np.zeros(act_dofs)
             for i, group in enumerate(act_groups):
                 for j in group:
-                    frame_act[j] = x[(i - c) % act_group_num]
+                    frame_act[j] = x[c][i]
             acts += [np.copy(frame_act) for _ in range(control_frame_num)]
         return acts
 
     def variable_to_gradient(x, dl_dact):
+        x = ndarray(x.ravel()).reshape((control_frame, act_group_num))
         grad = np.zeros(x.shape)
         for c in range(control_frame):
             for f in range(control_frame_num):
@@ -79,7 +81,7 @@ if __name__ == '__main__':
                 grad_act = dl_dact[f_idx]
                 for i, group in enumerate(act_groups):
                     for j in group:
-                        grad[(i - c) % act_group_num] += grad_act[j]
+                        grad[c, i] += grad_act[j]
         return grad.ravel()
 
     # Normalize the loss.

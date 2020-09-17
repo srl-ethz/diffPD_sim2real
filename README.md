@@ -82,6 +82,7 @@ Note that the `Cantilever` example is deprecated and not included in the paper.
 
 **Plant**
 - `plant_3d.py`: run the `Plant` example on GCP.
+- `print_plant_3d.py`: generate data for Table 3.
 - `render_plant_3d.py`: generate mesh data for the `Plant` video.
 
 **Bouncing ball**
@@ -92,3 +93,4 @@ Note that the `Cantilever` example is deprecated and not included in the paper.
 #### Sec. 7.3
 **Torus**
 - `torus_3d.py`: run the `Torus` example on GCP.
+- `render_torus_3d.py`: generate mesh data for the `Torus` video.
