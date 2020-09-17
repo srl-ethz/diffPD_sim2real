@@ -118,7 +118,7 @@ class TorusEnv3d(EnvBase):
         mesh.Initialize(mesh_file)
         render_hex_mesh(mesh, file_name=file_name,
             resolution=(400, 400), sample=self.__spp, transforms=[
-                ('s', 8)
+                ('s', 3)
             ],
             camera_pos=[2, -2.2, 1.4],
             camera_lookat=[0.5, 0.5, 0.4],
@@ -131,6 +131,6 @@ class TorusEnv3d(EnvBase):
         # Compute grad.
         grad_q = np.zeros(q.size)
         vertex_num = int(q.size // 3)
-        grad_q[::3] = -1.0 / vertex_num        
+        grad_q[::3] = -1.0 / vertex_num
         grad_v = np.zeros(v.size)
         return loss, grad_q, grad_v
