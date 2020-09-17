@@ -6,6 +6,7 @@ import time
 import numpy as np
 import scipy.optimize
 import pickle
+import IPython
 
 from py_diff_pd.common.common import ndarray, create_folder, rpy_to_rotation, rpy_to_rotation_gradient
 from py_diff_pd.common.common import print_info, print_ok, print_error
@@ -17,7 +18,7 @@ if __name__ == '__main__':
     # TAO: @Andy: I changed seed to 42 in order to be consistent with other examples.
     seed = 42
     folder = Path('cow_3d')
-    act_max = 1.35
+    act_max = 1.5
     youngs_modulus = 1e6
     poissons_ratio = 0.49
     env = CowEnv3d(seed, folder, {
@@ -39,7 +40,7 @@ if __name__ == '__main__':
     # TAO: I changed these data in the hope that I can see results faster. @Andy: you can change them back to values you used:
     # dt = 1e-3, frame_num = 600.
     dt = 1e-3
-    frame_num = 600
+    frame_num = 575
 
     # Initial state.
     dofs = deformable.dofs()
@@ -52,8 +53,10 @@ if __name__ == '__main__':
     # Optimization.
     # Variables to be optimized:
     x_lb = ndarray([0, 0, 2 * np.pi / frame_num])
-    x_ub = ndarray([1, 1, 2 * np.pi / 14])
-    x_init = ndarray([np.random.random(), np.random.random(), np.random.uniform(x_lb[2], x_ub[2])])
+    x_ub = ndarray([1.45, 0.85, 2 * np.pi / 12])
+    x_init = ndarray([np.random.uniform(x_lb[i], x_ub[i]) for i in range(3)])
+    #x_init = x_lb + x_ub / 2. + (ndarray([np.random.random(), np.random.uniform(x_lb[1], x_ub[1]), np.random.uniform(x_lb[2], x_ub[2])])  - (x_ub + x_lb) / 2.) * 0.01
+
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
     # Visualize initial guess.
     def variable_to_states(x, return_jac):
@@ -143,7 +146,7 @@ if __name__ == '__main__':
         # TAO: @Andy: I set 'maxiter' to 25 in case the optimization runs too long. You are free to tune this value
         # or not use it at all.
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
-            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-3, 'maxiter': 25 })
+            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-2, 'maxiter': 25 })
         t1 = time.time()
         print(result.success)
         x_final = result.x
