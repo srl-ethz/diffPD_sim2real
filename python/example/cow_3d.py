@@ -18,7 +18,7 @@ if __name__ == '__main__':
     # TAO: @Andy: I changed seed to 42 in order to be consistent with other examples.
     seed = 42
     folder = Path('cow_3d')
-    act_max = 1.5
+    act_max = 1.49
     youngs_modulus = 1e6
     poissons_ratio = 0.49
     env = CowEnv3d(seed, folder, {
