@@ -17,7 +17,7 @@ if __name__ == '__main__':
     # Hyperparameters.
     inner_radius = 0.35  # Should be strictly smaller than 0.5.
     width = 0.2 # Needs to be between 0 and 0.5 + inner_radius.
-    x_cell_num = 20 # How many voxels would you like the x axis to have.
+    x_cell_num = 16 # How many voxels would you like the x axis to have.
     # End of hyperparameters.
 
     outer_radius = 0.5  # Fixed. Do not change.
