@@ -118,7 +118,8 @@ def generate_hex_mesh(voxels, dx, origin, bin_file_name, write=True):
     return voxel_indices, vertex_flag
 
 # Given a hex mesh, save it as an obj file with texture coordinates.
-def hex2obj_with_textures(hex_mesh, obj_file_name=None, pbrt_file_name=None):
+def hex2obj_with_textures(hex_mesh, obj_file_name=None, pbrt_file_name=None,
+    texture_map=None):
     vertex_num = hex_mesh.NumOfVertices()
     element_num = hex_mesh.NumOfElements()
 
@@ -157,14 +158,17 @@ def hex2obj_with_textures(hex_mesh, obj_file_name=None, pbrt_file_name=None):
         for vi in fi:
             v_out.append(ndarray(hex_mesh.py_vertex(int(vi))))
 
+    if texture_map is None:
+        texture_map = [[0, 0], [1, 0], [1, 1], [0, 1]]
+    texture_map = ndarray(texture_map)
+    assert texture_map.shape == (4, 2)
+
     if obj_file_name is not None:
         with open(obj_file_name, 'w') as f_obj:
             for vv in v_out:
                 f_obj.write('v {:6f} {:6f} {:6f}\n'.format(vv[0], vv[1], vv[2]))
-            f_obj.write('vt 0 0\n')
-            f_obj.write('vt 1 0\n')
-            f_obj.write('vt 1 1\n')
-            f_obj.write('vt 0 1\n')
+            for u, v in texture_map:
+                f_obj.write('vt {:6f} {:6f}\n'.format(u, v))
             for ff in f_out:
                 f_obj.write('f {:d}/1 {:d}/2 {:d}/3\n'.format(ff[0] + 1, ff[1] + 1, ff[2] + 1))
                 f_obj.write('f {:d}/1 {:d}/3 {:d}/4\n'.format(ff[0] + 1, ff[2] + 1, ff[3] + 1))

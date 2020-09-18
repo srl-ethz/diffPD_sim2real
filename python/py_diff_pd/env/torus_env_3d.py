@@ -118,7 +118,7 @@ class TorusEnv3d(EnvBase):
         mesh.Initialize(mesh_file)
         render_hex_mesh(mesh, file_name=file_name,
             resolution=(400, 400), sample=self.__spp, transforms=[
-                ('s', 3)
+                ('s', 5)
             ],
             camera_pos=[2, -2.2, 1.4],
             camera_lookat=[0.5, 0.5, 0.4],
