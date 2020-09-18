@@ -16,8 +16,8 @@ if __name__ == '__main__':
 
     # Hyperparameters.
     inner_radius = 0.35  # Should be strictly smaller than 0.5.
-    width = 0.1 # Needs to be between 0 and 0.5 + inner_radius.
-    x_cell_num = 30 # How many voxels would you like the x axis to have.
+    width = 0.2 # Needs to be between 0 and 0.5 + inner_radius.
+    x_cell_num = 12 # How many voxels would you like the x axis to have.
     # End of hyperparameters.
 
     outer_radius = 0.5  # Fixed. Do not change.
@@ -65,7 +65,7 @@ if __name__ == '__main__':
                     voxels[i][j][k] = 1
 
     # Export data.
-    generate_hex_mesh(voxels, dx, [0, 0, 0], torus_bin_file, True)
+    generate_hex_mesh(voxels, dx, [0, -(outer_radius - inner_radius + width) / 2, 0], torus_bin_file, True)
     mesh = Mesh3d()
     mesh.Initialize(str(torus_bin_file))
     hex2obj(mesh, torus_obj_file, obj_type='tri')

@@ -20,7 +20,7 @@ if __name__ == '__main__':
     youngs_modulus = 5e5
     poissons_ratio = 0.4
     act_stiffness = 2e5
-    act_group_num = 12
+    act_group_num = 8
     env = TorusEnv3d(seed, folder, { 'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio,
         'act_stiffness': act_stiffness,
@@ -39,8 +39,8 @@ if __name__ == '__main__':
     )
 
     dt = 4e-3
-    frame_num = 200
-    control_frame_num = 10
+    frame_num = 400
+    control_frame_num = 20
     assert frame_num % control_frame_num == 0
 
     # Compute the initial state.
@@ -63,25 +63,51 @@ if __name__ == '__main__':
     act_groups = env.act_groups()
     def variable_to_act(x):
         x = ndarray(x.ravel()).reshape((control_frame, act_group_num))
-        acts = []
+        # Linear interpolation.
+        x_aug = []
         for c in range(control_frame):
+            c_next = c if c == control_frame - 1 else c + 1
+            for i in range(control_frame_num):
+                t = i * 1.0 / control_frame_num
+                x_aug.append((1 - t) * x[c] + t * x[c_next])
+
+        acts = []
+        for x_aug_frame in x_aug:
             frame_act = np.zeros(act_dofs)
             for i, group in enumerate(act_groups):
                 for j in group:
-                    frame_act[j] = x[c][i]
-            acts += [np.copy(frame_act) for _ in range(control_frame_num)]
+                    frame_act[j] = x_aug_frame[i]
+            acts.append(frame_act)
+        acts = ndarray(acts)
         return acts
 
     def variable_to_gradient(x, dl_dact):
         x = ndarray(x.ravel()).reshape((control_frame, act_group_num))
+        # Linear interpolation.
+        x_aug = []
+        for c in range(control_frame):
+            c_next = c if c == control_frame - 1 else c + 1
+            for i in range(control_frame_num):
+                t = i * 1.0 / control_frame_num
+                x_aug.append((1 - t) * x[c] + t * x[c_next])
+
+        grad_x_aug = np.zeros((frame_num, act_group_num))
+        for k in range(frame_num):
+            x_aug_frame = x_aug[k]
+            grad_act = dl_dact[k]
+            for i, group in enumerate(act_groups):
+                for j in group:
+                    grad_x_aug[k, i] += grad_act[j]
+
+        # Backpropagate from grad_x_aug to grad.
         grad = np.zeros(x.shape)
         for c in range(control_frame):
-            for f in range(control_frame_num):
-                f_idx = c * control_frame_num + f
-                grad_act = dl_dact[f_idx]
-                for i, group in enumerate(act_groups):
-                    for j in group:
-                        grad[c, i] += grad_act[j]
+            c_next = c if c == control_frame - 1 else c + 1
+            for i in range(control_frame_num):
+                t = i * 1.0 / control_frame_num
+                grad[c] += (1 - t) * grad_x_aug[c * control_frame_num + i]
+                grad[c_next] += t * grad_x_aug[c * control_frame_num + i]
+
         return grad.ravel()
 
     # Normalize the loss.
@@ -106,6 +132,7 @@ if __name__ == '__main__':
 
     # Initial state after selecting the best from random guesses.
     a0 = variable_to_act(x_init)
+    '''
     # Sanity check.
     random_weight = np.random.normal(size=ndarray(a0).shape)
     def loss_and_grad(x):
@@ -114,6 +141,7 @@ if __name__ == '__main__':
         grad = variable_to_gradient(x, random_weight)
         return loss, grad
     check_gradients(loss_and_grad, x_init, verbose=True)
+    '''
     env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a0, f0, require_grad=False, vis_folder='init')
 
     # Optimization.
@@ -140,7 +168,7 @@ if __name__ == '__main__':
 
         t0 = time.time()
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
-            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-2, 'maxiter': 10 })
+            method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-3, 'maxiter': 10 })
         t1 = time.time()
         print(result.success)
         x_final = result.x

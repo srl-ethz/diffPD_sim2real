@@ -25,7 +25,7 @@ class TorusEnv3d(EnvBase):
         mu = youngs_modulus / (2 * (1 + poissons_ratio))
         density = 1e3
 
-        bin_file_name = Path(root_path) / 'asset' / 'mesh' / 'torus.bin'
+        bin_file_name = Path(root_path) / 'asset' / 'mesh' / 'torus_analytic.bin'
         mesh = Mesh3d()
         mesh.Initialize(str(bin_file_name))
         torus_size = 0.1
@@ -85,7 +85,7 @@ class TorusEnv3d(EnvBase):
             e_dir = e_dir / np.linalg.norm(e_dir)
             deformable.AddActuation(act_stiffness, e_dir, [i,])
             angle = np.arctan2(e_offset[2], e_offset[0])
-            idx = np.clip(int(angle / delta), 0, act_group_num - 1)
+            idx = int(np.floor(angle / delta)) % act_group_num
             act_groups[idx].append(i)
 
         # Data members.
