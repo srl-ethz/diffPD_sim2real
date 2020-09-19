@@ -77,10 +77,10 @@ class QuadrupedEnv3d(EnvBase):
                 vx_idx = vx / dx
                 vy_idx = vy / dx
                 if vx_idx < 0.5 or np.abs(vx_idx - refinement) < 0.5 or \
-                    np.abs(vx_idx - (body_x_length*refinement - refinement)) < 0.5 or \
-                    np.abs(vx_idx - body_x_length*refinement) < 0.5 or \
+                    np.abs(vx_idx - (body_x_length * refinement - refinement)) < 0.5 or \
+                    np.abs(vx_idx - body_x_length * refinement) < 0.5 or \
                     vy_idx < 0.5 or np.abs(vy_idx - refinement) < 0.5 or \
-                    np.abs(vy_idx - (body_y_length*refinement - refinement)) < 0.5 or \
+                    np.abs(vy_idx - (body_y_length * refinement - refinement)) < 0.5 or \
                     np.abs(vy_idx - body_y_length * refinement) < 0.5:
                     friction_node_idx.append(i)
         deformable.SetFrictionalBoundary('planar', [0.0, 0.0, 1.0, 0.0], friction_node_idx)
@@ -101,12 +101,12 @@ class QuadrupedEnv3d(EnvBase):
             x_idx, y_idx, z_idx = com / dx
             if z_idx >= leg_z_length * refinement: continue
             # First, determine which leg the voxel is in.
-            leg_key = ('F' if x_idx >= body_x_length * 0.5 else 'R') \
-                + ('L' if y_idx >= body_y_length * 0.5 else 'R')
+            leg_key = ('F' if x_idx >= body_x_length * refinement * 0.5 else 'R') \
+                + ('L' if y_idx >= body_y_length * refinement * 0.5 else 'R')
             # Second, determine which muscle this voxel should be in front (F) or back (B).
             if leg_key[0] == 'F':
-                x_idx -= body_x_length*refinement - refinement
-            muscle_key = ('F' if x_idx >= 0.5 * refinement else 'B') \
+                x_idx -= body_x_length * refinement - refinement
+            muscle_key = 'F' if x_idx >= 0.5 * refinement else 'B'
 
             key = leg_key + muscle_key
             if key not in leg_indices:
@@ -141,6 +141,8 @@ class QuadrupedEnv3d(EnvBase):
         self._act_indices = act_indices
         self._options = options
 
+        self.__spp = options['spp'] if 'spp' in options else 4
+
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)
         jac_total = np.zeros((2, 2))
@@ -164,9 +166,11 @@ class QuadrupedEnv3d(EnvBase):
         mesh = Mesh3d()
         mesh.Initialize(mesh_file)
         render_hex_mesh(mesh, file_name=file_name,
-            resolution=(400, 400), sample=8, transforms=[
-                ('s', 1.5)
-            ])
+            resolution=(400, 400), sample=self.__spp, transforms=[
+                ('s', 1)
+            ],
+            camera_pos=(2, -2.2, 1.5),
+            render_voxel_edge=True)
 
     def _loss_and_grad(self, q, v):
         # Compute the center of mass.

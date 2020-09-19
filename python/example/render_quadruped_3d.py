@@ -8,7 +8,7 @@ import pickle
 
 from py_diff_pd.common.common import ndarray, create_folder
 from py_diff_pd.common.common import print_info, print_ok, print_error
-from py_diff_pd.common.mesh import hex2obj, filter_hex
+from py_diff_pd.common.mesh import hex2obj_with_textures, filter_hex
 from py_diff_pd.common.grad_check import check_gradients
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 from py_diff_pd.env.quadruped_env_3d import QuadrupedEnv3d
@@ -30,21 +30,21 @@ if __name__ == '__main__':
         'leg_z_length': leg_z_length,
         'body_x_length': body_x_length,
         'body_y_length': body_y_length,
-        'body_z_length': body_z_length })
+        'body_z_length': body_z_length,
+        'spp': 64 })
     deformable = env.deformable()
     leg_indices = env.leg_indices()
     act_indices = env.act_indices()
 
     # Optimization parameters.
     thread_ct = 8
-    newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
-    pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
+    opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
-    methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
-    opts = (newton_opt, newton_opt, pd_opt)
+    method = 'pd_eigen'
 
     dt = 1e-2
-    frame_num = 100
+    # We optimize quadruped for 100 frames but we can use larger frames for verifying the open-loop controller.
+    frame_num = 400
 
     # Load results.
     folder = Path('quadruped_3d')
@@ -80,13 +80,16 @@ if __name__ == '__main__':
                             a[i][idx] = act_max * (1 - A_b * np.sin(w * i)) / 2
         return a
 
-    def simulate(x, method, opt, vis_folder):
+    def simulate(x, vis_folder):
         a = variable_to_acts(x)
         env.simulate(dt, frame_num, method, opt, q0, v0, a, f0, require_grad=False, vis_folder=vis_folder)
 
-    # Initial guess.
-    x = data['newton_pcg'][0]['x']
-    simulate(x, methods[0], opts[0], 'init')
+    # Initial guess and final results.
+    x_init = data[method][0]['x']
+    x_final = data[method][-1]['x']
+
+    simulate(x_init, 'init')
+    simulate(x_final, 'final')
 
     # Assemble muscles.
     muscle_idx = act_indices
@@ -98,10 +101,24 @@ if __name__ == '__main__':
         if all_idx[idx] == 0:
             not_muscle_idx.append(idx)
 
-    # Load meshes.
+    # Reconstruct muscle groups.
+    muscle_groups = {}
+    for key, val in leg_indices.items():
+        muscle_groups[key] = [act_indices[v] for v in val]
+
+    def gather_act(act):
+        reduced_act = {}
+        for key, val in leg_indices.items():
+            reduced_act[key] = act[val[0]]
+            for v in val:
+                assert act[v] == act[val[0]]
+        return reduced_act
+
     def generate_mesh(vis_folder, mesh_folder, x_var):
         create_folder(folder / mesh_folder)
         act = variable_to_acts(x_var)
+        color_num = 11
+        duv = 1 / color_num
         for i in range(frame_num):
             frame_folder = folder / mesh_folder / '{:d}'.format(i)
             create_folder(frame_folder)
@@ -113,27 +130,34 @@ if __name__ == '__main__':
             # Generate body.obj.
             mesh = Mesh3d()
             mesh.Initialize(str(frame_folder / 'body.bin'))
-            hex2obj(mesh, obj_file_name=frame_folder / 'body.obj', obj_type='tri')
+            hex2obj_with_textures(mesh, obj_file_name=frame_folder / 'body.obj')
+
+            # Generate action.npy.
+            frame_act = gather_act(act[i])
+            frame_act_flattened = []
+            for _, a in frame_act.items():
+                frame_act_flattened.append(a)
+            np.save(frame_folder / 'action.npy', ndarray(frame_act_flattened))
 
             # Generate muscle/
             create_folder(frame_folder / 'muscle')
-            for j, idx in enumerate(muscle_idx):
-                sub_mesh = filter_hex(mesh, [idx,])
-                hex2obj(sub_mesh, obj_file_name=frame_folder / 'muscle' / '{:d}.obj'.format(j), obj_type='tri')
-
-            # Generate action.npy.
-            frame_act = act[i]
-            np.save(frame_folder / 'action.npy', frame_act)
+            cnt = 0
+            for key, group in muscle_groups.items():
+                sub_mesh = filter_hex(mesh, group)
+                a = frame_act[key]
+                v = a / act_max
+                assert 0 <= v <= 1
+                v_lower = np.floor(v / duv)
+                if v_lower == color_num: v_lower -= 1
+                v_upper = v_lower + 1
+                texture_map = ((0, v_lower * duv), (1, v_lower * duv), (1, v_upper * duv), (0, v_upper * duv))
+                hex2obj_with_textures(sub_mesh, obj_file_name=frame_folder / 'muscle' / '{:d}.obj'.format(cnt),
+                    texture_map=texture_map)
+                cnt += 1
 
             # Generate not_muscle.obj.
             sub_mesh = filter_hex(mesh, not_muscle_idx)
-            hex2obj(sub_mesh, obj_file_name=frame_folder / 'not_muscle.obj', obj_type='tri')
+            hex2obj_with_textures(sub_mesh, obj_file_name=frame_folder / 'not_muscle.obj')
 
-    generate_mesh('init', 'init_mesh', x)
-
-    for method, opt in zip(methods, opts):
-        # Final result.
-        x_final = data[method][-1]['x']
-
-        simulate(x_final, method, opt, 'final_{}'.format(method))
-        generate_mesh('final_{}'.format(method), 'final_mesh_{}'.format(method), x_final)
+    generate_mesh('init', 'init_mesh', x_init)
+    generate_mesh('final', 'final_mesh', x_final)
