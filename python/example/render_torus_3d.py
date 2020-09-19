@@ -25,7 +25,7 @@ if __name__ == '__main__':
         'poissons_ratio': poissons_ratio,
         'act_stiffness': act_stiffness,
         'act_group_num': act_group_num,
-        'spp': 1
+        'spp': 64
     })
     deformable = env.deformable()
 
