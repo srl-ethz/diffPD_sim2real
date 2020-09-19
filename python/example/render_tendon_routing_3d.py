@@ -27,16 +27,15 @@ if __name__ == '__main__':
         'refinement': refinement,
         'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio,
-        'target': target })
+        'target': target,
+        'spp': 64 })
     deformable = env.deformable()
 
     # Optimization parameters.
     thread_ct = 8
-    newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
-    pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
+    method = 'pd_eigen'
+    opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
-    methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
-    opts = (newton_opt, newton_opt, pd_opt)
 
     dt = 1e-2
     frame_num = 100
@@ -63,17 +62,20 @@ if __name__ == '__main__':
             act[a] = x[i]
         return act
 
-    def simulate(x, method, opt, vis_folder):
+    def simulate(x, vis_folder):
         a = variable_to_act(x)
         env.simulate(dt, frame_num, method, opt, q0, v0, [a for _ in range(frame_num)], f0,
             require_grad=False, vis_folder=vis_folder)
 
     # Initial guess.
-    x = data['newton_pcg'][0]['x']
-    simulate(x, methods[0], opts[0], 'init')
+    x_init = data[method][0]['x']
+    x_final = data[method][-1]['x']
+    simulate(x_init, 'init')
+    simulate(x_final, 'final')
 
     # Load meshes.
-    def generate_mesh(vis_folder, mesh_folder):
+    # TODO.
+    def generate_mesh(vis_folder, mesh_folder, x_val):
         create_folder(folder / mesh_folder)
         for i in range(u_dofs):
             create_folder(folder / mesh_folder / '{:02d}'.format(i))
@@ -86,15 +88,10 @@ if __name__ == '__main__':
                 hex2obj(sub_mesh, obj_file_name=folder / mesh_folder / '{:02d}'.format(j) / '{:04d}.obj'.format(i),
                     obj_type='tri')
 
-    generate_mesh('init', 'init_mesh')
+    generate_mesh('init', 'init_mesh', x_init)
+    generate_mesh('final', 'final_mesh', x_final)
 
-    for method, opt in zip(methods, opts):
-        # Final result.
-        x_final = data[method][-1]['x']
-
-        simulate(x_final, method, opt, 'final_{}'.format(method))
-        generate_mesh('final_{}'.format(method), 'final_mesh_{}'.format(method))
-
+    '''
     def save_endpoint_sequences(mesh_folder):
         endpoints = []
         for i in range(frame_num + 1):
@@ -115,3 +112,4 @@ if __name__ == '__main__':
     np.save(folder / 'init_mesh' / 'init_act', data['newton_pcg'][0]['x'])
     for method in methods:
         np.save(folder / 'final_mesh_{}'.format(method) / '{}_act'.format(method), data[method][-1]['x'])
+    '''
