@@ -15,7 +15,6 @@ from py_diff_pd.core.py_diff_pd_core import StdRealVector
 from py_diff_pd.env.cow_env_3d import CowEnv3d
 
 if __name__ == '__main__':
-    # TAO: @Andy: I changed seed to 42 in order to be consistent with other examples.
     seed = 42
     folder = Path('cow_3d')
     act_max = 1.49
@@ -29,16 +28,12 @@ if __name__ == '__main__':
 
     # Optimization parameters.
     thread_ct = 8
-    # TAO: @Andy: I updated the values in opt in order to be consistent with values used in other demos, so in general please do not
-    # attempt to tune them.
     newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': thread_ct }
     pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
     methods = ('pd_eigen',)
     opts = (pd_opt,)
 
-    # TAO: I changed these data in the hope that I can see results faster. @Andy: you can change them back to values you used:
-    # dt = 1e-3, frame_num = 600.
     dt = 1e-3
     frame_num = 575
 
@@ -94,9 +89,6 @@ if __name__ == '__main__':
     env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a_init, f0, require_grad=False, vis_folder='init')
 
     # Normalize the loss.
-    # TAO: @Andy: I wrote line 94 - 104 to sample 16 initial guesses and compute the normalized loss reported in
-    # the paper. You can comment them out while tuning the cow example.
-    '''
     rand_state = np.random.get_state()
     random_guess_num = 16
     random_loss = []
@@ -108,13 +100,9 @@ if __name__ == '__main__':
     
     loss_range = ndarray([0, np.mean(random_loss)])
     print_info('Loss range: {:3f}, {:3f}'.format(loss_range[0], loss_range[1]))
-    
     np.random.set_state(rand_state)
-    
 
     data = { 'loss_range': loss_range }
-    '''
-    data = {}
     # This example takes very long. As a result, I reverse the order so that I can see PD results first.
     for method, opt in zip(reversed(methods), reversed(opts)):
         data[method] = []
@@ -143,8 +131,6 @@ if __name__ == '__main__':
         # check_gradients(loss_and_grad, x_init, eps=1e-3)
 
         t0 = time.time()
-        # TAO: @Andy: I set 'maxiter' to 25 in case the optimization runs too long. You are free to tune this value
-        # or not use it at all.
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
             method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-2, 'maxiter': 25 })
         t1 = time.time()
