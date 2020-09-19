@@ -102,7 +102,7 @@ if __name__ == '__main__':
             elif 'cholesky' in method:
                 color = 'tab:red'
             elif 'acc' in method:
-                color = 'tab:olive'
+                color = 'tab:orange'
             if method == 'pd_no_bfgs' and title != 'backward':
                 continue
             for idx, thread_ct in enumerate(thread_cts):
