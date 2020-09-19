@@ -22,6 +22,7 @@ if __name__ == '__main__':
     refinement = 2
     muscle_cnt = 4
     muscle_ext = 4
+    act_max = 2
     env = TendonRoutingEnv3d(seed, folder, {
         'muscle_cnt': muscle_cnt,
         'muscle_ext': muscle_ext,
@@ -65,7 +66,7 @@ if __name__ == '__main__':
 
     # Optimization.
     x_lb = np.zeros(u_dofs)
-    x_ub = np.ones(u_dofs) * 2
+    x_ub = np.ones(u_dofs) * act_max
     x_init = np.random.uniform(x_lb, x_ub)
     # Visualize initial guess.
     a_init = variable_to_act(x_init)
