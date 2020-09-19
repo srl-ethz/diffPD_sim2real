@@ -15,33 +15,7 @@ conda env create -f environment.yml
 conda activate diff_pd
 ./install.sh
 ```
-If you would like to enable multi-threading, set the thread_ct in the options object in the python script. The examples below all use a default of 4 threads for parallel processes. Using 1 will force the program to run sequentially.
-
-### (Optional) Using Pardiso for the linear solver
-Let `PARDISO_HOME` be the folder that you saved your Pardiso license file and the binary file. For example, if `/home/pardiso/pardiso.lic` and `/home/pardiso/libpardiso600-GNU720-X86-64.so` are your license and binary files, then `PARDISO_HOME` should be set to `/home/pardiso`. Please note that the whole codebase relies on this particular Pardiso version --- newer or older Pardiso may cause some weird segmentation fault issues on the Python end. See the comments in `cpp/CMakeLists.txt` for details.
-- Set the environment variable `PARDISO_LIC_PATH`:
-```
-export PARDISO_LIC_PATH=<PARDISO_HOME>
-export PARDISOLICMESSAGE=1
-```
-- Pardiso requires `lapack` and `blas`:
-```
-sudo apt-get install liblapack-dev
-sudo apt-get install libblas-dev
-```
-As of the date this README is written, the version we use is `3.7.1-4ubuntu1`:
-```
-Reading package lists... Done
-Building dependency tree
-Reading state information... Done
-libblas-dev is already the newest version (3.7.1-4ubuntu1).
-liblapack-dev is already the newest version (3.7.1-4ubuntu1).
-0 upgraded, 0 newly installed, 0 to remove and 132 not upgraded.
-```
-- Recompile the codebase with an optional `pardiso` argument:
-```
-./install.sh pardiso
-```
+If you would like to enable multi-threading, set the thread_ct in the options object in the python script. The examples below all use a default of 8 threads for parallel processes. Using 1 will force the program to run sequentially.
 
 ## Examples
 Navigate to the `python/example` path and run `python [example_name].py` where the `example_name` could be the following:
@@ -90,7 +64,23 @@ Note that the `Cantilever` example is deprecated and not included in the paper.
 - `print_bouncing_ball_3d.py`: generate data for Table 3.
 - `render_bouncing_ball_3d.py`: generate mesh data for the `Bouncing ball` video.
 
+#### Sec. 7.2
+**Bunny**
+- `bunny_3d.py`: run the `Bunny` example on GCP.
+- `render_bunny_3d.py`: generate mesh data for the `Bunny` video.
+
+**Routing tendon**
+- `tendon_routing_3d.py`: run the `Routing tendon` example on GCP.
+- `render_tendon_routing_3d.py`: generate mesh data for the `Routing tendon` video.
+
 #### Sec. 7.3
 **Torus**
 - `torus_3d.py`: run the `Torus` example on GCP.
 - `render_torus_3d.py`: generate mesh data for the `Torus` video.
+
+**Quadruped**
+- `quadruped_3d.py`: run the `Quadruped` example on GCP.
+- `render_quadruped_3d.py`: generate mesh data for the `Quadruped` video.
+
+#### Sec. 7.4
+Examples in this section require non-trivial setup of deep reinforcement learning pipelines, so it is not included in the master branch.
