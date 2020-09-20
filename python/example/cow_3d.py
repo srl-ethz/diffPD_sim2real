@@ -6,7 +6,6 @@ import time
 import numpy as np
 import scipy.optimize
 import pickle
-import IPython
 
 from py_diff_pd.common.common import ndarray, create_folder, rpy_to_rotation, rpy_to_rotation_gradient
 from py_diff_pd.common.common import print_info, print_ok, print_error
@@ -31,8 +30,8 @@ if __name__ == '__main__':
     newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': thread_ct }
     pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
-    methods = ('pd_eigen',)
-    opts = (pd_opt,)
+    methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
+    opts = (newton_opt, newton_opt, pd_opt)
 
     dt = 1e-3
     frame_num = 575
@@ -86,7 +85,7 @@ if __name__ == '__main__':
 
     # Initial guess.
     a_init = variable_to_states(x_init, False)
-    env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a_init, f0, require_grad=False, vis_folder='init')
+    env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, a_init, f0, require_grad=False, vis_folder='init')
 
     # Normalize the loss.
     rand_state = np.random.get_state()
