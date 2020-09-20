@@ -159,7 +159,20 @@ class CowEnv3d(EnvBase):
         self._poissons_ratio = poissons_ratio
         self._stepwise_loss = False
         self._leg_indices = leg_indices
+        self._act_indices = act_indices
         self._spine_indices = spine_indices
+        self.__element_num = mesh.NumOfElements()
+
+        self.__spp = options['spp'] if 'spp' in options else 4
+
+    def element_num(self):
+        return self.__element_num
+
+    def leg_indices(self):
+        return self._leg_indices
+
+    def act_indices(self):
+        return self._act_indices
 
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)
@@ -175,9 +188,9 @@ class CowEnv3d(EnvBase):
         mesh = Mesh3d()
         mesh.Initialize(mesh_file)
         render_hex_mesh(mesh, file_name=file_name,
-            resolution=(400, 400), sample=8, transforms=[
+            resolution=(400, 400), sample=self.__spp, transforms=[
                 ('s', 4)
-            ])
+            ], render_voxel_edge=True)
 
     def _loss_and_grad(self, q, v):
         # Compute the center of mass.

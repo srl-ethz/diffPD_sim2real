@@ -82,5 +82,9 @@ Note that the `Cantilever` example is deprecated and not included in the paper.
 - `quadruped_3d.py`: run the `Quadruped` example on GCP.
 - `render_quadruped_3d.py`: generate mesh data for the `Quadruped` video.
 
+**Cow**
+- `cow_3d.py`: run the `Cow` example on GCP.
+- `render_cow_3d.py`: generate mesh data for the `Cow` video.
+
 #### Sec. 7.4
 Examples in this section require non-trivial setup of deep reinforcement learning pipelines, so it is not included in the master branch.
