@@ -36,8 +36,8 @@ def render_starfish_3d(mesh_folder, img_name):
             ('t', (0, -0.2, 0.1))
         ])
     renderer.add_tri_mesh(Path(root_path) / 'asset/mesh/curved_ground.obj',
-        texture_img='chkbd_24_0.7')
-    renderer.render(verbose=True, nproc=6)
+        texture_img='chkbd_24_0.7', color='064273')
+    renderer.render(verbose=True, nproc=None)
 
 def render_starfish_actuator(mesh_folder, img_name):
     options = {
@@ -88,7 +88,7 @@ def render_starfish_actuator(mesh_folder, img_name):
 
     renderer.add_tri_mesh(Path(root_path) / 'asset/mesh/curved_ground.obj',
         texture_img='chkbd_24_0.7', color='064273')
-    renderer.render(verbose=True, nproc=6)
+    renderer.render(verbose=True, nproc=None)
 
 if __name__ == '__main__':
     # Download the mesh data from Dropbox and put them in a folder as follows:
