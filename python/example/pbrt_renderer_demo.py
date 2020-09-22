@@ -31,7 +31,7 @@ if __name__ == '__main__':
         'file_name': str(folder / 'demo.png'),
         'light_map': 'uffizi-large.exr',
         'sample': 64,
-        'max_depth': 1,
+        'max_depth': 4,
         'camera_pos': (0, -2, 0.8),
         'camera_lookat': (0, 0, 0),
     }
@@ -39,6 +39,9 @@ if __name__ == '__main__':
     renderer.add_hex_mesh(mesh, render_voxel_edge=True, color=(.3, .7, .5), transforms=[
         ('t', (-1, 0, 0)),
         ('s', 0.25),
+        ('r', (1, 0, 1, 0)),
+        ('r', (1, 0, 0, 1)),
+        ('t', (0, 0, 0.05))
     ])
     renderer.add_tri_mesh(Path(root_path) / 'asset/mesh/curved_ground.obj',
         texture_img='chkbd_24_0.7')

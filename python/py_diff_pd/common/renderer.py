@@ -10,6 +10,7 @@ from py_diff_pd.common.common import ndarray, create_folder
 from py_diff_pd.common.mesh import hex2obj, hex2obj_with_textures
 from py_diff_pd.common.project_path import root_path
 
+# This class assumes z is pointing up.
 class PbrtRenderer(object):
     def __init__(self, options=None):
         self.__temporary_folder = Path('.tmp')
@@ -260,9 +261,7 @@ class PbrtRenderer(object):
 
             f.write('\n')
             f.write('AttributeBegin\n')
-            f.write('Rotate 90 0 0 1\n')
-            f.write('Rotate -90 1 0 0\n')
-            f.write('LightSource "infinite" "string mapname" "{}" "color scale" [1.5, 1.5, 1.5]\n'.format(str(self.__lightmap)))
+            f.write('LightSource "infinite" "string mapname" "{}" "color scale" [1, 1, 1]\n'.format(str(self.__lightmap)))
             f.write('AttributeEnd\n')
 
             f.write('\n')
