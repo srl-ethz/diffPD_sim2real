@@ -69,7 +69,10 @@ class PbrtRenderer(object):
         # A list of objects.
         self.__hex_objects = []
         self.__tri_objects = []
+        self.__shape_objects = []
 
+    # - hex_mesh is either a Mesh3d() or an obj.
+    #
     # - transforms is a list of rotation, translation, and scaling applied to the mesh applied in the order of
     #   their occurances in transforms.
     #       transforms = [rotation, translation, scaling, ...]
@@ -93,15 +96,21 @@ class PbrtRenderer(object):
         hex_num = len(self.__hex_objects)
         hex_pbrt_short_name = 'hex_{:08d}.pbrt'.format(hex_num)
         hex_pbrt_name = self.__temporary_folder / hex_pbrt_short_name
-        hex_obj_name = self.__temporary_folder / 'hex_{:08d}.obj'.format(hex_num)
-        if render_voxel_edge:
-            hex2obj_with_textures(hex_mesh, obj_file_name=hex_obj_name, pbrt_file_name=hex_pbrt_name,
-                texture_map=texture_map)
-        else:
+        if isinstance(hex_mesh, str):
+            hex_obj_name = hex_mesh
             tmp_error_name = self.__temporary_folder / '.tmp.error'
-            hex2obj(hex_mesh, obj_file_name=hex_obj_name)            
             os.system('{} {} {} 2>{}'.format(str(Path(root_path) / 'external/pbrt_build/obj2pbrt'),
                 hex_obj_name, hex_pbrt_name, tmp_error_name))
+        else:
+            hex_obj_name = self.__temporary_folder / 'hex_{:08d}.obj'.format(hex_num)
+            if render_voxel_edge:
+                hex2obj_with_textures(hex_mesh, obj_file_name=hex_obj_name, pbrt_file_name=hex_pbrt_name,
+                    texture_map=texture_map)
+            else:
+                tmp_error_name = self.__temporary_folder / '.tmp.error'
+                hex2obj(hex_mesh, obj_file_name=hex_obj_name)
+                os.system('{} {} {} 2>{}'.format(str(Path(root_path) / 'external/pbrt_build/obj2pbrt'),
+                    hex_obj_name, hex_pbrt_name, tmp_error_name))
 
         lines = ['AttributeBegin\n',]
         # Material.
@@ -239,6 +248,63 @@ class PbrtRenderer(object):
 
         self.__tri_objects.append(tri_pbrt_short_name)
 
+    # - shape_info: a dictionary.
+    def add_shape_mesh(self, shape_info, transforms=None, color=(.5, .5, .5)):
+        shape_num = len(self.__shape_objects)
+        shape_pbrt_short_name = 'shape_{:08d}.pbrt'.format(shape_num)
+        shape_pbrt_name = self.__temporary_folder / shape_pbrt_short_name
+
+        lines = ['AttributeBegin\n',]
+        # Material.
+        color = ndarray(color).ravel()
+        assert color.size == 3
+        for c in color:
+            assert 0 <= c <= 1
+        r, g, b = color
+        lines.append('Material "plastic" "color Kd" [{} {} {}] "color Ks" [{} {} {}] "float roughness" .3\n'.format(
+            r, g, b, r, g, b))
+ 
+        # Transforms.
+        # Flipped y because pbrt uses a left-handed system.
+        lines.append('Scale 1 -1 1\n')
+        if transforms is not None:
+            for key, vals in reversed(transforms):
+                if key == 's':
+                    lines.append('Scale {:f} {:f} {:f}\n'.format(vals, vals, vals))
+                elif key == 'r':
+                    deg = np.rad2deg(vals[0])
+                    ax = vals[1:4]
+                    ax /= np.linalg.norm(ax)
+                    lines.append('Rotate {:f} {:f} {:f} {:f}\n'.format(deg, ax[0], ax[1], ax[2]))
+                elif key == 't':
+                    lines.append('Translate {:f} {:f} {:f}\n'.format(vals[0], vals[1], vals[2]))
+
+        # Original shape.
+        shape_name = shape_info['name']
+        if shape_name == 'curve':
+            # This is the only viable option for now.
+            points = ndarray(shape_info['point']).ravel()
+            assert points.size == 12
+            type_info = '"string type" "flat"'
+            if 'type' in shape_info:
+                type_info = '"string type" "{}"'.format(shape_info['type'])
+            width_info = '"float width" [1.0]'
+            if 'width' in shape_info:
+                width_info = '"float width" [{}]'.format(float(shape_info['width']))
+            lines.append('Shape "curve" "point P" [' + ' '.join([str(v) for v in points])
+                + '] {} {}\n'.format(type_info, width_info))
+        else:
+            raise NotImplementedError
+
+        lines.append('AttributeEnd\n')
+
+        # Write back script.
+        with open(shape_pbrt_name, 'w') as f:
+            for l in lines:
+                f.write(l)
+
+        self.__shape_objects.append(shape_pbrt_short_name)
+
     # Call this function after you have set up add_hex_mesh and add_tri_mesh.
     def render(self, verbose=False, nproc=None):
         scene_pbrt_name = self.__temporary_folder / 'scene.pbrt'
@@ -276,6 +342,9 @@ class PbrtRenderer(object):
 
             for tri_pbrt_name in self.__tri_objects:
                 f.write('Include "{}"\n'.format(tri_pbrt_name))
+
+            for shape_pbrt_name in self.__shape_objects:
+                f.write('Include "{}"\n'.format(shape_pbrt_name))
 
             f.write('\n')
             f.write('WorldEnd\n')
