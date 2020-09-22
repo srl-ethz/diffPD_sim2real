@@ -23,32 +23,32 @@ def render_shark_3d(mesh_folder, img_name):
     options = {
         'file_name': img_name,
         'resolution': (800, 600),
-        'sample': 512,
+        'sample': 256,
         'max_depth': 3,
         'light_map': 'uffizi-large.exr',
-        'camera_pos': (-0.1, -1.4, 0.5),
-        'camera_lookat': (-0.1, 0, 0.15),
+        'camera_pos': (-0.07, -1.4, 0.5),
+        'camera_lookat': (-0.07, 0, 0.15),
     }
     renderer = PbrtRenderer(options)
-    renderer.add_hex_mesh(mesh, render_voxel_edge=True, color='09cac7',
+    renderer.add_hex_mesh(mesh, render_voxel_edge=True, color='e6ab45',
         transforms=[
             ('r', (np.pi, 0, 0, 1)),
             ('s', 0.4),
             ('t', (-0.2, -0.1, 0.2)),
         ])
     renderer.add_tri_mesh(Path(root_path) / 'asset/mesh/curved_ground.obj',
-        texture_img='chkbd_24_0.7')
-    renderer.render(verbose=True, nproc=6)
+        texture_img='chkbd_24_0.7', color='064273')
+    renderer.render(verbose=True, nproc=None)
 
 def render_shark_actuator(mesh_folder, img_name):
     options = {
         'file_name': img_name,
         'resolution': (800, 600),
-        'sample': 512,
+        'sample': 256,
         'max_depth': 3,
         'light_map': 'uffizi-large.exr',
-        'camera_pos': (-0.1, -1.4, 0.5),
-        'camera_lookat': (-0.1, 0, 0.15),
+        'camera_pos': (-0.07, -1.4, 0.5),
+        'camera_lookat': (-0.07, 0, 0.15),
     }
     renderer = PbrtRenderer(options)
 
@@ -82,7 +82,7 @@ def render_shark_actuator(mesh_folder, img_name):
                     'point': ndarray([vi, (2 * vi + vj) / 3, (vi + 2 * vj) / 3, vj]),
                     'width': 0.002
                 },
-                color='09cac7',
+                color='e6ab45',
                 transforms=[
                     ('r', (np.pi, 0, 0, 1)),
                     ('s', 0.4),
@@ -90,8 +90,8 @@ def render_shark_actuator(mesh_folder, img_name):
                 ])
 
     renderer.add_tri_mesh(Path(root_path) / 'asset/mesh/curved_ground.obj',
-        texture_img='chkbd_24_0.7')
-    renderer.render(verbose=True, nproc=6)
+        texture_img='chkbd_24_0.7', color='064273')
+    renderer.render(verbose=True, nproc=None)
 
 if __name__ == '__main__':
     # Download the mesh data from Dropbox and put them in a folder as follows:
