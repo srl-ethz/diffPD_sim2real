@@ -82,8 +82,8 @@ class PbrtRenderer(object):
     # - render_voxel_edge: if True, we will generate hex pbrt files with texture coordinates indicated by the
     #   texture_map. If False, both texture_map and texture_img will be ignored.
     #
-    # - color: a 3D vector between 0 and 1. If render_voxel_edge is False, we will use a simple material. Otherwise
-    #   we will generate a texture material from color and texture_img.
+    # - color: a 3D vector between 0 and 1 or a string of 6 letters in hex. If render_voxel_edge is False,
+    #   we will use a simple material. Otherwise we will generate a texture material from color and texture_img.
     #
     # - texture_img: a file name string pointing to the texture image assumed to be in asset/texture/.
     #
@@ -105,6 +105,12 @@ class PbrtRenderer(object):
 
         lines = ['AttributeBegin\n',]
         # Material.
+        if isinstance(color, str):
+            assert len(color) == 6
+            r = int(color[:2], 16) / 255.0
+            g = int(color[2:4], 16) / 255.0
+            b = int(color[4:], 16) / 255.0
+            color = (r, g, b)
         color = ndarray(color).ravel()
         assert color.size == 3
         for c in color:
