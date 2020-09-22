@@ -234,7 +234,7 @@ class PbrtRenderer(object):
         self.__tri_objects.append(tri_pbrt_short_name)
 
     # Call this function after you have set up add_hex_mesh and add_tri_mesh.
-    def render(self):
+    def render(self, verbose=False, nproc=None):
         scene_pbrt_name = self.__temporary_folder / 'scene.pbrt'
         with open(scene_pbrt_name, 'w') as f:
             x_res, y_res = self.__resolution
@@ -274,7 +274,10 @@ class PbrtRenderer(object):
             f.write('\n')
             f.write('WorldEnd\n')
 
-        os.system('{} {} --quiet'.format(str(Path(root_path) / 'external/pbrt_build/pbrt'), scene_pbrt_name))
+        verbose_flag = ' ' if verbose else '--quiet'
+        thread_flag = ' ' if nproc is None else '--nthreads {:d}'.format(int(nproc))
+        os.system('{} {} {} {}'.format(str(Path(root_path) / 'external/pbrt_build/pbrt'),
+            verbose_flag, thread_flag, scene_pbrt_name))
         os.system('convert {}.exr {}.png'.format(self.__file_name_only, self.__file_name_only))
 
         os.remove('{}.exr'.format(self.__file_name_only))
