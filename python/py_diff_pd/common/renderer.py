@@ -209,22 +209,19 @@ class PbrtRenderer(object):
             if 'chkbd' in texture_img:
                 _, square_num, square_color = texture_img.split('_')
                 square_num = int(square_num)
-                square_color = np.clip(int(255 * float(square_color)), 0, 255)
-                square_size = 32
-                texture_img = 'tri_{:08d}_texture.png'.format(tri_num)
-                data = np.ones((square_size * square_num, square_size * square_num, 3), dtype=np.uint8) * 255
-                for i in range(square_num):
-                    for j in range(square_num):
-                        if (i - j) % 2:
-                            data[(i * square_size):(i + 1) * square_size,
-                                (j * square_size):(j + 1) * square_size, :] = square_color
-                img = Image.fromarray(data, 'RGB')
-                img.save(self.__temporary_folder / texture_img)
+                square_color = np.clip(float(square_color), 0, 1)
+                lines.append('Texture "checks" "spectrum" "checkerboard"\n')
+                lines.append('  "float uscale" [{:d}] "float vscale" [{:d}]\n'.format(square_num, square_num))
+                lines.append('  "rgb tex1" [{:f} {:f} {:f}] "rgb tex2" [{:f} {:f} {:f}]\n'.format(
+                    r, g, b,
+                    square_color * r, square_color * g, square_color * b
+                    ))
+                lines.append('Material "matte" "texture Kd" "checks"\n')
             else:
                 texture_img = Path(root_path) / 'asset/texture/{}'.format(texture_img)
-            lines.append('Texture "grid" "color" "imagemap" "string filename" ["{}"]\n'.format(str(texture_img)))
-            lines.append('Texture "sgrid" "color" "scale" "texture tex1" "grid" "color tex2" [{} {} {}]\n'.format(r, g, b))
-            lines.append('Material "matte" "texture Kd" "sgrid"\n')
+                lines.append('Texture "grid" "color" "imagemap" "string filename" ["{}"]\n'.format(str(texture_img)))
+                lines.append('Texture "sgrid" "color" "scale" "texture tex1" "grid" "color tex2" [{} {} {}]\n'.format(r, g, b))
+                lines.append('Material "matte" "texture Kd" "sgrid"\n')
 
         # Transforms.
         # Flipped y because pbrt uses a left-handed system.
