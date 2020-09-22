@@ -87,7 +87,7 @@ def render_starfish_actuator(mesh_folder, img_name):
                 ])
 
     renderer.add_tri_mesh(Path(root_path) / 'asset/mesh/curved_ground.obj',
-        texture_img='chkbd_24_0.7')
+        texture_img='chkbd_24_0.7', color='064273')
     renderer.render(verbose=True, nproc=6)
 
 if __name__ == '__main__':
