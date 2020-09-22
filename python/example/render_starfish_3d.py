@@ -102,7 +102,7 @@ if __name__ == '__main__':
         print_info('Processing {}...'.format(mesh_folder))
         render_folder = folder / '{}_render'.format(mesh_folder)
         create_folder(render_folder)
-        render_act_folder = folder /'{}_render_act'.format(mesh_folder)
+        render_act_folder = folder / '{}_render_act'.format(mesh_folder)
         create_folder(render_act_folder)
 
         # Peek the frame number.

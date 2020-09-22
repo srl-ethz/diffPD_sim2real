@@ -191,6 +191,12 @@ class PbrtRenderer(object):
 
         lines = ['AttributeBegin\n',]
         # Material.
+        if isinstance(color, str):
+            assert len(color) == 6
+            r = int(color[:2], 16) / 255.0
+            g = int(color[2:4], 16) / 255.0
+            b = int(color[4:], 16) / 255.0
+            color = (r, g, b)
         color = ndarray(color).ravel()
         assert color.size == 3
         for c in color:
@@ -256,6 +262,12 @@ class PbrtRenderer(object):
 
         lines = ['AttributeBegin\n',]
         # Material.
+        if isinstance(color, str):
+            assert len(color) == 6
+            r = int(color[:2], 16) / 255.0
+            g = int(color[2:4], 16) / 255.0
+            b = int(color[4:], 16) / 255.0
+            color = (r, g, b)
         color = ndarray(color).ravel()
         assert color.size == 3
         for c in color:
