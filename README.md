@@ -56,7 +56,7 @@ Note that the `Cantilever` example is deprecated and not included in the paper.
 
 **Plant**
 - `plant_3d.py`: run the `Plant` example on GCP.
-- `print_plant_3d.py`: generate data for Table 3.
+- `print_plant_3d.py`: generate data for Table 3 and Fig. 1 in supplemental material.
 - `render_plant_3d.py`: generate mesh data for the `Plant` video.
 
 **Bouncing ball**
