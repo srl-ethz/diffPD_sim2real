@@ -78,14 +78,17 @@ Note that the `Cantilever` example is deprecated and not included in the paper.
 #### Sec. 7.3
 **Torus**
 - `torus_3d.py`: run the `Torus` example on GCP.
+- `print_torus_3d.py`: generate data for Table 3 and Fig. 5 in supplemental material.
 - `render_torus_3d.py`: generate mesh data for the `Torus` video.
 
 **Quadruped**
 - `quadruped_3d.py`: run the `Quadruped` example on GCP.
+- `print_quadruped_3d.py`: generated data for Table 3 and Fig. 6 in supplemental material.
 - `render_quadruped_3d.py`: generate mesh data for the `Quadruped` video.
 
 **Cow**
 - `cow_3d.py`: run the `Cow` example on GCP.
+- `print_cow_3d.py`: generate date for Table 3 and Fig. 7 in supplemental material.
 - `render_cow_3d.py`: generate mesh data for the `Cow` video.
 
 #### Sec. 7.4

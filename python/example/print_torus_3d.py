@@ -42,7 +42,6 @@ if __name__ == '__main__':
                 print_info('Optimizing with {} finished in {:6.3f}s with {:d} iterations. Average Backward time: {:6.3f}s, Average Forward Time = {:6.3f}s'.format(
                     method, total_time, len(data[method]), average_backward, avg_forward))
 
-
     plt.rc('pdf', fonttype=42)
     plt.rc('font', size=30)             # Controls default text sizes.
     plt.rc('axes', titlesize=36)        # Fontsize of the axes title.
