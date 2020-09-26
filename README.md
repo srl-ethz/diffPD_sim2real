@@ -67,10 +67,12 @@ Note that the `Cantilever` example is deprecated and not included in the paper.
 #### Sec. 7.2
 **Bunny**
 - `bunny_3d.py`: run the `Bunny` example on GCP.
+- `print_bunny_3d.py`: generate data for Table 3 and Fig. 3 in supplemental material.
 - `render_bunny_3d.py`: generate mesh data for the `Bunny` video.
 
 **Routing tendon**
 - `tendon_routing_3d.py`: run the `Routing tendon` example on GCP.
+- `print_tendon_routing_3d.py`: generate data for Table 3 and Fig. 4 in supplemental materal.
 - `render_tendon_routing_3d.py`: generate mesh data for the `Routing tendon` video.
 
 #### Sec. 7.3

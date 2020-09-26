@@ -49,10 +49,10 @@ if __name__ == '__main__':
 
     plt.rc('pdf', fonttype=42)
     plt.rc('font', size=30)             # Controls default text sizes.
-    plt.rc('axes', titlesize=20)        # Fontsize of the axes title.
-    plt.rc('axes', labelsize=20)        # Fontsize of the x and y labels.
-    plt.rc('xtick', labelsize=16)       # Fontsize of the tick labels.
-    plt.rc('ytick', labelsize=16)       # Fontsize of the tick labels.
+    plt.rc('axes', titlesize=24)        # Fontsize of the axes title.
+    plt.rc('axes', labelsize=24)        # Fontsize of the x and y labels.
+    plt.rc('xtick', labelsize=22)       # Fontsize of the tick labels.
+    plt.rc('ytick', labelsize=22)       # Fontsize of the tick labels.
     plt.rc('legend', fontsize=20)       # Legend fontsize.
     plt.rc('figure', titlesize=16)      # Fontsize of the figure title.
     com_qs = {}
@@ -65,7 +65,7 @@ if __name__ == '__main__':
         com_vs[method] = [np.linalg.norm(d['x'][6:9]) for d in data[method]]
         losses[method] = [d['loss'] for d in data[method]]
 
-    fig = plt.figure(figsize=(18, 18))
+    fig = plt.figure(figsize=(18, 13))
 
     ax_com = fig.add_subplot(221)
     ax_com.set_position((0.05, 0.27, 0.20, 0.6))
@@ -79,34 +79,31 @@ if __name__ == '__main__':
     ax_loss = fig.add_subplot(224)
     ax_loss.set_position((0.795, 0.27, 0.20, 0.6))
 
-    titles = ['Initial CoM Position', 'Initial Pose', 'Initial CoM Velocity', 'loss']
+    titles = ['initial position', 'initial pose', 'initial velocity', 'loss']
     for title, ax, y in zip(titles, (ax_com, ax_rpy, ax_v, ax_loss), (com_qs, rpys, com_vs, losses)):
-
-        if 'Position' in title:
-            ax.set_ylabel("|CoM Position|")
+        if 'position' in title:
+            ax.set_ylabel("|initial position|")
             ax.grid(True, which='both')
             ax.set_yticks([0.19, 0.20, 0.21])
-        elif 'Pose' in title:
-            ax.set_ylabel("|Initial Pose|")
+        elif 'pose' in title:
+            ax.set_ylabel("|Euler angles|")
             ax.grid(True, which='both')
-        elif 'Velocity' in title:
-            ax.set_ylabel("|CoM Velocity|")
+        elif 'velocity' in title:
+            ax.set_ylabel("|initial velocity|")
             ax.grid(True, which='both')
         else:
             ax.set_ylabel("loss")
             ax.set_yscale('log')
             ax.grid(True)
-        ax.set_xlabel('iterations')
+        ax.set_xlabel('function evaluations')
         for method, method_ref_name, color in zip(['newton_pcg', 'newton_cholesky', 'pd_eigen'],
-            ['Newton-PCG', 'Newton-Cholesky', 'DiffPD (Ours)'], ['tab:blue', 'tab:red', 'tab:green']):
+            ['PCG', 'Cholesky', 'Ours'], ['tab:blue', 'tab:red', 'tab:green']):
             ax.plot(y[method], color=color, label=method_ref_name, linewidth=4)
-        ax.set_title(title, pad=25)
         handles, labels = ax.get_legend_handles_labels()
 
     plt.subplots_adjust(wspace=0.3, hspace=0.4)
     # Share legends.
     fig.legend(handles, labels, loc='lower center', ncol=3)#, bbox_to_anchor=(0.5, 0.17))
 
-    fig.savefig(folder / 'bunny_ic_opt.pdf')
-    fig.savefig(folder / 'bunny_ic_opt.png')
+    fig.savefig(folder / 'bunny.pdf')
     plt.show()

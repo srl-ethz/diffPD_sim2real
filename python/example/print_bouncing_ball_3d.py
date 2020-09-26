@@ -45,8 +45,8 @@ if __name__ == '__main__':
     plt.rc('font', size=24)             # Controls default text sizes.
     plt.rc('axes', titlesize=28)        # Fontsize of the axes title.
     plt.rc('axes', labelsize=30)        # Fontsize of the x and y labels.
-    plt.rc('xtick', labelsize=16)       # Fontsize of the tick labels.
-    plt.rc('ytick', labelsize=16)       # Fontsize of the tick labels.
+    plt.rc('xtick', labelsize=24)       # Fontsize of the tick labels.
+    plt.rc('ytick', labelsize=24)       # Fontsize of the tick labels.
     plt.rc('legend', fontsize=28)       # Legend fontsize.
     plt.rc('figure', titlesize=16)      # Fontsize of the figure title.
     Es = {}
@@ -87,6 +87,7 @@ if __name__ == '__main__':
             ax.set_yscale('log')
             ax.grid(True)
         ax.set_xlabel('function evaluations')
+        ax.set_xticks([0, 10, 20, 30, 40])
         for method, method_ref_name, color in zip(['newton_pcg', 'newton_cholesky', 'pd_eigen'],
             ['PCG', 'Cholesky', 'Ours'], ['tab:blue', 'tab:red', 'tab:green']):
             ax.plot(y[method], color=color, label=method_ref_name, linewidth=4)

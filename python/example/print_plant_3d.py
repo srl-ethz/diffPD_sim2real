@@ -45,8 +45,8 @@ if __name__ == '__main__':
     plt.rc('font', size=24)             # Controls default text sizes.
     plt.rc('axes', titlesize=28)        # Fontsize of the axes title.
     plt.rc('axes', labelsize=30)        # Fontsize of the x and y labels.
-    plt.rc('xtick', labelsize=16)       # Fontsize of the tick labels.
-    plt.rc('ytick', labelsize=16)       # Fontsize of the tick labels.
+    plt.rc('xtick', labelsize=24)       # Fontsize of the tick labels.
+    plt.rc('ytick', labelsize=24)       # Fontsize of the tick labels.
     plt.rc('legend', fontsize=28)       # Legend fontsize.
     plt.rc('figure', titlesize=16)      # Fontsize of the figure title.
     Es = {}
