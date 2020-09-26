@@ -42,64 +42,48 @@ if __name__ == '__main__':
                 print_info('Optimizing with {} finished in {:6.3f}s with {:d} iterations. Average Backward time: {:6.3f}s, Average Forward Time = {:6.3f}s'.format(
                     method, total_time, len(data[method]), average_backward, avg_forward))
 
-    '''
+
     plt.rc('pdf', fonttype=42)
-    plt.rc('font', size=24)             # Controls default text sizes.
-    plt.rc('axes', titlesize=28)        # Fontsize of the axes title.
-    plt.rc('axes', labelsize=30)        # Fontsize of the x and y labels.
-    # plt.rc('xtick', labelsize=16)       # Fontsize of the tick labels.
-    # plt.rc('ytick', labelsize=16)       # Fontsize of the tick labels.
-    plt.rc('legend', fontsize=28)       # Legend fontsize.
-    # plt.rc('figure', titlesize=16)      # Fontsize of the figure title.
-    Es = {}
-    nus = {}
+    plt.rc('font', size=30)             # Controls default text sizes.
+    plt.rc('axes', titlesize=36)        # Fontsize of the axes title.
+    plt.rc('axes', labelsize=36)        # Fontsize of the x and y labels.
+    plt.rc('xtick', labelsize=36)       # Fontsize of the tick labels.
+    plt.rc('ytick', labelsize=36)       # Fontsize of the tick labels.
+    plt.rc('legend', fontsize=36)       # Legend fontsize.
+    plt.rc('figure', titlesize=36)      # Fontsize of the figure title.
+
+    acts = {}
     losses = {}
     for method in ['newton_pcg', 'newton_cholesky', 'pd_eigen']:
-        Es[method] = [d['E'] for d in data[method]]
-        nus[method] = [d['nu'] for d in data[method]]
+        acts[method] = [np.linalg.norm(d['x']) for d in data[method]]
         losses[method] = [d['loss'] for d in data[method]]
 
-    fig = plt.figure(figsize=(18, 7))
-    opt_iters = len(Es['newton_pcg'])
-    ax_E = fig.add_subplot(131)
-    ax_E.set_position((0.065, 0.27, 0.25, 0.6))
-    ax_E.plot([1e6 for _ in range(opt_iters)], linestyle='--', label='Ground truth', color='tab:orange', linewidth=4)
+    fig = plt.figure(figsize=(20, 10))
 
-    ax_nu = fig.add_subplot(132)
-    ax_nu.set_position((0.41, 0.27, 0.25, 0.6))
-    ax_nu.plot([0.49 for _ in range(opt_iters)], linestyle='--', label='Ground truth', color='tab:orange', linewidth=4)
+    ax_act = fig.add_subplot(121)
 
-    ax_loss = fig.add_subplot(133)
-    ax_loss.set_position((0.745, 0.27, 0.25, 0.6))
-    ax_loss.plot([0 for _ in range(opt_iters)], linestyle='--', label='Ground truth', color ='tab:orange', linewidth=4)
+    ax_loss= fig.add_subplot(122)
 
-    titles = ['Young\'s modulus estimate', 'Poisson\'s ratio estimate', 'loss']
-    for title, ax, y in zip(titles, (ax_E, ax_nu, ax_loss), (Es, nus, losses)):
-        if 'modulus' in title:
-            ax.set_ylabel("Young\'s modulus (Pa)")
-            ax.set_yscale('log')
+    titles = ['muscle actuation', 'loss']
+    for title, ax, y in zip(titles, (ax_act, ax_loss), (acts, losses)):
+
+        if 'muscle' in title:
+            ax.set_ylabel("|actuation|")
             ax.grid(True, which='both')
-            ax.yaxis.set_minor_formatter(NullFormatter())
-        elif 'Poisson' in title:
-            ax.set_ylabel("Poisson\'s ratio")
-            ax.set_yscale('log')
-            ax.grid(True, which='both')
-            ax.yaxis.set_minor_formatter(ScalarFormatter())
         else:
             ax.set_ylabel("loss")
-            ax.set_yscale('log')
+            #ax.set_yscale('log')
             ax.grid(True)
-        ax.set_xlabel('iterations')
+        ax.set_xlabel('function evaluations')
         for method, method_ref_name, color in zip(['newton_pcg', 'newton_cholesky', 'pd_eigen'],
-            ['Newton-PCG', 'Newton-Cholesky', 'DiffPD (Ours)'], ['tab:blue', 'tab:red', 'tab:green']):
+            ['PCG', 'Cholesky', 'Ours'], ['tab:blue', 'tab:red', 'tab:green']):
             ax.plot(y[method], color=color, label=method_ref_name, linewidth=4)
         ax.set_title(title, pad=25)
         handles, labels = ax.get_legend_handles_labels()
 
+    plt.subplots_adjust(bottom = 0.25, wspace=0.3)
     # Share legends.
-    fig.legend(handles, labels, loc='upper center', ncol=4, bbox_to_anchor=(0.5, 0.17))
+    fig.legend(handles, labels, loc='lower center', ncol=3)#, bbox_to_anchor=(0.5, 0.17))
 
-    fig.savefig(folder / 'parameter_est_bouncing_ball.pdf')
-    fig.savefig(folder / 'parameter_est_bouncing_ball.png')
+    fig.savefig(folder / 'torus.pdf')
     plt.show()
-    '''
