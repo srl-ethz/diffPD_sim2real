@@ -73,7 +73,7 @@ if __name__ == '__main__':
                 '|grad|': np.linalg.norm(grads[method][idx]) }))
 
 
-    fig = plt.figure(figsize=(18, 9))
+    fig = plt.figure(figsize=(18, 10))
     ax_fb = fig.add_subplot(131)
     ax_f = fig.add_subplot(132)
     ax_b = fig.add_subplot(133)
