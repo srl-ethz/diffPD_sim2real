@@ -302,6 +302,12 @@ class PbrtRenderer(object):
                 width_info = '"float width" [{}]'.format(float(shape_info['width']))
             lines.append('Shape "curve" "point P" [' + ' '.join([str(v) for v in points])
                 + '] {} {}\n'.format(type_info, width_info))
+        elif shape_name == 'sphere':
+            radius = float(shape_info['radius'])
+            center = ndarray(shape_info['center']).ravel()
+            assert center.size == 3
+            lines.append('Translate {:f} {:f} {:f}\n'.format(center[0], center[1], center[2]))
+            lines.append('Shape "sphere" "float radius" [{:f}]'.format(radius))
         else:
             raise NotImplementedError
 

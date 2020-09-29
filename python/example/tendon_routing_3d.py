@@ -6,6 +6,7 @@ import time
 import numpy as np
 import scipy.optimize
 import pickle
+from tqdm import tqdm
 
 from py_diff_pd.common.common import ndarray, create_folder, rpy_to_rotation, rpy_to_rotation_gradient
 from py_diff_pd.common.common import print_info, print_ok, print_error
@@ -33,12 +34,15 @@ if __name__ == '__main__':
     deformable = env.deformable()
 
     # Optimization parameters.
-    thread_ct = 8
+    import multiprocessing
+    cpu_cnt = multiprocessing.cpu_count()
+    thread_ct = cpu_cnt - 1
+    print_info('Detected {:d} CPUs. Using {} of them in this example'.format(cpu_cnt, thread_ct)) 
     newton_opt = { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
     pd_opt = { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
         'use_bfgs': 1, 'bfgs_history_size': 10 }
-    methods = ('newton_pcg', 'newton_cholesky', 'pd_eigen')
-    opts = (newton_opt, newton_opt, pd_opt)
+    methods = ('pd_eigen', 'newton_pcg', 'newton_cholesky')
+    opts = (pd_opt, newton_opt, newton_opt)
 
     dt = 1e-2
     frame_num = 100
@@ -70,7 +74,9 @@ if __name__ == '__main__':
     x_init = np.random.uniform(x_lb, x_ub)
     # Visualize initial guess.
     a_init = variable_to_act(x_init)
+    print_info('Simulating and rendering initial solution. Please check out the {}/init folder'.format(folder))
     env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, [a_init for _ in range(frame_num)], f0, require_grad=False, vis_folder='init')
+    print_info('Initial guess is ready. You can play it by opening {}/init.gif'.format(folder))
 
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
 
@@ -78,10 +84,11 @@ if __name__ == '__main__':
     rand_state = np.random.get_state()
     random_guess_num = 16
     random_loss = []
-    for _ in range(random_guess_num):
+    print_info('Randomly sample {} initial solutions to get a rough idea of the average performance'.format(random_guess_num))
+    for _ in tqdm(range(random_guess_num)):
         x_rand = np.random.uniform(low=x_lb, high=x_ub)
         a = variable_to_act(x_rand)
-        loss, _ = env.simulate(dt, frame_num, methods[2], opts[2], q0, v0, [a for _ in range(frame_num)], f0,
+        loss, _ = env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, [a for _ in range(frame_num)], f0,
             require_grad=False, vis_folder=None)
         random_loss.append(loss)
     loss_range = ndarray([0, np.mean(random_loss)])
@@ -89,8 +96,10 @@ if __name__ == '__main__':
     np.random.set_state(rand_state)
 
     data = { 'loss_range': loss_range }
+    method_display_names = { 'pd_eigen': 'DiffPD', 'newton_pcg': 'PCG', 'newton_cholesky': 'Cholesky' }
     for method, opt in zip(methods, opts):
         data[method] = []
+        print_info('Optimizing with {}...'.format(method_display_names[method]))
         def loss_and_grad(x):
             a = variable_to_act(x)
             loss, grad, info = env.simulate(dt, frame_num, method, opt, q0, v0, [a for _ in range(frame_num)], f0,
@@ -122,10 +131,13 @@ if __name__ == '__main__':
         t1 = time.time()
         assert result.success
         x_final = result.x
-        print_info('Optimizing with {} finished in {:6.3f} seconds'.format(method, t1 - t0))
+        print_info('Optimizing with {} finished in {:6.3f} seconds'.format(method_display_names[method], t1 - t0))
         pickle.dump(data, open(folder / 'data_{:04d}_threads.bin'.format(thread_ct), 'wb'))
 
         # Visualize results.
         final_a = variable_to_act(x_final)
+        print_info('Simulating and rendering final results from {}...'.format(method_display_names[method]))
+        print_info('You can check out rendering results in {}/{}'.format(folder, method))
         env.simulate(dt, frame_num, method, opt, q0, v0, [final_a for _ in range(frame_num)], f0,
             require_grad=False, vis_folder=method)
+        print_info('Results ready for review. You can play it by opening {}/{}.gif'.format(folder, method))

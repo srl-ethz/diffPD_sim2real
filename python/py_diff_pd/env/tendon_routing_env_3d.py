@@ -6,7 +6,9 @@ import numpy as np
 from py_diff_pd.env.env_base import EnvBase
 from py_diff_pd.common.common import create_folder, ndarray
 from py_diff_pd.common.mesh import generate_hex_mesh
-from py_diff_pd.common.display import render_hex_mesh, export_gif
+from py_diff_pd.common.display import export_gif
+from py_diff_pd.common.project_path import root_path
+from py_diff_pd.common.renderer import PbrtRenderer
 from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
 
 class TendonRoutingEnv3d(EnvBase):
@@ -104,12 +106,33 @@ class TendonRoutingEnv3d(EnvBase):
         return self.__act_maps
 
     def _display_mesh(self, mesh_file, file_name):
+        # Render.
+        options = {
+            'file_name': file_name,
+            'light_map': 'uffizi-large.exr',
+            'sample': self.__spp,
+            'max_depth': 2,
+            'camera_pos': (0.4, -1., .25),
+            'camera_lookat': (0, .15, .15),
+        }
+        renderer = PbrtRenderer(options)
+
         mesh = Mesh3d()
         mesh.Initialize(mesh_file)
-        render_hex_mesh(mesh, file_name=file_name,
-            resolution=(400, 400), sample=self.__spp, transforms=[
-                ('t', (0.5, 0.5, 0.0)),
-            ], render_voxel_edge=True)
+        renderer.add_hex_mesh(mesh, render_voxel_edge=True, color=(.3, .7, .5), transforms=[
+            ('s', 0.4),
+        ])
+        renderer.add_tri_mesh(Path(root_path) / 'asset/mesh/curved_ground.obj',
+            texture_img='chkbd_24_0.7', transforms=[('s', 2)])
+
+        # Add target point and end effector.
+        renderer.add_shape_mesh({ 'name': 'sphere', 'center': self._target, 'radius': 0.025 },
+            transforms=[('s', 0.4)], color=(0.1, 0.1, 0.9))
+        end_effector = ndarray(mesh.py_vertices())[-3:]
+        renderer.add_shape_mesh({ 'name': 'sphere', 'center': end_effector, 'radius': 0.025 },
+            transforms=[('s', 0.4)], color=(0.9, 0.1, 0.1))
+
+        renderer.render()
 
     def _loss_and_grad(self, q, v):
         q_final = q.reshape((-1, 3))[-1]
