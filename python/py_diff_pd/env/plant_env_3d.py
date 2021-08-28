@@ -5,9 +5,9 @@ import numpy as np
 
 from py_diff_pd.env.env_base import EnvBase
 from py_diff_pd.common.common import create_folder, ndarray, print_info
-from py_diff_pd.common.mesh import generate_hex_mesh
+from py_diff_pd.common.hex_mesh import generate_hex_mesh
 from py_diff_pd.common.display import render_hex_mesh, export_gif
-from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d, HexDeformable, StdRealVector
 from py_diff_pd.common.project_path import root_path
 
 class PlantEnv3d(EnvBase):
@@ -18,16 +18,16 @@ class PlantEnv3d(EnvBase):
 
         youngs_modulus = options['youngs_modulus'] if 'youngs_modulus' in options else 1e6
         poissons_ratio = options['poissons_ratio'] if 'poissons_ratio' in options else 0.45
-    
+
         # Mesh parameters.
         la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
         mu = youngs_modulus / (2 * (1 + poissons_ratio))
         density = 5e3
 
         bin_file_name = Path(root_path) / 'asset' / 'mesh' / 'plant.bin'
-        mesh = Mesh3d()
+        mesh = HexMesh3d()
         mesh.Initialize(str(bin_file_name))
-        deformable = Deformable3d()
+        deformable = HexDeformable()
         deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
         # Obtain dx.
         fi = ndarray(mesh.py_element(0))
@@ -63,7 +63,13 @@ class PlantEnv3d(EnvBase):
         self._stepwise_loss = True
         self.__dirichlet_dof = dirichlet_dof
 
-        self.__spp = options['spp'] if 'spp' in options else 4
+        # Optional data members for rendering.
+        scale = 0.5
+        self._spp = options['spp'] if 'spp' in options else 4
+        self._camera_pos = (0.4, -1, .25)
+        self._camera_lookat = scale/2 * ndarray(np.ones(3))
+        self._color = (0.3, 0.9, 0.3)
+        self._scale = scale
 
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)
@@ -75,21 +81,11 @@ class PlantEnv3d(EnvBase):
     def is_dirichlet_dof(self, dof):
         return dof in self.__dirichlet_dof
 
-    def _display_mesh(self, mesh_file, file_name):
-        mesh = Mesh3d()
-        mesh.Initialize(mesh_file)
-        render_hex_mesh(mesh, file_name=file_name,
-            resolution=(400, 400), sample=self.__spp,
-            transforms=[
-                ('s', 1.4)
-            ],
-            render_voxel_edge=True)
-
     def _stepwise_loss_and_grad(self, q, v, i):
         mesh_file = self._folder / 'groundtruth' / '{:04d}.bin'.format(i)
         if not mesh_file.exists(): return 0, np.zeros(q.size), np.zeros(q.size)
 
-        mesh = Mesh3d()
+        mesh = HexMesh3d()
         mesh.Initialize(str(mesh_file))
         q_ref = ndarray(mesh.py_vertices())
         grad = q - q_ref

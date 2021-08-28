@@ -48,5 +48,11 @@ const Eigen::Matrix<real, dim * dim, dim * dim> LinearMaterial<dim>::StressTenso
     return ret;
 }
 
+template<int dim>
+const real LinearMaterial<dim>::ComputeAverageStiffness(const real singular_value_range) const {
+    CheckError(false, "Not implemented yet.");
+    return 0;
+}
+
 template class LinearMaterial<2>;
 template class LinearMaterial<3>;

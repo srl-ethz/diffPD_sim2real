@@ -6,9 +6,10 @@ import os
 
 from py_diff_pd.env.env_base import EnvBase
 from py_diff_pd.common.common import create_folder, ndarray
-from py_diff_pd.common.mesh import generate_hex_mesh, get_contact_vertex
+from py_diff_pd.common.hex_mesh import generate_hex_mesh, get_contact_vertex
 from py_diff_pd.common.display import render_hex_mesh, export_gif
-from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d, HexDeformable, StdRealVector
+from py_diff_pd.common.renderer import PbrtRenderer
 from py_diff_pd.common.project_path import root_path
 
 class BouncingBallEnv3d(EnvBase):
@@ -20,6 +21,7 @@ class BouncingBallEnv3d(EnvBase):
 
         youngs_modulus = options['youngs_modulus'] if 'youngs_modulus' in options else 1e6
         poissons_ratio = options['poissons_ratio'] if 'poissons_ratio' in options else 0.45
+        state_force_parameters = options['state_force_parameters'] if 'state_force_parameters' in options else ndarray([0.0, 0.0, -9.81])
 
         # Mesh parameters.
         la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
@@ -28,20 +30,20 @@ class BouncingBallEnv3d(EnvBase):
 
         # Shape of the rolling jelly.
         bin_file_name = Path(root_path) / 'asset' / 'mesh' / 'lock.bin'
-        mesh = Mesh3d()
+        mesh = HexMesh3d()
         mesh.Initialize(str(bin_file_name))
         # Rescale the mesh.
         mesh.Scale(0.2)
         tmp_bin_file_name = '.tmp.bin'
         mesh.SaveToFile(tmp_bin_file_name)
-        deformable = Deformable3d()
+        deformable = HexDeformable()
         deformable.Initialize(tmp_bin_file_name, density, 'none', youngs_modulus, poissons_ratio)
         os.remove(tmp_bin_file_name)
         # Obtain dx.
         fi = ndarray(mesh.py_element(0))
         dx = np.linalg.norm(ndarray(mesh.py_vertex(int(fi[0]))) - ndarray(mesh.py_vertex(int(fi[1]))))
         # State-based forces.
-        deformable.AddStateForce('gravity', [0, 0, -9.81])
+        deformable.AddStateForce('gravity', state_force_parameters)
         # Elasticity.
         deformable.AddPdEnergy('corotated', [2 * mu,], [])
         deformable.AddPdEnergy('volume', [la,], [])
@@ -65,9 +67,15 @@ class BouncingBallEnv3d(EnvBase):
         self._f_ext = f_ext
         self._youngs_modulus = youngs_modulus
         self._poissons_ratio = poissons_ratio
+        self._state_force_parameters = state_force_parameters
         self._stepwise_loss = True
 
-        self.__spp = options['spp'] if 'spp' in options else 4
+        scale = 0.5
+        self._spp = options['spp'] if 'spp' in options else 4
+        self._camera_pos = (0.2, -1, .25)
+        self._camera_lookat = (0.2, 0, 0.1)
+        self._color = (0.3, 0.9, 0.3)
+        self._scale = scale
 
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)
@@ -79,21 +87,11 @@ class BouncingBallEnv3d(EnvBase):
     def is_dirichlet_dof(self, dof):
         return False
 
-    def _display_mesh(self, mesh_file, file_name):
-        mesh = Mesh3d()
-        mesh.Initialize(mesh_file)
-        render_hex_mesh(mesh, file_name=file_name,
-            resolution=(400, 400), sample=self.__spp, transforms=[
-                ('s', 2.5)
-            ],
-            camera_pos=(2.2, -2.2, 1.6),
-            render_voxel_edge=True)
-
     def _stepwise_loss_and_grad(self, q, v, i):
         mesh_file = self._folder / 'groundtruth' / '{:04d}.bin'.format(i)
         if not mesh_file.exists(): return 0, np.zeros(q.size), np.zeros(q.size)
 
-        mesh = Mesh3d()
+        mesh = HexMesh3d()
         mesh.Initialize(str(mesh_file))
         q_ref = ndarray(mesh.py_vertices())
         grad = q - q_ref

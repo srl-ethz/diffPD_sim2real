@@ -18,6 +18,7 @@ def test_actuation_2d(verbose):
 
     dofs = env.deformable().dofs()
     act_dofs = env.deformable().act_dofs()
+    act_w_dofs = env.deformable().NumOfPdMuscleEnergies()
     q0 = env.default_init_position() + np.random.normal(scale=5e-4, size=dofs)
     a0 = np.random.uniform(size=act_dofs)
 
@@ -37,22 +38,32 @@ def test_actuation_2d(verbose):
     # Check ActuationForceDifferential.
     dq = np.random.normal(scale=1e-6, size=dofs)
     da = np.random.normal(scale=1e-6, size=act_dofs)
-    df_analytical = ndarray(env.deformable().PyActuationForceDifferential(q0, a0, dq, da))
+    dw = np.random.normal(scale=1e1, size=act_w_dofs)
+    df_analytical = ndarray(env.deformable().PyActuationForceDifferential(q0, a0, dq, da, dw))
     Kq = StdRealMatrix()
     Ka = StdRealMatrix()
-    env.deformable().PyActuationForceDifferential(q0, a0, Kq, Ka)
+    Kw = StdRealMatrix()
+    env.deformable().PyActuationForceDifferential(q0, a0, Kq, Ka, Kw)
     Kq = ndarray(Kq)
     Ka = ndarray(Ka)
-    df_analytical2 = Kq @ dq + Ka @ da
+    Kw = ndarray(Kw)
+    df_analytical2 = Kq @ dq + Ka @ da + Kw @ dw
     if not np.allclose(df_analytical, df_analytical2):
         if verbose:
             print_error('Analytical actuation force differential values do not match.')
         return False
 
-    df_numerical = ndarray(env.deformable().PyActuationForce(q0 + dq, a0 + da)) - ndarray(env.deformable().PyActuationForce(q0, a0))
+    # Add the contribution of the stiffness parameters.
+    env_pos_act_params = np.log10(env._actuator_parameter_to_stiffness(env._actuator_parameters) + dw)
+    env_pos = BenchmarkEnv2d(seed, folder, { 'refinement': 6, 'actuator_parameters': env_pos_act_params })
+    df_numerical = ndarray(env.deformable().PyActuationForce(q0 + dq, a0 + da)) \
+        - ndarray(env.deformable().PyActuationForce(q0, a0)) \
+        + env_pos.deformable().PyActuationForce(q0, a0) \
+        - ndarray(env.deformable().PyActuationForce(q0, a0))
     if not np.allclose(df_analytical, df_numerical, rtol, atol):
         if verbose:
-            print_error('Analytical actuation force differential values do not match numerical ones.')
+            print_error('Analytical actuation force differential values do not match numerical ones:',
+                df_analytical, df_numerical)
         return False
 
     shutil.rmtree(folder)

@@ -9,8 +9,8 @@ from pathlib import Path
 import numpy as np
 
 from py_diff_pd.common.common import create_folder, print_info, ndarray
-from py_diff_pd.common.mesh import hex2obj_with_textures, filter_hex
-from py_diff_pd.core.py_diff_pd_core import Mesh3d
+from py_diff_pd.common.hex_mesh import hex2obj_with_textures, filter_hex
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d
 from py_diff_pd.env.torus_env_3d import TorusEnv3d
 
 if __name__ == '__main__':
@@ -149,7 +149,7 @@ if __name__ == '__main__':
             mesh_file = folder / vis_folder / '{:04d}.bin'.format(i)
             shutil.copyfile(mesh_file, frame_folder / 'body.bin')
             # body.obj.
-            mesh = Mesh3d()
+            mesh = HexMesh3d()
             mesh.Initialize(str(mesh_file))
             hex2obj_with_textures(mesh, obj_file_name=frame_folder / 'body.obj')
 

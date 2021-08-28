@@ -10,8 +10,8 @@ from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from py_diff_pd.common.common import create_folder, ndarray
 from py_diff_pd.common.common import print_info, print_ok, print_error
 from py_diff_pd.common.display import render_hex_mesh
-from py_diff_pd.common.mesh import generate_hex_mesh
-from py_diff_pd.core.py_diff_pd_core import Mesh3d
+from py_diff_pd.common.hex_mesh import generate_hex_mesh
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d
 
 def image_to_numpy_array(img_name):
     img = Image.open(img_name).convert('RGB')
@@ -28,7 +28,7 @@ def test_render_hex_mesh(verbose):
     voxels = np.ones((10, 10, 10))
     bin_file_name = str(folder / 'cube.bin')
     generate_hex_mesh(voxels, 0.1, (0, 0, 0), bin_file_name)
-    mesh = Mesh3d()
+    mesh = HexMesh3d()
     mesh.Initialize(bin_file_name)
 
     resolution = (400, 400)

@@ -5,9 +5,10 @@ import os
 import numpy as np
 from PIL import Image
 
-from py_diff_pd.core.py_diff_pd_core import Mesh3d
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d, TetMesh3d
 from py_diff_pd.common.common import ndarray, create_folder
-from py_diff_pd.common.mesh import hex2obj, hex2obj_with_textures
+from py_diff_pd.common.hex_mesh import hex2obj, hex2obj_with_textures
+from py_diff_pd.common.tet_mesh import tet2obj, tet2obj_with_textures
 from py_diff_pd.common.project_path import root_path
 
 # This class assumes z is pointing up.
@@ -71,7 +72,7 @@ class PbrtRenderer(object):
         self.__tri_objects = []
         self.__shape_objects = []
 
-    # - hex_mesh is either a Mesh3d() or an obj.
+    # - hex_mesh is either a HexMesh3d() or an obj.
     #
     # - transforms is a list of rotation, translation, and scaling applied to the mesh applied in the order of
     #   their occurances in transforms.
@@ -177,17 +178,29 @@ class PbrtRenderer(object):
         self.__hex_objects.append(hex_pbrt_short_name)
 
     # See add_hex_mesh above.
-    # - tri_mesh_file: an obj file name.
+    # - tri_mesh: either an obj file name or a TetMesh.
     # - texture_img: either a texture image name (assumed to be in asset/texture) or 'chkbd_[]_{}' where an integer in []
     #   indicates the number of grids in the checkerboard and a floating point number between 0 and 1 in {} specifies the
     #   darker color in the checkerboard.
-    def add_tri_mesh(self, tri_mesh_file, transforms=None, color=(.5, .5, .5), texture_img=None):
+    def add_tri_mesh(self, tri_mesh, transforms=None, render_tet_edge=False, color=(.5, .5, .5), texture_img=None):
         tri_num = len(self.__tri_objects)
         tri_pbrt_short_name = 'tri_{:08d}.pbrt'.format(tri_num)
         tri_pbrt_name = self.__temporary_folder / tri_pbrt_short_name
-        tmp_error_name = self.__temporary_folder / '.tmp.error'
-        os.system('{} {} {} 2>{}'.format(str(Path(root_path) / 'external/pbrt_build/obj2pbrt'),
-            tri_mesh_file, tri_pbrt_name, tmp_error_name))
+
+        if isinstance(tri_mesh, TetMesh3d):
+            tri_obj_name = self.__temporary_folder / 'tri_{:08d}.obj'.format(tri_num)
+            if render_tet_edge:
+                tet2obj_with_textures(tri_mesh, obj_file_name=tri_obj_name, pbrt_file_name=tri_pbrt_name)
+            else:
+                tmp_error_name = self.__temporary_folder / '.tmp.error'
+                tet2obj(tri_mesh, obj_file_name=tri_obj_name)
+                os.system('{} {} {} 2>{}'.format(str(Path(root_path) / 'external/pbrt_build/obj2pbrt'),
+                    tri_obj_name, tri_pbrt_name, tmp_error_name))
+        else:
+            tri_obj_name = tri_mesh
+            tmp_error_name = self.__temporary_folder / '.tmp.error'
+            os.system('{} {} {} 2>{}'.format(str(Path(root_path) / 'external/pbrt_build/obj2pbrt'),
+                tri_obj_name, tri_pbrt_name, tmp_error_name))
 
         lines = ['AttributeBegin\n',]
         # Material.
@@ -202,11 +215,31 @@ class PbrtRenderer(object):
         for c in color:
             assert 0 <= c <= 1
         r, g, b = color
-        if texture_img is None:
-            lines.append('Material "plastic" "color Kd" [{} {} {}] "color Ks" [{} {} {}] "float roughness" .3\n'.format(
-                r, g, b, r, g, b))
+
+        if render_tet_edge:
+            if texture_img is None:
+                texture_img = Path(root_path) / 'asset/texture/tri_grid.png'
+                # You can use the code below to create a grid.png.
+                # edge_width = 4
+                # img_size = 64
+                # texture_img = self.__temporary_folder / 'hex_{:08d}_texture.png'.format(hex_num)
+                # data = np.ones((img_size, img_size, 3), dtype=np.uint8) * 255
+                # data[:edge_width, :, :] = 0
+                # data[-edge_width:, :, :] = 0
+                # data[:, :edge_width, :] = 0
+                # data[:, -edge_width:, :] = 0
+                # img = Image.fromarray(data, 'RGB')
+                # img.save(texture_img)
+            else:
+                texture_img = Path(root_path) / 'asset/texture/{}'.format(texture_img)
+            lines.append('Texture "grid" "color" "imagemap" "string filename" ["{}"]\n'.format(str(texture_img)))
+            lines.append('Texture "sgrid" "color" "scale" "texture tex1" "grid" "color tex2" [{} {} {}]\n'.format(r, g, b))
+            lines.append('Material "matte" "texture Kd" "sgrid"\n')
         else:
-            if 'chkbd' in texture_img:
+            if texture_img is None:
+                lines.append('Material "plastic" "color Kd" [{} {} {}] "color Ks" [{} {} {}] "float roughness" .3\n'.format(
+                    r, g, b, r, g, b))
+            elif 'chkbd' in texture_img:
                 _, square_num, square_color = texture_img.split('_')
                 square_num = int(square_num)
                 square_color = np.clip(float(square_color), 0, 1)
@@ -291,7 +324,6 @@ class PbrtRenderer(object):
         # Original shape.
         shape_name = shape_info['name']
         if shape_name == 'curve':
-            # This is the only viable option for now.
             points = ndarray(shape_info['point']).ravel()
             assert points.size == 12
             type_info = '"string type" "flat"'
@@ -308,6 +340,12 @@ class PbrtRenderer(object):
             assert center.size == 3
             lines.append('Translate {:f} {:f} {:f}\n'.format(center[0], center[1], center[2]))
             lines.append('Shape "sphere" "float radius" [{:f}]'.format(radius))
+        elif shape_name == 'cylinder':
+            radius = float(shape_info['radius'])
+            zmin = float(shape_info['zmin'])
+            zmax = float(shape_info['zmax'])
+            lines.append('Shape "cylinder" "float radius" [{:f}] "float zmin" [{:f}] "float zmax" [{:f}]'.format(
+                radius, zmin, zmax))
         else:
             raise NotImplementedError
 
@@ -321,7 +359,7 @@ class PbrtRenderer(object):
         self.__shape_objects.append(shape_pbrt_short_name)
 
     # Call this function after you have set up add_hex_mesh and add_tri_mesh.
-    def render(self, verbose=False, nproc=None):
+    def render(self, verbose=False, light_rgb=(1., 1., 1.), nproc=None):
         scene_pbrt_name = self.__temporary_folder / 'scene.pbrt'
         with open(scene_pbrt_name, 'w') as f:
             x_res, y_res = self.__resolution
@@ -348,7 +386,8 @@ class PbrtRenderer(object):
 
             f.write('\n')
             f.write('AttributeBegin\n')
-            f.write('LightSource "infinite" "string mapname" "{}" "color scale" [1, 1, 1]\n'.format(str(self.__lightmap)))
+            f.write('LightSource "infinite" "string mapname" "{}" "color scale" [{:f}, {:f}, {:f}]\n'.format(str(
+                self.__lightmap), light_rgb[0], light_rgb[1], light_rgb[2]))
             f.write('AttributeEnd\n')
 
             f.write('\n')

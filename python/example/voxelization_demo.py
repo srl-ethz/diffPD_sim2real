@@ -3,10 +3,10 @@ sys.path.append('../')
 
 from pathlib import Path
 
-from py_diff_pd.common.mesh import voxelize, hex2obj, generate_hex_mesh, ndarray, filter_hex
+from py_diff_pd.common.hex_mesh import voxelize, hex2obj, generate_hex_mesh, filter_hex
 from py_diff_pd.common.project_path import root_path
-from py_diff_pd.core.py_diff_pd_core import Mesh3d
-from py_diff_pd.common.common import print_info
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d
+from py_diff_pd.common.common import print_info, ndarray
 
 import shutil
 import os
@@ -20,7 +20,7 @@ if __name__ == '__main__':
     origin = ndarray([0, 0, 0])
     mesh_file_name = Path(root_path) / 'asset' / 'mesh' / 'torus.bin'
     generate_hex_mesh(voxels, dx, origin, mesh_file_name)
-    mesh = Mesh3d()
+    mesh = HexMesh3d()
     mesh.Initialize(str(mesh_file_name))
     hex2obj(mesh, Path(root_path) / 'asset' / 'mesh' / 'torus.obj', 'tri')
     print_info('torus processed: elements: {}, dofs: {}'.format(mesh.NumOfElements(), mesh.NumOfVertices() * 3))
@@ -37,7 +37,7 @@ if __name__ == '__main__':
     origin = ndarray([0, 0, 0])
     mesh_file_name = Path(root_path) / 'asset/mesh/lock.bin'
     generate_hex_mesh(voxels, dx, origin, mesh_file_name)
-    mesh = Mesh3d()
+    mesh = HexMesh3d()
     mesh.Initialize(str(mesh_file_name))
     hex2obj(mesh, Path(root_path) / 'asset/mesh/lock.obj', 'tri')
     os.remove('lock.py')
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     origin = ndarray([0, 0, 0])
     mesh_file_name = Path(root_path) / 'asset/mesh/plant.bin'
     generate_hex_mesh(voxels, dx, origin, mesh_file_name)
-    mesh = Mesh3d()
+    mesh = HexMesh3d()
     mesh.Initialize(str(mesh_file_name))
     hex2obj(mesh, Path(root_path) / 'asset/mesh/plant.obj', 'tri')
     os.remove('plant.py')
@@ -70,6 +70,6 @@ if __name__ == '__main__':
     origin = ndarray([0, 0, 0])
     mesh_file_name = Path(root_path) / 'asset' / 'mesh' / 'bunny_watertight.bin'
     generate_hex_mesh(voxels, dx, origin, mesh_file_name)
-    mesh = Mesh3d()
+    mesh = HexMesh3d()
     mesh.Initialize(str(mesh_file_name))
     hex2obj(mesh, Path(root_path) / 'asset' / 'mesh' / 'bunny.obj', 'tri')

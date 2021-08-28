@@ -12,6 +12,8 @@ public:
         const Eigen::Matrix<real, dim, dim>& dF) const override;
     const Eigen::Matrix<real, dim * dim, dim * dim> StressTensorDifferential(
         const Eigen::Matrix<real, dim, dim>& F) const override;
+
+    const real ComputeAverageStiffness(const real singular_value_range) const override;
 };
 
 #endif

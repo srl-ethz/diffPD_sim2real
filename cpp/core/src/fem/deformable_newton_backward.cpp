@@ -9,7 +9,8 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     const VectorXr& a, const VectorXr& f_ext, const real dt, const VectorXr& q_next, const VectorXr& v_next,
     const std::vector<int>& active_contact_idx, const VectorXr& dl_dq_next,
     const VectorXr& dl_dv_next, const std::map<std::string, real>& options,
-    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext, VectorXr& dl_dw) const {
+    VectorXr& dl_dq, VectorXr& dl_dv, VectorXr& dl_da, VectorXr& dl_df_ext,
+    VectorXr& dl_dmat_w, VectorXr& dl_dact_w, VectorXr& dl_dstate_p) const {
     CheckError(method == "newton_pcg" || method == "newton_cholesky" || method == "newton_pardiso",
         "Unsupported Newton's method: " + method);
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
@@ -24,12 +25,16 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     dl_dv = VectorXr::Zero(dofs_);
     dl_da = VectorXr::Zero(act_dofs_);
     dl_df_ext = VectorXr::Zero(dofs_);
-    const int w_dofs = static_cast<int>(pd_element_energies_.size());
-    dl_dw = VectorXr::Zero(w_dofs);
+    const int mat_w_dofs = NumOfPdElementEnergies();
+    const int act_w_dofs = NumOfPdMuscleEnergies();
+    dl_dmat_w = VectorXr::Zero(mat_w_dofs);
+    dl_dact_w = VectorXr::Zero(act_w_dofs);
 
     const real h = dt;
     const real inv_h = 1 / h;
-    const real h2m = h * h / (cell_volume_ * density_);
+    const real mass = element_volume_ * density_;
+    const real h2m = h * h / mass;
+    const real inv_h2m = mass / (h * h);
     // Forward:
     // Step 1:
     // rhs_basic = q + hv + h2m * f_ext + h2m * f_state(q, v).
@@ -48,7 +53,7 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     //     }
     // }
     // Step 4:
-    // q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, a)) = rhs.
+    // inv_h2m * q_next - (f_ela(q_next) + f_pd(q_next) + f_act(q_next, a)) = inv_h2m * rhs.
     std::map<int, real> augmented_dirichlet = dirichlet_;
     for (const int idx : active_contact_idx) {
         for (int i = 0; i < vertex_dim; ++i)
@@ -64,12 +69,25 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     const VectorXr dl_dq_next_agg = dl_dq_next + dl_dv_next * inv_h;
 
     // Step 4:
+    // rhs -> q_next.
+    // dl_drhs = dl_dq_next * dq_next / drhs.
     // q_next_fixed = rhs_fixed.
-    // q_next_free - h2m * (f_ela(q_next_free; rhs_fixed) + f_pd(q_next_free; rhs_fixed)
-    //     + f_act(q_next_free; rhs_fixed, a)) = rhs_free.
-    VectorXr dl_drhs = VectorXr::Zero(dofs_);
-    ComputeDeformationGradientAuxiliaryDataAndProjection(q_next);
-    const SparseMatrix op = NewtonMatrix(q_next, a, h2m, augmented_dirichlet, true);
+    // inv_h2m * q_next_free - (f_ela(q_next_free; rhs_fixed) + f_pd(q_next_free; rhs_fixed)
+    //     + f_act(q_next_free; rhs_fixed, a)) = inv_h2m * rhs_free.
+    // For rhs_free:
+    // dlhs / dq_next_free * dq_next_free / drhs_free = inv_h2m.
+    // dq_next_free / drhs_free = [dlhs / dq_next_free]^(-1) * inv_h2m.
+    // dl_drhs_free = dl_dq_next_free * [dlhs / dq_next_free]^(-1) * inv_h2m.
+    // For rhs_fixed:
+    // dlhs / dq_next_free * dq_next_free / drhs_fixed + dlhs / drhs_fixed = 0.
+    // Moreover, q_next_fixed = rhs_fixed.
+    // Hence the following:
+    // dl_drhs_fixed = dl_dq_next_fixed - dl_dq_next_free * [dlhs / dq_next_free]^(-1) * dlhs / drhs_fixed.
+    VectorXr dl_drhs_intermediate = VectorXr::Zero(dofs_);
+    // Check if precomputed data are needed.
+    const bool use_precomputed_data = !pd_element_energies_.empty();
+    if (use_precomputed_data) ComputeDeformationGradientAuxiliaryDataAndProjection(q_next);
+    const SparseMatrix op = NewtonMatrix(q_next, a, inv_h2m, augmented_dirichlet, use_precomputed_data);
     if (method == "newton_pcg") {
         Eigen::ConjugateGradient<SparseMatrix, Eigen::Lower|Eigen::Upper> cg;
         // Setting up cg termination conditions: here what you set is the upper bound of:
@@ -81,50 +99,54 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
         const real tol = rel_tol + abs_tol / dl_dq_next_agg.norm();
         cg.setTolerance(tol);
         cg.compute(op);
-        dl_drhs = cg.solve(dl_dq_next_agg);
+        dl_drhs_intermediate = cg.solve(dl_dq_next_agg);
         CheckError(cg.info() == Eigen::Success, "CG solver failed.");
     } else if (method == "newton_cholesky") {
         // Note that Cholesky is a direct solver: no tolerance is ever used to terminate the solution.
         Eigen::SimplicialLDLT<SparseMatrix> cholesky;
         cholesky.compute(op);
-        dl_drhs = cholesky.solve(dl_dq_next_agg);
+        dl_drhs_intermediate = cholesky.solve(dl_dq_next_agg);
         CheckError(cholesky.info() == Eigen::Success, "Cholesky solver failed.");
     } else if (method == "newton_pardiso") {
         PardisoSpdSolver solver;
         solver.Compute(op, options);
-        dl_drhs = solver.Solve(dl_dq_next_agg);
+        dl_drhs_intermediate = solver.Solve(dl_dq_next_agg);
     } else {
         // Should never happen.
     }
-    // dl_drhs already backpropagates q_next_free to rhs_free and q_next_fixed to rhs_fixed.
-    // Since q_next_fixed does not depend on rhs_free, it remains to backpropagate q_next_free to rhs_fixed.
-    // Let J = [A,  B] = NewtonMatrixOp(q_next, a, h2m, {}).
+    VectorXr dl_drhs = dl_drhs_intermediate * inv_h2m;
+    // Now dl_drhs_free is correct. Working on dl_drhs_fixed next.
+    for (const auto& pair: augmented_dirichlet) dl_drhs(pair.first) = dl_dq_next_agg(pair.first);
+    // dl_drhs_fixed += -dl_dq_next_free * [dlhs/ dq_next_free]^(-1) * dlhs / drhs_fixed.
+    // Let J = [A,  B] = NewtonMatrixOp(q_next, a, inv_h2m, {}).
     //         [B', C]
     // Let A corresponds to fixed dofs.
-    // B' + C * dq_next_free / drhs_fixed = 0.
-    // so what we want is -dl_dq_next_free * inv(C) * B'.
-    VectorXr adjoint = dl_drhs;
+    // dl_drhs_fixed += -dl_dq_next_free * inv(C) * B'.
+    // dl_drhs_intermediate_free = dl_dq_next_free * inv(C).
+    VectorXr adjoint = dl_drhs_intermediate;
     for (const auto& pair : augmented_dirichlet) adjoint(pair.first) = 0;
-    const VectorXr dfixed = NewtonMatrixOp(q_next, a, h2m, {}, -adjoint);
+    const VectorXr dfixed = NewtonMatrixOp(q_next, a, inv_h2m, {}, -adjoint);
     for (const auto& pair : augmented_dirichlet) dl_drhs(pair.first) += dfixed(pair.first);
 
-    // Backpropagate a -> q_next.
-    // q_next_free - h2m * (f_ela(q_next_free; rhs_fixed) + f_pd(q_next_free; rhs_fixed)
-    //     + f_act(q_next_free; rhs_fixed, a)) = rhs_free.
-    // C * dq_next_free / da - h2m * df_act / da = 0.
-    // dl_da += dl_dq_next_agg * inv(C) * h2m * df_act / da.
-    SparseMatrixElements nonzeros_q, nonzeros_a;
-    ActuationForceDifferential(q_next, a, nonzeros_q, nonzeros_a);
-    dl_da += VectorSparseMatrixProduct(adjoint, dofs_, act_dofs_, nonzeros_a) * h2m;
+    // Backpropagate a -> q_next and mat_w -> q_next.
+    // inv_h2m * q_next_free - (f_ela(q_next_free; rhs_fixed) + f_pd(q_next_free; rhs_fixed)
+    //     + f_act(q_next_free; rhs_fixed, a)) = inv_h2m * rhs_free.
+    // C * dq_next_free / da - df_act / da = 0.
+    // dl_da += dl_dq_next_agg * inv(C) * df_act / da.
+    SparseMatrixElements nonzeros_q, nonzeros_a, nonzeros_act_w;
+    ActuationForceDifferential(q_next, a, nonzeros_q, nonzeros_a, nonzeros_act_w);
+    dl_da += VectorSparseMatrixProduct(adjoint, dofs_, act_dofs_, nonzeros_a);
+    dl_dact_w += VectorSparseMatrixProduct(adjoint, dofs_, act_w_dofs, nonzeros_act_w);
     // Equivalent code:
-    // dl_da += VectorXr(adjoint.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_a) * h2m);
+    // dl_da += VectorXr(adjoint.transpose() * ToSparseMatrix(dofs_, act_dofs_, nonzeros_a));
+    // dl_dact_w += VectorXr(adjoint.transpose() * ToSparseMatrix(dofs_, act_w_dofs, nonzeros_act_w));
 
-    // Backpropagate w -> q_next.
-    SparseMatrixElements nonzeros_w;
-    PdEnergyForceDifferential(q_next, false, true, true, nonzeros_q, nonzeros_w);
-    dl_dw += VectorSparseMatrixProduct(adjoint, dofs_, w_dofs, nonzeros_w) * h2m;
+    // Backpropagate mat_w -> q_next.
+    SparseMatrixElements nonzeros_mat_w;
+    PdEnergyForceDifferential(q_next, false, true, use_precomputed_data, nonzeros_q, nonzeros_mat_w);
+    dl_dmat_w += VectorSparseMatrixProduct(adjoint, dofs_, mat_w_dofs, nonzeros_mat_w);
     // Equivalent code:
-    // dl_dw += VectorXr(adjoint.transpose() * ToSparseMatrix(dofs_, w_dofs, nonzeros_w)) * h2m;
+    // dl_dmat_w += VectorXr(adjoint.transpose() * ToSparseMatrix(dofs_, mat_w_dofs, nonzeros_mat_w));
 
     // Step 3:
     // rhs = rhs_dirichlet(DoFs in active_contact_idx) = q.
@@ -150,10 +172,12 @@ void Deformable<vertex_dim, element_dim>::BackwardNewton(const std::string& meth
     dl_dv += dl_drhs_basic * h;
     dl_df_ext += dl_drhs_basic * h2m;
     VectorXr dl_dq_single, dl_dv_single;
-    BackwardStateForce(q, v, f_state_force, dl_drhs_basic * h2m, dl_dq_single, dl_dv_single);
+    BackwardStateForce(q, v, f_state_force, dl_drhs_basic * h2m, dl_dq_single, dl_dv_single, dl_dstate_p);
     dl_dq += dl_dq_single;
     dl_dv += dl_dv_single;
 }
 
+template class Deformable<2, 3>;
 template class Deformable<2, 4>;
+template class Deformable<3, 4>;
 template class Deformable<3, 8>;

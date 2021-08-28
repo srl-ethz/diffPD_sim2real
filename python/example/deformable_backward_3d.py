@@ -21,9 +21,9 @@ def test_deformable_backward_3d(verbose):
     deformable = env.deformable()
 
     methods = ['newton_pcg', 'newton_cholesky', 'pd_eigen']
-    opts = [{ 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-9, 'verbose': 0, 'thread_ct': 4,
+    opts = [{ 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-12, 'rel_tol': 1e-12, 'verbose': 0, 'thread_ct': 4 },
+        { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-12, 'rel_tol': 1e-12, 'verbose': 0, 'thread_ct': 4 },
+        { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-12, 'rel_tol': 1e-12, 'verbose': 0, 'thread_ct': 4,
             'use_bfgs': 1, 'bfgs_history_size': 10 }]
     if 'PARDISO_LIC_PATH' in os.environ:
         methods += ['newton_pardiso', 'pd_pardiso']
@@ -45,7 +45,7 @@ def test_deformable_backward_3d(verbose):
         grads[method] = []
 
     dt = 0.01
-    frame_num = 10
+    frame_num = 5
     for method, opt in zip(methods, opts):
         if verbose:
             print_info('method: {}'.format(method))
@@ -126,7 +126,7 @@ def test_deformable_backward_3d(verbose):
 
     # Check gradients.
     eps = 1e-4
-    atol = 1e-4
+    atol = 1e-3
     rtol = 5e-2
     def skip_var(dof):
         return env.is_dirichlet_dof(dof)

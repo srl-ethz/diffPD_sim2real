@@ -20,9 +20,9 @@ def test_collision_2d(verbose):
     deformable = env.deformable()
 
     methods = ['newton_pcg', 'newton_cholesky', 'pd_eigen']
-    opts = [{ 'max_newton_iter': 200, 'max_ls_iter': 10, 'abs_tol': 0, 'rel_tol': 1e-8, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_newton_iter': 200, 'max_ls_iter': 10, 'abs_tol': 0, 'rel_tol': 1e-8, 'verbose': 0, 'thread_ct': 4 },
-        { 'max_pd_iter': 200, 'max_ls_iter': 10, 'abs_tol': 0, 'rel_tol': 1e-8, 'verbose': 0, 'thread_ct': 4,
+    opts = [{ 'max_newton_iter': 200, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-8, 'verbose': 0, 'thread_ct': 4 },
+        { 'max_newton_iter': 200, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-8, 'verbose': 0, 'thread_ct': 4 },
+        { 'max_pd_iter': 200, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-8, 'verbose': 0, 'thread_ct': 4,
             'use_bfgs': 1, 'bfgs_history_size': 10 }]
     if 'PARDISO_LIC_PATH' in os.environ:
         methods += ['newton_pardiso', 'pd_pardiso']
@@ -50,9 +50,9 @@ def test_collision_2d(verbose):
         if verbose:
             os.system('eog {}.gif'.format(folder / method))
 
-    eps = 1e-6
-    atol = 1e-4
-    rtol = 2e-2
+    eps = 1e-3
+    atol = 1e-3
+    rtol = 5e-2
     for method in methods:
         if not np.isclose(losses['newton_pcg'], losses[method]):
             if verbose:

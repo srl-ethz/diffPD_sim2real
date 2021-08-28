@@ -310,3 +310,16 @@ const MatrixXr MatrixMatrixProduct(const MatrixXr& A, const MatrixXr& B) {
     for (int j = 0; j < B_cols; ++j) AB.col(j) = A * B.col(j);
     return AB;
 }
+
+const int GetNonzeros(const MatrixXr& A, const real eps) {
+    const int row_num = static_cast<int>(A.rows());
+    const int col_num = static_cast<int>(A.cols());
+    int cnt = 0;
+    for (int i = 0; i < row_num; ++i)
+        for (int j = 0; j < col_num; ++j) {
+            if (A(i, j) < -eps || A(i, j) > eps) {
+                ++cnt;
+            }
+        }
+    return cnt;
+}

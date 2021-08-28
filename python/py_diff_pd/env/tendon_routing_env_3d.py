@@ -5,11 +5,11 @@ import numpy as np
 
 from py_diff_pd.env.env_base import EnvBase
 from py_diff_pd.common.common import create_folder, ndarray
-from py_diff_pd.common.mesh import generate_hex_mesh
+from py_diff_pd.common.hex_mesh import generate_hex_mesh
 from py_diff_pd.common.display import export_gif
 from py_diff_pd.common.project_path import root_path
 from py_diff_pd.common.renderer import PbrtRenderer
-from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d, HexDeformable, StdRealVector
 
 class TendonRoutingEnv3d(EnvBase):
     def __init__(self, seed, folder, options):
@@ -23,6 +23,7 @@ class TendonRoutingEnv3d(EnvBase):
         refinement = options['refinement']
         youngs_modulus = options['youngs_modulus']
         poissons_ratio = options['poissons_ratio']
+        actuator_parameters = options['actuator_parameters'] if 'actuator_parameters' in options else ndarray([5.,])
         target = options['target']
 
         # Mesh parameters.
@@ -37,10 +38,10 @@ class TendonRoutingEnv3d(EnvBase):
         bin_file_name = folder / 'mesh.bin'
         voxels = np.ones(cell_nums)
         generate_hex_mesh(voxels, dx, origin, bin_file_name)
-        mesh = Mesh3d()
+        mesh = HexMesh3d()
         mesh.Initialize(str(bin_file_name))
 
-        deformable = Deformable3d()
+        deformable = HexDeformable()
         deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
         # Boundary conditions.
         for i in range(node_nums[0]):
@@ -56,7 +57,8 @@ class TendonRoutingEnv3d(EnvBase):
         # Actuation.
         element_num = mesh.NumOfElements()
         act_indices = list(range(element_num))
-        deformable.AddActuation(1e5, [0.0, 0.0, 1.0], act_indices)
+        actuator_stiffness = self._actuator_parameter_to_stiffness(actuator_parameters)
+        deformable.AddActuation(actuator_stiffness[0], [0.0, 0.0, 1.0], act_indices)
         act_maps = []
         for i in range(2):
             for j in range(2):
@@ -84,6 +86,9 @@ class TendonRoutingEnv3d(EnvBase):
         self._deformable = deformable
         self._q0 = q0
         self._v0 = v0
+        self._youngs_modulus = youngs_modulus
+        self._poissons_ratio = poissons_ratio
+        self._actuator_parameters = actuator_parameters
         self._f_ext = f_ext
         self._stepwise_loss = False
         self._target = np.copy(ndarray(target))
@@ -117,7 +122,7 @@ class TendonRoutingEnv3d(EnvBase):
         }
         renderer = PbrtRenderer(options)
 
-        mesh = Mesh3d()
+        mesh = HexMesh3d()
         mesh.Initialize(mesh_file)
         renderer.add_hex_mesh(mesh, render_voxel_edge=True, color=(.3, .7, .5), transforms=[
             ('s', 0.4),

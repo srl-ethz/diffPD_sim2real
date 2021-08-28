@@ -30,10 +30,14 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
     // q_next = q + hv + h2m * (f_ext + f_ela(q_next) + f_state(q, v) + f_pd(q_next) + f_act(q_next, a)).
     // q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, a)) = q + hv + h2m * f_ext + h2m * f_state(q, v).
     const real h = dt;
-    const real h2m = dt * dt / (cell_volume_ * density_);
+    // TODO: this mass is wrong for tri or tet meshes.
+    const real mass = element_volume_ * density_;
+    const real h2m = dt * dt / mass;
     const VectorXr rhs = q + h * v + h2m * f_ext + h2m * ForwardStateForce(q, v);
+    const real inv_h2m = mass / (h * h);
     const int max_contact_iter = 5;
     std::vector<std::set<int>> active_contact_idx_history;
+    const bool use_precomputed_data = !pd_element_energies_.empty();
     for (int contact_iter = 0; contact_iter < max_contact_iter; ++contact_iter) {
         if (verbose_level > 0) std::cout << "Contact iteration " << contact_iter << std::endl;
         // Fix dirichlet_ + active_contact_nodes.
@@ -49,16 +53,26 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
             q_sol(pair.first) = pair.second;
             selected(pair.first) = 0;
         }
-        ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol);
-        VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol, true) + ActuationForce(q_sol, a);
+        if (use_precomputed_data) ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol);
+        VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol, use_precomputed_data) + ActuationForce(q_sol, a);
         // We aim to use Newton's method to minimize the following energy:
-        // 0.5 * q_next^2 + h2m * (E_ela(q_next) + E_pd(q_next) + E_act(q_next, a)) - rhs * q_next.
-        real energy_sol = ElasticEnergy(q_sol) + ComputePdEnergy(q_sol, true) + ActuationEnergy(q_sol, a);
+        // 0.5 / (h2) * (q_next - rhs) * M * (q_next - rhs) + (E_ela + E_pd + E_act).
+        // The gradient of this energy:
+        // M / h2 * (q_next - rhs) - elastic_force.
+        // When the gradient = 0, it solves the implicit time-stepping scheme (q_next = rhs + h2m * elastic_force).
+        // Our situation is a bit more complicated: we want to fix some q_next to certain values.
+        // Therefore, what we actually aim to solve is:
+        // M / h2 * (q_next - rhs) = elastic_force for those FREE dofs only.
+        // This means we also need to fix q_next_fixed in the energy function above.
+        //
+        // In order to apply Newton's method, we need to compute the Hessian of the energy:
+        // H = M / h2 + Hess (energy).
+        real energy_sol = ElasticEnergy(q_sol) + ComputePdEnergy(q_sol, use_precomputed_data) + ActuationEnergy(q_sol, a);
         auto eval_obj = [&](const VectorXr& q_cur, const real energy_cur){
-            return 0.5 * q_cur.dot(q_cur) + h2m * energy_cur - rhs.dot(q_cur);
+            return 0.5 * (q_cur - rhs).dot(inv_h2m * (q_cur - rhs)) + energy_cur;
         };
         real obj_sol = eval_obj(q_sol, energy_sol);
-        VectorXr grad_sol = (q_sol - rhs - h2m * force_sol).array() * selected.array();
+        VectorXr grad_sol = (inv_h2m * (q_sol - rhs) - force_sol).array() * selected.array();
         // At each Newton's iteration, we maintain:
         // - q_sol
         // - force_sol
@@ -71,7 +85,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
             // Newton's direction: dq = H^{-1} * grad.
             VectorXr newton_direction = VectorXr::Zero(dofs_);
             if (verbose_level > 1) Tic();
-            const SparseMatrix op = NewtonMatrix(q_sol, a, h2m, augmented_dirichlet, true);
+            const SparseMatrix op = NewtonMatrix(q_sol, a, inv_h2m, augmented_dirichlet, use_precomputed_data);
             if (verbose_level > 1) Toc("Assemble NewtonMatrix");
             if (method == "newton_pcg") {
                 // Looks like Matrix operators are more accurate and allow for more advanced preconditioners.
@@ -121,9 +135,9 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                     // Check if the gradients make sense.
                     for (const real eps : { 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6 }) {
                         const VectorXr q_sol_perturbed = q_sol - eps * grad_sol;
-                        ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_perturbed);
+                        if (use_precomputed_data) ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_perturbed);
                         const real energy_sol_perturbed = ElasticEnergy(q_sol_perturbed)
-                            + ComputePdEnergy(q_sol_perturbed, true) + ActuationEnergy(q_sol_perturbed, a);
+                            + ComputePdEnergy(q_sol_perturbed, use_precomputed_data) + ActuationEnergy(q_sol_perturbed, a);
                         const real obj_sol_perturbed = eval_obj(q_sol_perturbed, energy_sol_perturbed);
                         const real obj_diff_numerical = obj_sol_perturbed - obj_sol;
                         const real obj_diff_analytical = -eps * grad_sol.dot(grad_sol);
@@ -141,8 +155,8 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
             if (verbose_level > 1) Tic();
             real step_size = 1;
             VectorXr q_sol_next = q_sol - step_size * newton_direction;
-            ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_next);
-            real energy_next = ElasticEnergy(q_sol_next) + ComputePdEnergy(q_sol_next, true) + ActuationEnergy(q_sol_next, a);
+            if (use_precomputed_data) ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_next);
+            real energy_next = ElasticEnergy(q_sol_next) + ComputePdEnergy(q_sol_next, use_precomputed_data) + ActuationEnergy(q_sol_next, a);
             real obj_next = eval_obj(q_sol_next, energy_next);
             const real gamma = ToReal(1e-4);
             bool ls_success = false;
@@ -157,8 +171,8 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
                 }
                 step_size /= 2;
                 q_sol_next = q_sol - step_size * newton_direction;
-                ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_next);
-                energy_next = ElasticEnergy(q_sol_next) + ComputePdEnergy(q_sol_next, true) + ActuationEnergy(q_sol_next, a);
+                if (use_precomputed_data) ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_next);
+                energy_next = ElasticEnergy(q_sol_next) + ComputePdEnergy(q_sol_next, use_precomputed_data) + ActuationEnergy(q_sol_next, a);
                 obj_next = eval_obj(q_sol_next, energy_next);
                 if (verbose_level > 0) std::cout << "Line search iteration: " << j << std::endl;
                 if (verbose_level > 1) {
@@ -180,14 +194,14 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
             // Update.
             if (verbose_level > 1) std::cout << "obj_sol = " << obj_sol << ", obj_next = " << obj_next << std::endl;
             q_sol = q_sol_next;
-            force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol, true) + ActuationForce(q_sol, a);
+            force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol, use_precomputed_data) + ActuationForce(q_sol, a);
             energy_sol = energy_next;
             obj_sol = obj_next;
-            grad_sol = (q_sol - rhs - h2m * force_sol).array() * selected.array();
+            grad_sol = (inv_h2m * (q_sol - rhs) - force_sol).array() * selected.array();
 
             // Check for convergence --- gradients must be zero.
             const real abs_error = grad_sol.norm();
-            const real rhs_norm = VectorXr(selected.array() * rhs.array()).norm();
+            const real rhs_norm = VectorXr(selected.array() * (inv_h2m * rhs).array()).norm();
             if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
             if (abs_error <= rel_tol * rhs_norm + abs_tol) {
                 success = true;
@@ -200,7 +214,7 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
         const std::set<int> past_active_contact_idx = VectorToSet(active_contact_idx);
         active_contact_idx_history.push_back(past_active_contact_idx);
         active_contact_idx.clear();
-        const VectorXr ext_forces = q_sol - h2m * force_sol - rhs;
+        const VectorXr ext_forces = inv_h2m * (q_sol - rhs) - force_sol;
         bool good = true;
         for (const auto& pair : frictional_boundary_vertex_indices_) {
             const int node_idx = pair.first;
@@ -253,25 +267,26 @@ void Deformable<vertex_dim, element_dim>::ForwardNewton(const std::string& metho
 
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::NewtonMatrixOp(const VectorXr& q_sol, const VectorXr& a,
-    const real h2m, const std::map<int, real>& dirichlet_with_friction, const VectorXr& dq) const {
+    const real inv_h2m, const std::map<int, real>& dirichlet_with_friction, const VectorXr& dq) const {
     VectorXr dq_w_bonudary = dq;
     for (const auto& pair : dirichlet_with_friction) dq_w_bonudary(pair.first) = 0;
-    const int w_dofs = static_cast<int>(pd_element_energies_.size());
-    VectorXr ret = dq_w_bonudary - h2m * (ElasticForceDifferential(q_sol, dq_w_bonudary)
-        + PdEnergyForceDifferential(q_sol, dq_w_bonudary, VectorXr::Zero(w_dofs))
-        + ActuationForceDifferential(q_sol, a, dq_w_bonudary, VectorXr::Zero(act_dofs_)));
+    const int mat_w_dofs = NumOfPdElementEnergies();
+    const int act_w_dofs = NumOfPdMuscleEnergies();
+    VectorXr ret = inv_h2m * dq_w_bonudary - (ElasticForceDifferential(q_sol, dq_w_bonudary)
+        + PdEnergyForceDifferential(q_sol, dq_w_bonudary, VectorXr::Zero(mat_w_dofs))
+        + ActuationForceDifferential(q_sol, a, dq_w_bonudary, VectorXr::Zero(act_dofs_), VectorXr::Zero(act_w_dofs)));
     for (const auto& pair : dirichlet_with_friction) ret(pair.first) = dq(pair.first);
     return ret;
 }
 
 template<int vertex_dim, int element_dim>
 const SparseMatrix Deformable<vertex_dim, element_dim>::NewtonMatrix(const VectorXr& q_sol, const VectorXr& a,
-    const real h2m, const std::map<int, real>& dirichlet_with_friction, const bool use_precomputed_data) const {
+    const real inv_h2m, const std::map<int, real>& dirichlet_with_friction, const bool use_precomputed_data) const {
     SparseMatrixElements nonzeros = ElasticForceDifferential(q_sol);
     SparseMatrixElements nonzeros_pd, nonzeros_dummy;
     PdEnergyForceDifferential(q_sol, true, false, use_precomputed_data, nonzeros_pd, nonzeros_dummy);
-    SparseMatrixElements nonzeros_act_dq, nonzeros_act_da;
-    ActuationForceDifferential(q_sol, a, nonzeros_act_dq, nonzeros_act_da);
+    SparseMatrixElements nonzeros_act_dq, nonzeros_act_da, nonzeros_act_dw;
+    ActuationForceDifferential(q_sol, a, nonzeros_act_dq, nonzeros_act_da, nonzeros_act_dw);
     nonzeros.insert(nonzeros.end(), nonzeros_pd.begin(), nonzeros_pd.end());
     nonzeros.insert(nonzeros.end(), nonzeros_act_dq.begin(), nonzeros_act_dq.end());
     SparseMatrixElements nonzeros_new;
@@ -281,11 +296,18 @@ const SparseMatrix Deformable<vertex_dim, element_dim>::NewtonMatrix(const Vecto
         const real val = element.value();
         if (dirichlet_with_friction.find(row) != dirichlet_with_friction.end()
             || dirichlet_with_friction.find(col) != dirichlet_with_friction.end()) continue;
-        nonzeros_new.push_back(Eigen::Triplet<real>(row, col, -h2m * val));
+        nonzeros_new.push_back(Eigen::Triplet<real>(row, col, -val));
     }
-    for (int i = 0; i < dofs_; ++i) nonzeros_new.push_back(Eigen::Triplet<real>(i, i, 1));
+    for (int i = 0; i < dofs_; ++i) {
+        if (dirichlet_with_friction.find(i) != dirichlet_with_friction.end())
+            nonzeros_new.push_back(Eigen::Triplet<real>(i, i, 1));
+        else
+            nonzeros_new.push_back(Eigen::Triplet<real>(i, i, inv_h2m));
+    }
     return ToSparseMatrix(dofs_, dofs_, nonzeros_new);
 }
 
+template class Deformable<2, 3>;
 template class Deformable<2, 4>;
+template class Deformable<3, 4>;
 template class Deformable<3, 8>;

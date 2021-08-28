@@ -5,9 +5,9 @@ import numpy as np
 
 from py_diff_pd.env.env_base import EnvBase
 from py_diff_pd.common.common import create_folder, ndarray
-from py_diff_pd.common.mesh import generate_hex_mesh
+from py_diff_pd.common.hex_mesh import generate_hex_mesh
 from py_diff_pd.common.display import render_hex_mesh, export_gif
-from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d, HexDeformable, StdRealVector
 
 class CantileverEnv3d(EnvBase):
     # Refinement is an integer controlling the resolution of the mesh.
@@ -21,6 +21,7 @@ class CantileverEnv3d(EnvBase):
         youngs_modulus = options['youngs_modulus'] if 'youngs_modulus' in options else 1e6
         poissons_ratio = options['poissons_ratio'] if 'poissons_ratio' in options else 0.45
         twist_angle = options['twist_angle'] if 'twist_angle' in options else 0
+        state_force_parameters = options['state_force_parameters'] if 'state_force_parameters' in options else ndarray([0.0, 0.0, -9.81])
 
         # Mesh parameters.
         la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
@@ -33,10 +34,10 @@ class CantileverEnv3d(EnvBase):
         bin_file_name = folder / 'mesh.bin'
         voxels = np.ones(cell_nums)
         generate_hex_mesh(voxels, dx, origin, bin_file_name)
-        mesh = Mesh3d()
+        mesh = HexMesh3d()
         mesh.Initialize(str(bin_file_name))
 
-        deformable = Deformable3d()
+        deformable = HexDeformable()
         deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
         # Boundary conditions.
         for j in range(node_nums[1]):
@@ -47,7 +48,7 @@ class CantileverEnv3d(EnvBase):
                 deformable.SetDirichletBoundaryCondition(3 * node_idx + 1, vy)
                 deformable.SetDirichletBoundaryCondition(3 * node_idx + 2, vz)
         # State-based forces.
-        deformable.AddStateForce('gravity', [0, 0, -9.81])
+        deformable.AddStateForce('gravity', state_force_parameters)
         # Elasticity.
         deformable.AddPdEnergy('corotated', [2 * mu,], [])
         deformable.AddPdEnergy('volume', [la,], [])
@@ -80,6 +81,7 @@ class CantileverEnv3d(EnvBase):
         self._f_ext = f_ext
         self._youngs_modulus = youngs_modulus
         self._poissons_ratio = poissons_ratio
+        self._state_force_parameters = state_force_parameters
         self._stepwise_loss = True
         self.__loss_q_grad = np.random.normal(size=dofs)
         self.__loss_v_grad = np.random.normal(size=dofs)
@@ -99,7 +101,7 @@ class CantileverEnv3d(EnvBase):
         return i == 0
 
     def _display_mesh(self, mesh_file, file_name):
-        mesh = Mesh3d()
+        mesh = HexMesh3d()
         mesh.Initialize(mesh_file)
         render_hex_mesh(mesh, file_name=file_name,
             resolution=(400, 400), sample=self.__spp, transforms=[
@@ -110,7 +112,7 @@ class CantileverEnv3d(EnvBase):
         mesh_file = self._folder / 'groundtruth' / '{:04d}.bin'.format(i)
         if not mesh_file.exists(): return 0, np.zeros(q.size), np.zeros(q.size)
 
-        mesh = Mesh3d()
+        mesh = HexMesh3d()
         mesh.Initialize(str(mesh_file))
         q_ref = ndarray(mesh.py_vertices())
         grad = q - q_ref

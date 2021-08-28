@@ -6,9 +6,9 @@ import time
 import scipy.optimize
 import numpy as np
 
-from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d, HexDeformable, StdRealVector
 from py_diff_pd.common.common import create_folder, ndarray, print_info, print_error
-from py_diff_pd.common.mesh import generate_hex_mesh
+from py_diff_pd.common.hex_mesh import generate_hex_mesh
 from py_diff_pd.common.display import display_hex_mesh, render_hex_mesh, export_gif
 
 def compare_mesh_3d(mesh1, mesh2):
@@ -44,7 +44,7 @@ def test_deformable_quasi_static_3d(verbose):
     bin_file_name = str(folder / 'cube.bin')
     voxels = np.ones(cell_nums)
     generate_hex_mesh(voxels, dx, origin, bin_file_name)
-    mesh = Mesh3d()
+    mesh = HexMesh3d()
     mesh.Initialize(bin_file_name)
 
     # FEM parameters.
@@ -53,7 +53,7 @@ def test_deformable_quasi_static_3d(verbose):
     density = 1e3
     method = 'newton_cholesky'
     opt = { 'max_newton_iter': 10, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-2, 'verbose': 0, 'thread_ct': 4 }
-    deformable = Deformable3d()
+    deformable = HexDeformable()
     deformable.Initialize(bin_file_name, density, 'corotated', youngs_modulus, poissons_ratio)
     # Boundary conditions.
     theta = np.pi / 6
@@ -92,9 +92,9 @@ def test_deformable_quasi_static_3d(verbose):
     q_array = StdRealVector(dofs)
     deformable.PyGetQuasiStaticState(method, act, f_ext, opt, q_array)
     deformable.PySaveToMeshFile(q_array, str(folder / 'quasi_static.bin'))
-    mesh = Mesh3d()
+    mesh = HexMesh3d()
     mesh.Initialize(str(folder / 'quasi_static.bin'))
-    mesh_template = Mesh3d()
+    mesh_template = HexMesh3d()
     mesh_template.Initialize(str(folder / 'quasi_static_master.bin'))
     # Compuare mesh and mesh_template.
     if not compare_mesh_3d(mesh_template, mesh):

@@ -6,9 +6,9 @@ import pickle
 
 from py_diff_pd.env.env_base import EnvBase
 from py_diff_pd.common.common import create_folder, ndarray
-from py_diff_pd.common.mesh import generate_hex_mesh
+from py_diff_pd.common.hex_mesh import generate_hex_mesh
 from py_diff_pd.common.display import render_hex_mesh, export_gif
-from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d, HexDeformable, StdRealVector
 
 class FingerEnv3d(EnvBase):
     # Refinement is an integer controlling the resolution of the mesh. We use 8 for benchmark_3d.
@@ -19,6 +19,7 @@ class FingerEnv3d(EnvBase):
         # Mesh parameters.
         youngs_modulus = 3e5
         poissons_ratio = 0.45
+        actuator_parameters = [5.,]
         la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
         mu = youngs_modulus / (2 * (1 + poissons_ratio))
         density = 1e3
@@ -29,10 +30,10 @@ class FingerEnv3d(EnvBase):
         bin_file_name = folder / 'mesh.bin'
         voxels = np.ones(cell_nums)
         generate_hex_mesh(voxels, dx, origin, bin_file_name)
-        mesh = Mesh3d()
+        mesh = HexMesh3d()
         mesh.Initialize(str(bin_file_name))
 
-        deformable = Deformable3d()
+        deformable = HexDeformable()
         deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
         # Boundary conditions.
         for i in range(cell_nums[0] + 1):
@@ -48,7 +49,8 @@ class FingerEnv3d(EnvBase):
         # Actuation.
         element_num = mesh.NumOfElements()
         act_indices = [i for i in range(element_num)]
-        deformable.AddActuation(1e5, [0.0, 0.0, 1.0], act_indices)
+        actuator_stiffness = self._actuator_parameter_to_stiffness(actuator_parameters)
+        deformable.AddActuation(actuator_stiffness[0], [0.0, 0.0, 1.0], act_indices)
 
         # Initial state
         dofs = deformable.dofs()
@@ -61,6 +63,9 @@ class FingerEnv3d(EnvBase):
         # Data members.
         self.__folder = Path(folder)
         self._origin = origin
+        self._youngs_modulus = youngs_modulus
+        self._poissons_ratio = poissons_ratio
+        self._actuator_parameters = actuator_parameters
         self._deformable = deformable
         self._q0 = q0
         self._v0 = v0
@@ -155,7 +160,7 @@ class FingerEnv3d(EnvBase):
                 idx = i*frame_skip
                 mesh_file = str(self.__folder / vis_folder / '{:04d}.bin'.format(idx))
                 self._deformable.PySaveToMeshFile(q[idx], mesh_file)
-                mesh = Mesh3d()
+                mesh = HexMesh3d()
                 mesh.Initialize(mesh_file)
                 render_hex_mesh(mesh, file_name=self.__folder / vis_folder / '{:04d}.png'.format(idx),
                     resolution=(400, 400), sample=4)

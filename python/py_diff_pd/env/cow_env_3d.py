@@ -6,9 +6,9 @@ import numpy as np
 
 from py_diff_pd.env.env_base import EnvBase
 from py_diff_pd.common.common import create_folder, ndarray
-from py_diff_pd.common.mesh import generate_hex_mesh, get_contact_vertex
+from py_diff_pd.common.hex_mesh import generate_hex_mesh, get_contact_vertex
 from py_diff_pd.common.display import render_hex_mesh, export_gif
-from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d, HexDeformable, StdRealVector
 from py_diff_pd.common.project_path import root_path
 
 class CowEnv3d(EnvBase):
@@ -18,9 +18,16 @@ class CowEnv3d(EnvBase):
         np.random.seed(seed)
         create_folder(folder, exist_ok=True)
 
-        youngs_modulus = options['youngs_modulus']
-        poissons_ratio = options['poissons_ratio']
+        youngs_modulus = options['youngs_modulus'] if 'youngs_modulus' in options else 1e6
+        poissons_ratio = options['poissons_ratio'] if 'poissons_ratio' in options else 0.49
         gait = options['gait'] if 'gait' in options else 'pronk'
+        if 'actuator_parameters' in options:
+            actuator_parameters = options['actuator_parameters']
+        elif gait == 'gallop':
+            actuator_parameters = ndarray([np.log10(5) + 5, np.log10(5) + 5])
+        else:
+            actuator_parameters = ndarray([np.log10(5) + 5,])
+        state_force_parameters = options['state_force_parameters'] if 'state_force_parameters' in options else ndarray([0.0, 0.0, -9.81])
 
         # Mesh parameters.
         la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
@@ -28,7 +35,7 @@ class CowEnv3d(EnvBase):
         density = 7e2
 
         bin_file_name = Path(root_path) / 'asset' / 'mesh' / 'spot.bin'
-        mesh = Mesh3d()
+        mesh = HexMesh3d()
         mesh.Initialize(str(bin_file_name))
         cow_size = 0.1
         # Rescale the mesh.
@@ -38,14 +45,14 @@ class CowEnv3d(EnvBase):
 
         dx =  1/15 * cow_size
 
-        deformable = Deformable3d()
+        deformable = HexDeformable()
         deformable.Initialize(tmp_bin_file_name, density, 'none', youngs_modulus, poissons_ratio)
         os.remove(tmp_bin_file_name)
         # Elasticity.
         deformable.AddPdEnergy('corotated', [2 * mu,], [])
         deformable.AddPdEnergy('volume', [la,], [])
         # State-based forces.
-        deformable.AddStateForce('gravity', [0, 0, -9.81])
+        deformable.AddStateForce('gravity', state_force_parameters)
         # Collisions.
         vertex_num = mesh.NumOfVertices()
         friction_node_idx = []
@@ -112,7 +119,8 @@ class CowEnv3d(EnvBase):
                 leg_indices[key].append(count)
                 act_indices.append(i)
                 count += 1
-        deformable.AddActuation(5e5, [0.0, 0.0, 1.0], act_indices)
+        actuator_stiffness = self._actuator_parameter_to_stiffness(actuator_parameters)
+        deformable.AddActuation(actuator_stiffness[0], [0.0, 0.0, 1.0], act_indices)
 
         spine_indices = {}
         if gait == 'gallop':
@@ -141,7 +149,7 @@ class CowEnv3d(EnvBase):
                     act_indices.append(i)
                     count += 1
 
-            deformable.AddActuation(5e5, [1.0, 0.0, 0.0], act_indices)
+            deformable.AddActuation(actuator_stiffness[1], [1.0, 0.0, 0.0], act_indices)
         # Initial states.
         dofs = deformable.dofs()
         print('Cow element: {:d}, DoFs: {:d}.'.format(element_num, dofs))
@@ -157,13 +165,21 @@ class CowEnv3d(EnvBase):
         self._f_ext = f_ext
         self._youngs_modulus = youngs_modulus
         self._poissons_ratio = poissons_ratio
+        self._actuator_parameters = actuator_parameters
+        self._state_force_parameters = state_force_parameters
         self._stepwise_loss = False
         self._leg_indices = leg_indices
         self._act_indices = act_indices
         self._spine_indices = spine_indices
         self.__element_num = mesh.NumOfElements()
 
-        self.__spp = options['spp'] if 'spp' in options else 4
+        scale = 3
+        self._spp = options['spp'] if 'spp' in options else 8
+        self._camera_pos = (0.5, -1, 0.3)
+        self._camera_lookat = (0.5, 0, 0.15)
+        self._color = (0.9, 0.9, 0.3)
+        self._scale = scale
+        self._resolution = (1600, 900)
 
     def element_num(self):
         return self.__element_num
@@ -183,14 +199,6 @@ class CowEnv3d(EnvBase):
 
     def is_dirichlet_dof(self, dof):
         return False
-
-    def _display_mesh(self, mesh_file, file_name):
-        mesh = Mesh3d()
-        mesh.Initialize(mesh_file)
-        render_hex_mesh(mesh, file_name=file_name,
-            resolution=(400, 400), sample=self.__spp, transforms=[
-                ('s', 4)
-            ], render_voxel_edge=True)
 
     def _loss_and_grad(self, q, v):
         # Compute the center of mass.

@@ -63,4 +63,6 @@ const VectorXr VectorSparseMatrixProduct(const VectorXr& v, const int row, const
 const MatrixXr SparseMatrixMatrixProduct(const int row, const int col, const SparseMatrixElements& A, const MatrixXr& B);
 const MatrixXr MatrixMatrixProduct(const MatrixXr& A, const MatrixXr& B);
 
+const int GetNonzeros(const MatrixXr& A, const real eps);
+
 #endif

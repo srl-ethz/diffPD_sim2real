@@ -73,5 +73,11 @@ const Eigen::Matrix<real, dim * dim, dim * dim> CorotatedMaterial<dim>::StressTe
     return ret;
 }
 
+template<int dim>
+const real CorotatedMaterial<dim>::ComputeAverageStiffness(const real singular_value_range) const {
+    CheckError(false, "Not implemented yet.");
+    return 0;
+}
+
 template class CorotatedMaterial<2>;
 template class CorotatedMaterial<3>;

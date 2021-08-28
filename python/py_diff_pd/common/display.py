@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import shutil
 from pathlib import Path
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -8,8 +9,8 @@ from matplotlib.patches import FancyArrowPatch
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.proj3d import proj_transform
 import matplotlib.animation as animation
-from py_diff_pd.core.py_diff_pd_core import Mesh2d
-from py_diff_pd.common.common import ndarray
+from py_diff_pd.core.py_diff_pd_core import QuadMesh2d
+from py_diff_pd.common.common import ndarray, create_folder, delete_folder
 
 # transforms is a list of:
 # ('s', s)
@@ -49,6 +50,68 @@ def display_quad_mesh(quad_mesh, xlim=None, ylim=None, title=None, file_name=Non
             j1 = int(f[j1])
             v0 = ndarray(apply_transform(quad_mesh.py_vertex(j0)))
             v1 = ndarray(apply_transform(quad_mesh.py_vertex(j1)))
+            lines.append((v0, v1))
+    ax.add_collection(mc.LineCollection(lines, colors='tab:red', alpha=0.5))
+
+    ax.set_aspect('equal')
+    v = ndarray(lines)
+    padding = 0.5
+    x_min = np.min(v[:, :, 0]) - padding
+    x_max = np.max(v[:, :, 0]) + padding
+    y_min = np.min(v[:, :, 1]) - padding
+    y_max = np.max(v[:, :, 1]) + padding
+    if xlim is None:
+        ax.set_xlim([x_min, x_max])
+    else:
+        ax.set_xlim(xlim)
+    if ylim is None:
+        ax.set_ylim([y_min, y_max])
+    else:
+        ax.set_ylim(ylim)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    if title is not None:
+        ax.set_title(title)
+    if file_name is not None:
+        fig.savefig(file_name)
+    if show:
+        plt.show()
+    plt.close()
+
+def display_tri_mesh(tri_mesh, xlim=None, ylim=None, title=None, file_name=None, show=True,
+    transforms=None):
+    def apply_transform(p):
+        p = ndarray(p)
+        if transforms is None:
+            return p
+        else:
+            for key, val in transforms:
+                if key == 's':
+                    p *= val
+                elif key == 't':
+                    p += ndarray(val)
+                elif key == 'r':
+                    c, s = np.cos(val), np.sin(val)
+                    R = ndarray([[c, -s], [s, c]])
+                    p = R @ p
+                else:
+                    raise NotImplementedError
+            return p
+
+    vertex_num = tri_mesh.NumOfVertices()
+    element_num = tri_mesh.NumOfElements()
+
+    fig = plt.figure()
+    ax = fig.add_subplot()
+    lines = []
+    for i in range(element_num):
+        f = ndarray(tri_mesh.py_element(i))
+        j01 = [(0, 1), (1, 2), (2, 0)]
+        for j0, j1 in j01:
+            j0 = int(f[j0])
+            j1 = int(f[j1])
+            v0 = ndarray(apply_transform(tri_mesh.py_vertex(j0)))
+            v1 = ndarray(apply_transform(tri_mesh.py_vertex(j1)))
             lines.append((v0, v1))
     ax.add_collection(mc.LineCollection(lines, colors='tab:red', alpha=0.5))
 
@@ -149,6 +212,22 @@ def export_gif(folder_name, gif_name, fps, name_prefix=''):
     else:
         imageio.mimsave(gif_name, images)
 
+def export_mp4(folder_name, mp4_name, fps, name_prefix=''):
+    frame_names = [os.path.join(folder_name, f) for f in os.listdir(folder_name)
+        if os.path.isfile(os.path.join(folder_name, f)) and f.startswith(name_prefix) and f.endswith('.png')]
+    frame_names = sorted(frame_names)
+
+    # Create a temporary folder.
+    tmp_folder = Path('_export_mp4')
+    create_folder(tmp_folder, exist_ok=False)
+    for i, f in enumerate(frame_names):
+        shutil.copyfile(f, tmp_folder / '{:08d}.png'.format(i))
+
+    os.system('ffmpeg -r ' + str(fps) + ' -i ' + str(tmp_folder / '%08d.png') + ' -vcodec libx264 -y ' + str(mp4_name))
+
+    # Delete temporary folder.
+    delete_folder(tmp_folder)
+
 # The input argument transforms is a list of rotation, translation, and scaling applied to the mesh.
 # transforms = [rotation, translation, scaling, ...]
 # rotation = ('r', (radians, unit_axis.x, unit_axis.y, unit_axis.z))
@@ -161,7 +240,7 @@ def render_hex_mesh(hex_mesh, file_name,
     camera_pos=(2, -2.2, 2), camera_lookat=(0.5, 0.5, 0.5), camear_up=(0, 0, 1), fov=33,
     transforms=None, render_voxel_edge=False):
     from py_diff_pd.common.project_path import root_path
-    from py_diff_pd.common.mesh import hex2obj, hex2obj_with_textures
+    from py_diff_pd.common.hex_mesh import hex2obj, hex2obj_with_textures
 
     file_name = str(file_name)
     assert file_name.endswith('.png') or file_name.endswith('.exr')

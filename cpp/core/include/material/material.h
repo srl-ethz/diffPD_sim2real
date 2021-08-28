@@ -30,6 +30,11 @@ public:
         const Eigen::Matrix<real, dim, dim>& dF) const = 0;
     virtual const Eigen::Matrix<real, dim * dim, dim * dim> StressTensorDifferential(const Eigen::Matrix<real, dim, dim>& F) const = 0;
 
+    // Used by the quasi-Newton methods.
+    // See https://tiantianliu.cn/papers/liu17quasi/liu17quasi.pdf
+    // singular_value_range is in [0, 1] so that [x_start, x_end] = [1 - singular_value_range, 1 + singular_value_range].
+    virtual const real ComputeAverageStiffness(const real singular_value_range) const = 0;
+
 private:
     real youngs_modulus_;
     real poissons_ratio_;

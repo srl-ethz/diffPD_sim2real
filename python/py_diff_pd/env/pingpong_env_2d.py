@@ -4,9 +4,9 @@ import numpy as np
 
 from py_diff_pd.env.env_base import EnvBase
 from py_diff_pd.common.common import create_folder, ndarray
-from py_diff_pd.common.mesh import generate_rectangle_mesh
+from py_diff_pd.common.quad_mesh import generate_rectangle_mesh
 from py_diff_pd.common.display import display_quad_mesh, export_gif
-from py_diff_pd.core.py_diff_pd_core import Mesh2d, Deformable2d, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import QuadMesh2d, QuadDeformable, StdRealVector
 
 class PingpongEnv2d(EnvBase):
     def __init__(self, seed, folder, options):
@@ -30,10 +30,10 @@ class PingpongEnv2d(EnvBase):
         dx = cube_size / refinement
         bin_file_name = folder / 'mesh.bin'
         generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name)
-        mesh = Mesh2d()
+        mesh = QuadMesh2d()
         mesh.Initialize(str(bin_file_name))
 
-        deformable = Deformable2d()
+        deformable = QuadDeformable()
         deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
         # Elasticity.
         deformable.AddPdEnergy('corotated', [2 * mu,], [])
@@ -97,7 +97,7 @@ class PingpongEnv2d(EnvBase):
         self._target_q = ndarray(np.copy(target_q)).ravel()
 
     def _display_mesh(self, mesh_file, file_name):
-        mesh = Mesh2d()
+        mesh = QuadMesh2d()
         mesh.Initialize(mesh_file)
         display_quad_mesh(mesh, xlim=[0, 1], ylim=[0, 1],
             file_name=file_name, show=False)

@@ -5,8 +5,8 @@ from pathlib import Path
 import numpy as np
 
 from py_diff_pd.common.common import create_folder, print_info, ndarray
-from py_diff_pd.common.mesh import hex2obj, hex2obj_with_textures
-from py_diff_pd.core.py_diff_pd_core import Mesh3d
+from py_diff_pd.common.hex_mesh import hex2obj, hex2obj_with_textures
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d
 from py_diff_pd.env.rolling_jelly_env_3d import RollingJellyEnv3d
 
 if __name__ == '__main__':
@@ -53,7 +53,7 @@ if __name__ == '__main__':
         create_folder(folder / mesh_folder)
         for i in range(frame_num + 1):
             mesh_file = folder / vis_folder / '{:04d}.bin'.format(i)
-            mesh = Mesh3d()
+            mesh = HexMesh3d()
             mesh.Initialize(str(mesh_file))
             hex2obj_with_textures(mesh, obj_file_name=folder / mesh_folder / '{:04d}.obj'.format(i))
 

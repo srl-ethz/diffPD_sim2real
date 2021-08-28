@@ -9,15 +9,15 @@ from pathlib import Path
 import numpy as np
 
 from py_diff_pd.common.common import create_folder, print_info, ndarray
-from py_diff_pd.core.py_diff_pd_core import Mesh3d
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d
 from py_diff_pd.common.display import render_hex_mesh
 from py_diff_pd.common.renderer import PbrtRenderer
 from py_diff_pd.common.project_path import root_path
-from py_diff_pd.common.mesh import hex2obj
+from py_diff_pd.common.hex_mesh import hex2obj
 
 def render_starfish_3d(mesh_folder, img_name):
     # Read mesh.
-    mesh = Mesh3d()
+    mesh = HexMesh3d()
     mesh.Initialize(str(mesh_folder / 'body.bin'))
 
     options = {
@@ -67,7 +67,7 @@ def render_starfish_actuator(mesh_folder, img_name):
                 ('t', (0, -0.2, 0.1))
             ])
     # Draw wireframe of the body.
-    mesh = Mesh3d()
+    mesh = HexMesh3d()
     mesh.Initialize(str(mesh_folder / 'body.bin'))
     vertices, faces = hex2obj(mesh)
     for f in faces:

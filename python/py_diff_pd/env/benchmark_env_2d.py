@@ -5,9 +5,9 @@ import numpy as np
 
 from py_diff_pd.env.env_base import EnvBase
 from py_diff_pd.common.common import create_folder, ndarray
-from py_diff_pd.common.mesh import generate_rectangle_mesh
+from py_diff_pd.common.quad_mesh import generate_rectangle_mesh
 from py_diff_pd.common.display import display_quad_mesh, export_gif
-from py_diff_pd.core.py_diff_pd_core import Mesh2d, Deformable2d, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import QuadMesh2d, QuadDeformable, StdRealVector
 
 class BenchmarkEnv2d(EnvBase):
     # Possible options:
@@ -22,6 +22,8 @@ class BenchmarkEnv2d(EnvBase):
         refinement = options['refinement'] if 'refinement' in options else 2
         youngs_modulus = options['youngs_modulus'] if 'youngs_modulus' in options else 4e5
         poissons_ratio = options['poissons_ratio'] if 'poissons_ratio' in options else 0.45
+        actuator_parameters = options['actuator_parameters'] if 'actuator_parameters' in options else ndarray([4., 4.])
+        state_force_parameters = options['state_force_parameters'] if 'state_force_parameters' in options else ndarray([0.0, -9.81])
 
         # Mesh parameters.
         cell_nums = (2 * refinement, 4 * refinement)
@@ -30,14 +32,14 @@ class BenchmarkEnv2d(EnvBase):
         origin = (0, 0)
         bin_file_name = str(folder / 'mesh.bin')
         generate_rectangle_mesh(cell_nums, dx, origin, bin_file_name)
-        mesh = Mesh2d()
+        mesh = QuadMesh2d()
         mesh.Initialize(bin_file_name)
 
         # FEM parameters.
         la = youngs_modulus * poissons_ratio / ((1 + poissons_ratio) * (1 - 2 * poissons_ratio))
         mu = youngs_modulus / (2 * (1 + poissons_ratio))
         density = 1e4
-        deformable = Deformable2d()
+        deformable = QuadDeformable()
         deformable.Initialize(bin_file_name, density, 'none', youngs_modulus, poissons_ratio)
 
         # Boundary conditions.
@@ -47,7 +49,7 @@ class BenchmarkEnv2d(EnvBase):
         deformable.SetDirichletBoundaryCondition(2 * node_idx + 1, pivot[1])
 
         # External force.
-        deformable.AddStateForce('gravity', [0.0, -9.81])
+        deformable.AddStateForce('gravity', state_force_parameters)
 
         # Elasticity.
         deformable.AddPdEnergy('corotated', [2 * mu,], [])
@@ -59,8 +61,9 @@ class BenchmarkEnv2d(EnvBase):
         for j in range(cell_nums[1]):
             left_muscle_indices.append(0 * cell_nums[1] + j)
             right_muscle_indices.append(refinement * cell_nums[1] + j)
-        deformable.AddActuation(1e4, [0.0, 1.0], left_muscle_indices)
-        deformable.AddActuation(1e4, [0.0, 1.0], right_muscle_indices)
+        actuator_stiffness = self._actuator_parameter_to_stiffness(actuator_parameters)
+        deformable.AddActuation(actuator_stiffness[0], [0.0, 1.0], left_muscle_indices)
+        deformable.AddActuation(actuator_stiffness[1], [0.0, 1.0], right_muscle_indices)
 
         # Collision.
         deformable.AddPdEnergy('planar_collision', [1e3, 0.0, 1.0, -0.036], [
@@ -87,6 +90,8 @@ class BenchmarkEnv2d(EnvBase):
         self._f_ext = f_ext
         self._youngs_modulus = youngs_modulus
         self._poissons_ratio = poissons_ratio
+        self._actuator_parameters = actuator_parameters
+        self._state_force_parameters = state_force_parameters
         self._stepwise_loss = False
         self.__loss_q_grad = np.random.normal(size=dofs)
         self.__loss_v_grad = np.random.normal(size=dofs)
@@ -103,7 +108,7 @@ class BenchmarkEnv2d(EnvBase):
         return dof in [2 * (self.__node_nums[1] - 1), 2 * (self.__node_nums[1] - 1) + 1]
 
     def _display_mesh(self, mesh_file, file_name):
-        mesh = Mesh2d()
+        mesh = QuadMesh2d()
         mesh.Initialize(mesh_file)
         display_quad_mesh(mesh, xlim=[-0.01, 0.15], ylim=[-0.01, 0.2],
             file_name=file_name, show=False)

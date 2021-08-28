@@ -104,4 +104,14 @@ dependencies:
   - xz=5.2.5=h7b6447c_0
   - zlib=1.2.11=h7b6447c_3
   - zstd=1.4.5=h9ceee32_0
+  - pip:
+    - appdirs==1.4.4
+    - meshio==4.3.0
+    - pymeshfix==0.14.1
+    - pyvista==0.26.1
+    - scooby==0.5.6
+    - tetgen==0.5.1
+    - vtk==9.0.1
+    - c3d==0.3.0
 prefix: /home/taodu/libraries/miniconda3/envs/diff_pd
+

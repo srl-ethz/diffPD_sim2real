@@ -27,7 +27,8 @@ if __name__ == '__main__':
     env = BunnyEnv3d(seed, folder, {
         'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio,
-        'target_com': target_com })
+        'target_com': target_com,
+        'mesh_type': 'hex' })   # Replace 'hex' with 'tet' if you want to try out the tet meshes.
     deformable = env.deformable()
 
     # Optimization parameters.

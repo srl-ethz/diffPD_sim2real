@@ -2,42 +2,47 @@
 #include "common/common.h"
 #include "common/geometry.h"
 #include "Eigen/SparseCholesky"
+#include "Eigen/SparseLU"
 
 template<int vertex_dim, int element_dim>
 void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const std::string& method, const real dt,
     const std::map<std::string, real>& options) const {
-    CheckError(!material_, "PD does not support material models.");
-
     if (pd_solver_ready_) return;
 
     CheckError(options.find("thread_ct") != options.end(), "Missing parameter thread_ct.");
-    CheckError(method == "pd_eigen" || method == "pd_pardiso", "Invalid PD method: " + method);
+    CheckError(BeginsWith(method, "pd_eigen") || BeginsWith(method, "pd_pardiso"), "Invalid PD method: " + method);
     const int thread_ct = static_cast<int>(options.at("thread_ct"));
     omp_set_num_threads(thread_ct);
 
-    // I + h2m * w_i * S'A'AS + h2m * w_i + h2m * w_i * S'A'M'MAS.
+    // inv_h2m + w_i * S'A'AS + w_i * S'A'M'MAS.
     // Assemble and pre-factorize the left-hand-side matrix.
     const int element_num = mesh_.NumOfElements();
-    const int sample_num = element_dim;
+    const int sample_num = GetNumOfSamplesInElement();
     const int vertex_num = mesh_.NumOfVertices();
-    const real mass = density_ * cell_volume_;
-    const real h2m = dt * dt / mass;
+    const real mass = density_ * element_volume_;
+    const real inv_h2m = mass / (dt * dt);
     std::array<SparseMatrixElements, vertex_dim> nonzeros;
-    // Part I: Add I.
+    // Part I: Add inv_h2m.
     #pragma omp parallel for
     for (int k = 0; k < vertex_dim; ++k) {
-        for (int i = 0; i < vertex_num; ++i)
-            nonzeros[k].push_back(Eigen::Triplet<real>(i, i, 1));
+        for (int i = 0; i < vertex_num; ++i) {
+            const int dof = i * vertex_dim + k;
+            if (dirichlet_.find(dof) != dirichlet_.end())
+                nonzeros[k].push_back(Eigen::Triplet<real>(i, i, 1));
+            else
+                nonzeros[k].push_back(Eigen::Triplet<real>(i, i, inv_h2m));
+        }
     }
 
-    // Part II: PD element energy: h2m * w_i * S'A'AS.
+    // Part II: PD element energy: w_i * S'A'AS.
     real w = 0;
+    if (material_) {
+        // Add elastic stiffness: Here, we use 10% as suggested in Tiantian's code:
+        // https://github.com/ltt1598/Quasi-Newton-Methods-for-Real-time-Simulation-of-Hyperelastic-Materials/blob/master/GenPD/GenPD/source/constraint_tet.cpp#L235
+        w += material_->ComputeAverageStiffness(0.1);
+    }
     for (const auto& energy : pd_element_energies_) w += energy->stiffness();
-    w *= cell_volume_ / sample_num;
-    const real h2mw = h2m * w;
     // For each element and for each sample, AS maps q to the deformation gradient F.
-    std::array<SparseMatrixElements, sample_num> AtA;
-    for (int j = 0; j < sample_num; ++j) AtA[j] = FromSparseMatrix(pd_At_[j] * pd_A_[j]);
     for (int i = 0; i < element_num; ++i) {
         const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
         std::array<int, vertex_dim * element_dim> remap_idx;
@@ -45,11 +50,12 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const st
             for (int k = 0; k < vertex_dim; ++k)
                 remap_idx[j * vertex_dim + k] = vertex_dim * vi[j] + k;
         for (int j = 0; j < sample_num; ++j) {
-            // Add h2mw * SAAS to nonzeros.
-            for (const auto& triplet: AtA[j]) {
+            // Add w * SAAS to nonzeros.
+            const SparseMatrixElements pd_AtA_nonzeros = FromSparseMatrix(finite_element_samples_[i][j].pd_AtA());
+            for (const auto& triplet: pd_AtA_nonzeros) {
                 const int row = triplet.row();
                 const int col = triplet.col();
-                const real val = triplet.value() * h2mw;
+                const real val = triplet.value() * w * element_volume_ / sample_num;
                 // Skip dofs that are fixed by dirichlet boundary conditions.
                 if (dirichlet_.find(remap_idx[row]) == dirichlet_.end() &&
                     dirichlet_.find(remap_idx[col]) == dirichlet_.end()) {
@@ -62,28 +68,30 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const st
         }
     }
 
-    // PdVertexEnergy terms: h2m * w_i.
+    // PdVertexEnergy terms: w_i.
     for (const auto& pair : pd_vertex_energies_) {
         const auto& energy = pair.first;
         const real stiffness = energy->stiffness();
-        const real h2mw = h2m * stiffness;
         for (const int idx : pair.second)
             for (int k = 0; k < vertex_dim; ++k) {
                 CheckError(dirichlet_.find(vertex_dim * idx + k) == dirichlet_.end(),
                     "A DoF is set by both vertex energy and boundary conditions.");
-                nonzeros[k].push_back(Eigen::Triplet<real>(idx, idx, h2mw));
+                nonzeros[k].push_back(Eigen::Triplet<real>(idx, idx, stiffness));
             }
     }
 
-    // PdMuscleEnergy terms: h2m * w_i * S'A'M'MAS.
+    // PdMuscleEnergy terms: w_i * S'A'M'MAS.
     for (const auto& pair : pd_muscle_energies_) {
         const auto& energy = pair.first;
         const auto& MtM = energy->MtM();
-        std::array<SparseMatrixElements, sample_num> AtMtMA;
-        for (int j = 0; j < sample_num; ++j) AtMtMA[j] = FromSparseMatrix(pd_At_[j] * MtM * pd_A_[j]);
-        const real h2mw = h2m * energy->stiffness() * cell_volume_ / sample_num;
         for (const int i : pair.second) {
+            std::vector<SparseMatrixElements> AtMtMA(sample_num);
+            for (int j = 0; j < sample_num; ++j)
+                AtMtMA[j] = FromSparseMatrix(
+                    finite_element_samples_[i][j].pd_At() * MtM * finite_element_samples_[i][j].pd_A()
+                );
             const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+            const real w = energy->stiffness() * element_volume_ / sample_num;
             std::array<int, vertex_dim * element_dim> remap_idx;
             for (int j = 0; j < element_dim; ++j)
                 for (int k = 0; k < vertex_dim; ++k)
@@ -92,7 +100,7 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const st
                 for (const auto& triplet: AtMtMA[j]) {
                     const int row = triplet.row();
                     const int col = triplet.col();
-                    const real val = triplet.value() * h2mw;
+                    const real val = triplet.value() * w;
                     // Skip dofs that are fixed by dirichlet boundary conditions.
                     if (dirichlet_.find(remap_idx[row]) == dirichlet_.end() &&
                         dirichlet_.find(remap_idx[col]) == dirichlet_.end()) {
@@ -135,8 +143,8 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const st
         for (const auto& pair : frictional_boundary_vertex_indices_) {
             VectorXr ej = VectorXr::Zero(vertex_num);
             ej(pair.first) = 1;
-            if (method == "pd_eigen") AinvIc_[d].col(pair.second) = pd_eigen_solver_[d].solve(ej);
-            else if (method == "pd_pardiso") AinvIc_[d].col(pair.second) = pd_pardiso_solver_[d].Solve(ej);
+            if (BeginsWith(method, "pd_eigen")) AinvIc_[d].col(pair.second) = pd_eigen_solver_[d].solve(ej);
+            else if (BeginsWith(method, "pd_pardiso")) AinvIc_[d].col(pair.second) = pd_pardiso_solver_[d].Solve(ej);
         }
     }
     pd_solver_ready_ = true;
@@ -146,7 +154,6 @@ void Deformable<vertex_dim, element_dim>::SetupProjectiveDynamicsSolver(const st
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(const VectorXr& q_cur, const VectorXr& a_cur,
     const std::map<int, real>& dirichlet_with_friction) const {
-    CheckError(!material_, "PD does not support material models.");
     CheckError(act_dofs_ == static_cast<int>(a_cur.size()), "Inconsistent actuation size.");
 
     // We minimize:
@@ -161,7 +168,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
     // w_i S'A'(Bp(q) - ASq_0). Do not worry about the rows corresponding to dirichlet --- it will be set in
     // the forward and backward functions.
 
-    const int sample_num = element_dim;
+    const int sample_num = GetNumOfSamplesInElement();
     // Handle dirichlet boundary conditions.
     VectorXr q_boundary = VectorXr::Zero(dofs_);
     for (const auto& pair : dirichlet_with_friction) q_boundary(pair.first) = pair.second;
@@ -172,19 +179,22 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
     // Project PdElementEnergy.
     const int element_num = mesh_.NumOfElements();
     for (const auto& energy : pd_element_energies_) {
-        const real w = energy->stiffness() * cell_volume_ / sample_num;
         #pragma omp parallel for
         for (int i = 0; i < element_num; ++i) {
             const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+            const real w = energy->stiffness() * element_volume_ / sample_num;
             const auto deformed = ScatterToElementFlattened(q_cur, i);
             const auto deformed_dirichlet = ScatterToElementFlattened(q_boundary, i);
             for (int j = 0; j < sample_num; ++j) {
-                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
-                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_bound = pd_A_[j] * deformed_dirichlet;
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened =
+                    finite_element_samples_[i][j].pd_A() * deformed;
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_bound =
+                    finite_element_samples_[i][j].pd_A() * deformed_dirichlet;
                 const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Unflatten(F_flattened);
                 const Eigen::Matrix<real, vertex_dim, vertex_dim> Bp = energy->ProjectToManifold(F);
                 const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> Bp_flattened = Flatten(Bp);
-                const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtBp = pd_At_[j] * (Bp_flattened - F_bound);
+                const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtBp = finite_element_samples_[i][j].pd_At()
+                    * (Bp_flattened - F_bound);
                 for (int k = 0; k < element_dim; ++k)
                     for (int d = 0; d < vertex_dim; ++d)
                         pd_rhss[k](vertex_dim * vi[k] + d) += w * AtBp(k * vertex_dim + d);
@@ -196,7 +206,6 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
     int act_idx = 0;
     for (const auto& pair : pd_muscle_energies_) {
         const auto& energy = pair.first;
-        const real wi = energy->stiffness() * cell_volume_ / sample_num;
         const auto& MtM = energy->MtM();
         const auto& Mt = energy->Mt();
         const int element_cnt = static_cast<int>(pair.second.size());
@@ -204,14 +213,18 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
         for (int ei = 0; ei < element_cnt; ++ei) {
             const int i = pair.second[ei];
             const Eigen::Matrix<int, element_dim, 1> vi = mesh_.element(i);
+            const real wi = energy->stiffness() * element_volume_ / sample_num;
             const auto deformed = ScatterToElementFlattened(q_cur, i);
             const auto deformed_dirichlet = ScatterToElementFlattened(q_boundary, i);
             for (int j = 0; j < sample_num; ++j) {
-                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened = pd_A_[j] * deformed;
-                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_bound = pd_A_[j] * deformed_dirichlet;
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_flattened =
+                    finite_element_samples_[i][j].pd_A() * deformed;
+                const Eigen::Matrix<real, vertex_dim * vertex_dim, 1> F_bound =
+                    finite_element_samples_[i][j].pd_A() * deformed_dirichlet;
                 const Eigen::Matrix<real, vertex_dim, vertex_dim> F = Unflatten(F_flattened);
                 const Eigen::Matrix<real, vertex_dim, 1> Bp = energy->ProjectToManifold(F, a_cur(act_idx + ei));
-                const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtBp = pd_At_[j] * (Mt * Bp - MtM * F_bound);
+                const Eigen::Matrix<real, vertex_dim * element_dim, 1> AtBp =
+                    finite_element_samples_[i][j].pd_At() * (Mt * Bp - MtM * F_bound);
                 for (int k = 0; k < element_dim; ++k)
                     for (int d = 0; d < vertex_dim; ++d)
                         pd_rhss[k](vertex_dim * vi[k] + d) += wi * AtBp(k * vertex_dim + d);
@@ -242,11 +255,11 @@ const VectorXr Deformable<vertex_dim, element_dim>::ProjectiveDynamicsLocalStep(
 
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::string& method,
-    const VectorXr& q_init, const VectorXr& a, const real h2m, const VectorXr& rhs,
+    const VectorXr& q_init, const VectorXr& a, const real inv_h2m, const VectorXr& rhs,
     const std::map<int, real>& additional_dirichlet, const std::map<std::string, real>& options) const {
     // The goal of this function is to find q_sol so that:
     // q_sol_fixed = additional_dirichlet \/ dirichlet_.
-    // q_sol_free - h2m * f_pd(q_sol_free; q_sol_fixed) - h2m * f_act(q_sol_free; q_sol_fixed, a) = rhs.
+    // q_sol_free - h2m * f_ela(q_sol_free; q_sol_fixed) - h2m * f_pd(q_sol_free; q_sol_fixed) - h2m * f_act(q_sol_free; q_sol_fixed, a) = rhs.
     CheckError(options.find("max_pd_iter") != options.end(), "Missing option max_pd_iter.");
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
@@ -277,6 +290,14 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
             PrintWarning("use_acc is disabled. Unless you are benchmarking speed, you should not disable use_acc.");
         }
     }
+    // Optional flag for using sparse matrices in PdLhsSolve.
+    bool use_sparse = false;
+    if (options.find("use_sparse") != options.end()) {
+        use_sparse = static_cast<bool>(options.at("use_sparse"));
+        if (use_sparse && verbose_level > 0) {
+            PrintWarning("use_sparse is enabled. This is recommended when contact DoFs are large (e.g., > 300).");
+        }
+    }
 
     std::map<int, real> augmented_dirichlet = dirichlet_;
     for (const auto& pair : additional_dirichlet)
@@ -290,16 +311,27 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
         q_sol(pair.first) = pair.second;
         selected(pair.first) = 0;
     }
-    ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol);
-    VectorXr force_sol = PdEnergyForce(q_sol, true) + ActuationForce(q_sol, a);
-    // We aim to minimize the following energy:
-    // 0.5 * q_next^2 + h2m * (E_pd(q_next) + E_act(q_next, a)) - rhs * q_next.
-    real energy_sol = ComputePdEnergy(q_sol, true) + ActuationEnergy(q_sol, a);
-    auto eval_obj = [&](const VectorXr& q_cur, const real energy_cur){
-        return 0.5 * q_cur.dot(q_cur) + h2m * energy_cur - rhs.dot(q_cur);
+    const bool use_precomputed_data = !pd_element_energies_.empty();
+    if (use_precomputed_data) ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol);
+    VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol, use_precomputed_data) + ActuationForce(q_sol, a);
+    // We aim to use Newton's method to minimize the following energy:
+    // 0.5 / (h2) * (q_next - rhs) * M * (q_next - rhs) + (E_ela + E_pd + E_act).
+    // The gradient of this energy:
+    // M / h2 * (q_next - rhs) - ela_force - pd_force - act_force.
+    // When the gradient = 0, it solves the implicit time-stepping scheme (q_next = rhs + h2m * (elastic_force + pd_force + act_force)).
+    // Our situation is a bit more complicated: we want to fix some q_next to certain values.
+    // Therefore, what we actually aim to solve is:
+    // M / h2 * (q_next - rhs) = ela_force + pd_force + act_force for those FREE dofs only.
+    // This means we also need to fix q_next_fixed in the energy function above.
+    //
+    // In order to apply Newton's method, we need to compute the Hessian of the energy:
+    // H = M / h2 + Hess (energy).
+    real energy_sol = ElasticEnergy(q_sol) + ComputePdEnergy(q_sol, use_precomputed_data) + ActuationEnergy(q_sol, a);
+    auto eval_obj = [&](const VectorXr& q_cur, const real energy_cur) {
+        return 0.5 * (q_cur - rhs).dot(inv_h2m * (q_cur - rhs)) + energy_cur;
     };
     real obj_sol = eval_obj(q_sol, energy_sol);
-    VectorXr grad_sol = (q_sol - rhs - h2m * force_sol).array() * selected.array();
+    VectorXr grad_sol = (inv_h2m * (q_sol - rhs) - force_sol).array() * selected.array();
     // At each iteration, we maintain:
     // - q_sol
     // - force_sol
@@ -322,7 +354,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
                 // Initially, the queue is empty. We use A as our initial guess of Hessian (not the inverse!).
                 xi_history.push_back(q_sol);
                 gi_history.push_back(grad_sol);
-                quasi_newton_direction = PdLhsSolve(method, grad_sol, additional_dirichlet, use_acc);
+                quasi_newton_direction = PdLhsSolve(method, grad_sol, additional_dirichlet, use_acc, use_sparse);
             } else {
                 const VectorXr q_sol_last = xi_history.back();
                 const VectorXr grad_sol_last = gi_history.back();
@@ -348,7 +380,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
                     q -= alphai * yi;
                 }
                 // H0k = PdLhsSolve(I);
-                VectorXr z = PdLhsSolve(method, q, additional_dirichlet, use_acc);
+                VectorXr z = PdLhsSolve(method, q, additional_dirichlet, use_acc, use_sparse);
                 auto sit = si_history.cbegin(), yit = yi_history.cbegin();
                 auto rhoit = rhoi_history.cbegin(), alphait = alphai_history.cbegin();
                 for (; sit != si_history.cend(); ++sit, ++yit, ++rhoit, ++alphait) {
@@ -371,8 +403,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
             if (verbose_level > 1) Tic();
             real step_size = 1;
             VectorXr q_sol_next = q_sol - step_size * quasi_newton_direction;
-            ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_next);
-            real energy_next = ComputePdEnergy(q_sol_next, true) + ActuationEnergy(q_sol_next, a);
+            if (use_precomputed_data) ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_next);
+            real energy_next = ElasticEnergy(q_sol_next) + ComputePdEnergy(q_sol_next, use_precomputed_data) + ActuationEnergy(q_sol_next, a);
             real obj_next = eval_obj(q_sol_next, energy_next);
             const real gamma = ToReal(1e-4);
             bool ls_success = false;
@@ -387,8 +419,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
                 }
                 step_size /= 2;
                 q_sol_next = q_sol - step_size * quasi_newton_direction;
-                ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_next);
-                energy_next = ComputePdEnergy(q_sol_next, true) + ActuationEnergy(q_sol_next, a);
+                if (use_precomputed_data) ComputeDeformationGradientAuxiliaryDataAndProjection(q_sol_next);
+                energy_next = ElasticEnergy(q_sol_next) + ComputePdEnergy(q_sol_next, use_precomputed_data) + ActuationEnergy(q_sol_next, a);
                 obj_next = eval_obj(q_sol_next, energy_next);
                 if (verbose_level > 0) PrintInfo("Line search iteration: " + std::to_string(j));
                 if (verbose_level > 1) {
@@ -414,18 +446,26 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdNonlinearSolve(const std::
             obj_sol = obj_next;
         } else {
             // Update w/o BFGS.
+            // For traditional PD:
+            // LHS * q_sol = rhs.
+            // => q_sol = inv(LHS) * rhs
+            // Additionally, q_sol = q_old - inv(LHS) * grad g.
+            // => rhs = LHS * q_old - grad g.
+            // Now that we have additional gradients from the elastic force, we will update grad g in rhs accordingly.
             // Local step:
-            const VectorXr pd_rhs = (rhs + h2m * ProjectiveDynamicsLocalStep(q_sol, a, augmented_dirichlet)).array() * selected.array();
+            const VectorXr pd_rhs = (inv_h2m * rhs + ProjectiveDynamicsLocalStep(q_sol, a, augmented_dirichlet)
+                + ElasticForce(q_sol)).array() * selected.array();
             // Global step:
-            q_sol = PdLhsSolve(method, pd_rhs, additional_dirichlet, use_acc);
+            q_sol = PdLhsSolve(method, pd_rhs, additional_dirichlet, use_acc, use_sparse);
             for (const auto& pair : augmented_dirichlet) q_sol(pair.first) = pair.second;
+            // Note that energy_sol and obj_sol is not needed in this non-bfgs iteration.
         }
-        force_sol = PdEnergyForce(q_sol, use_bfgs) + ActuationForce(q_sol, a);
-        grad_sol = (q_sol - rhs - h2m * force_sol).array() * selected.array();
+        force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol, use_bfgs) + ActuationForce(q_sol, a);
+        grad_sol = (inv_h2m * (q_sol - rhs) - force_sol).array() * selected.array();
 
         // Check for convergence --- gradients must be zero.
         const real abs_error = grad_sol.norm();
-        const real rhs_norm = VectorXr(selected.array() * rhs.array()).norm();
+        const real rhs_norm = VectorXr(selected.array() * (inv_h2m * rhs).array()).norm();
         if (verbose_level > 1) std::cout << "abs_error = " << abs_error << ", rel_tol * rhs_norm = " << rel_tol * rhs_norm << std::endl;
         if (abs_error <= rel_tol * rhs_norm + abs_tol) {
             success = true;
@@ -441,8 +481,6 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const std::s
     const VectorXr& q, const VectorXr& v, const VectorXr& a, const VectorXr& f_ext, const real dt,
     const std::map<std::string, real>& options, VectorXr& q_next, VectorXr& v_next,
     std::vector<int>& active_contact_idx) const {
-    CheckError(!material_, "PD does not support material models.");
-
     CheckError(options.find("max_pd_iter") != options.end(), "Missing option max_pd_iter.");
     CheckError(options.find("abs_tol") != options.end(), "Missing option abs_tol.");
     CheckError(options.find("rel_tol") != options.end(), "Missing option rel_tol.");
@@ -472,8 +510,28 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const std::s
     // q_next = q + hv + h2m * (f_ext + f_ela(q_next) + f_state(q, v) + f_pd(q_next) + f_act(q_next, a)).
     // q_next - h2m * (f_ela(q_next) + f_pd(q_next) + f_act(q_next, a)) = q + hv + h2m * f_ext + h2m * f_state(q, v).
     const real h = dt;
-    const real h2m = dt * dt / (cell_volume_ * density_);
+    // TODO: this mass is incorrect for tri or tet meshes.
+    const real mass = element_volume_ * density_;
+    const real h2m = dt * dt / mass;
+    const real inv_h2m = mass / (dt * dt);
     const VectorXr rhs = q + h * v + h2m * f_ext + h2m * ForwardStateForce(q, v);
+
+    // This is for debugging purpose only.
+    // If the method name ends with 'fixed_contact', we will skip the active set algorithm.
+    if (EndsWith(method, "fixed_contact")) {
+        // Fix dirichlet_ + active_contact_nodes.
+        std::map<int, real> additional_dirichlet;
+        for (const int idx : active_contact_idx) {
+            for (int i = 0; i < vertex_dim; ++i)
+                additional_dirichlet[idx * vertex_dim + i] = q(idx * vertex_dim + i);
+        }
+        // Initial guess.
+        const VectorXr q_sol = PdNonlinearSolve(method, q, a, inv_h2m, rhs, additional_dirichlet, options);
+        q_next = q_sol;
+        v_next = (q_next - q) / h;
+        return;
+    }
+
     const int max_contact_iter = 5;
     std::vector<std::set<int>> active_contact_idx_history;
     for (int contact_iter = 0; contact_iter < max_contact_iter; ++contact_iter) {
@@ -484,15 +542,15 @@ void Deformable<vertex_dim, element_dim>::ForwardProjectiveDynamics(const std::s
             for (int i = 0; i < vertex_dim; ++i)
                 additional_dirichlet[idx * vertex_dim + i] = q(idx * vertex_dim + i);
         }
-        // Initial guess.
-        const VectorXr q_sol = PdNonlinearSolve(method, q, a, h2m, rhs, additional_dirichlet, options);
-        const VectorXr force_sol = PdEnergyForce(q_sol, use_bfgs) + ActuationForce(q_sol, a);
+        // The PD iteration.
+        const VectorXr q_sol = PdNonlinearSolve(method, q, a, inv_h2m, rhs, additional_dirichlet, options);
+        const VectorXr force_sol = ElasticForce(q_sol) + PdEnergyForce(q_sol, use_bfgs) + ActuationForce(q_sol, a);
 
         // Now verify the contact conditions.
         const std::set<int> past_active_contact_idx = VectorToSet(active_contact_idx);
         active_contact_idx_history.push_back(past_active_contact_idx);
         active_contact_idx.clear();
-        const VectorXr ext_forces = q_sol - h2m * force_sol - rhs;
+        const VectorXr ext_forces = inv_h2m * (q_sol - rhs) - force_sol;
         bool good = true;
         for (const auto& pair : frictional_boundary_vertex_indices_) {
             const int node_idx = pair.first;
@@ -568,8 +626,9 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdLhsMatrixOp(const VectorXr
 
 template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const std::string& method, const VectorXr& rhs,
-    const std::map<int, real>& additional_dirichlet_boundary_condition, const bool use_acc) const {
-    CheckError(method == "pd_eigen" || method == "pd_pardiso", "Invalid PD method: " + method);
+    const std::map<int, real>& additional_dirichlet_boundary_condition,
+    const bool use_acc, const bool use_sparse) const {
+    CheckError(BeginsWith(method, "pd_eigen") || BeginsWith(method, "pd_pardiso"), "Invalid PD method: " + method);
 
     const int vertex_num = mesh_.NumOfVertices();
     const Eigen::Matrix<real, vertex_dim, -1> rhs_reshape = Eigen::Map<
@@ -579,10 +638,10 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const std::string
     for (int j = 0; j < vertex_dim; ++j) rhs_reshape_rows[j] = rhs_reshape.row(j);
     #pragma omp parallel for
     for (int j = 0; j < vertex_dim; ++j) {
-        if (method == "pd_eigen") {
+        if (BeginsWith(method, "pd_eigen")) {
             sol_rows[j] = pd_eigen_solver_[j].solve(rhs_reshape_rows[j]);
             CheckError(pd_eigen_solver_[j].info() == Eigen::Success, "Cholesky solver failed.");
-        } else if (method == "pd_pardiso") {
+        } else if (BeginsWith(method, "pd_pardiso")) {
             sol_rows[j] = pd_pardiso_solver_[j].Solve(rhs_reshape_rows[j]);
         }
     }
@@ -612,60 +671,135 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const std::string
     if (use_acc) {
         // Use the O(nc^2) algorithm in the paper.
         for (int d = 0; d < vertex_dim; ++d) {
-            // Compute Acici.
-            MatrixXr Acici = MatrixXr::Zero(Ci_num, Ci_num);
-            int row_cnt = 0, col_cnt = 0;
-            for (const auto& pair_row : frozen_nodes) {
+            if (use_sparse) {
+                // TODO: eps should be an argument.
+                const real eps = ToReal(1e-6);
+                // Compute Acici.
+                SparseMatrixElements Acici_elements;
+                int row_cnt = 0, col_cnt = 0;
+                for (const auto& pair_row : frozen_nodes) {
+                    col_cnt = 0;
+                    for (const auto& pair_col : frozen_nodes) {
+                        const real val = Acc_[d](frictional_boundary_vertex_indices_.at(pair_row.first),
+                            frictional_boundary_vertex_indices_.at(pair_col.first));
+                        if (val != 0) Acici_elements.push_back(Eigen::Triplet<real>(row_cnt, col_cnt, val));
+                        ++col_cnt;
+                    }
+                    ++row_cnt;
+                }
+                SparseMatrix Acici = ToSparseMatrix(Ci_num, Ci_num, Acici_elements);
+                // Compute B1.
+                SparseMatrixElements B1_elements;
                 col_cnt = 0;
                 for (const auto& pair_col : frozen_nodes) {
-                    Acici(row_cnt, col_cnt) = Acc_[d](frictional_boundary_vertex_indices_.at(pair_row.first),
-                        frictional_boundary_vertex_indices_.at(pair_col.first));
+                    const VectorXr& c = AinvIc_[d].col(frictional_boundary_vertex_indices_.at(pair_col.first));
+                    for (int i = 0; i < vertex_num; ++i) {
+                        const real val = c(i);
+                        if (std::fabs(val) > eps) B1_elements.push_back(Eigen::Triplet<real>(i, col_cnt, val));
+                    }
                     ++col_cnt;
                 }
-                ++row_cnt;
-            }
-            // Compute B1.
-            MatrixXr B1 = MatrixXr::Zero(vertex_num, Ci_num);
-            col_cnt = 0;
-            for (const auto& pair_col : frozen_nodes) {
-                B1.col(col_cnt) = AinvIc_[d].col(frictional_boundary_vertex_indices_.at(pair_col.first));
-                ++col_cnt;
-            }
-            // Compute B2.
-            // MatrixXr B2 = -B1 * Acici;
-            MatrixXr B2 = -MatrixMatrixProduct(B1, Acici);
-            col_cnt = 0;
-            for (const auto& pair_col : frozen_nodes) {
-                B2(pair_col.first, col_cnt) += 1;
-                ++col_cnt;
-            }
-            // Assemble VPt.
-            SparseMatrixElements nonzeros_VPt;
-            row_cnt = 0;
-            for (const auto& pair : frozen_nodes) {
-                for (SparseMatrix::InnerIterator it(pd_lhs_[d], pair.first); it; ++it) {
-                    if (frozen_nodes.find(it.row()) == frozen_nodes.end())
-                        nonzeros_VPt.push_back(Eigen::Triplet<real>(row_cnt, it.row(), it.value()));
+                SparseMatrix B1 = ToSparseMatrix(vertex_num, Ci_num, B1_elements);
+                // Compute B2.
+                // MatrixXr B2 = -B1 * Acici;
+                SparseMatrix B2 = -B1 * Acici;
+                col_cnt = 0;
+                for (const auto& pair_col : frozen_nodes) {
+                    B2.coeffRef(pair_col.first, col_cnt) += 1;
+                    ++col_cnt;
                 }
-                nonzeros_VPt.push_back(Eigen::Triplet<real>(Ci_num + row_cnt, pair.first, 1));
-                ++row_cnt;
+                // Assemble VPt.
+                SparseMatrixElements nonzeros_VPt;
+                row_cnt = 0;
+                for (const auto& pair : frozen_nodes) {
+                    for (SparseMatrix::InnerIterator it(pd_lhs_[d], pair.first); it; ++it) {
+                        if (frozen_nodes.find(it.row()) == frozen_nodes.end())
+                            nonzeros_VPt.push_back(Eigen::Triplet<real>(row_cnt, it.row(), it.value()));
+                    }
+                    nonzeros_VPt.push_back(Eigen::Triplet<real>(Ci_num + row_cnt, pair.first, 1));
+                    ++row_cnt;
+                }
+                SparseMatrix VPt = ToSparseMatrix(2 * Ci_num, vertex_num, nonzeros_VPt);
+                // Compute B4.
+                // const SparseMatrix VPt = ToSparseMatrix(2 * Ci_num, vertex_num, nonzeros_VPt);
+                // MatrixXr B4 = -VPt * B3;
+                // MatrixXr B4(2 * Ci_num, 2 * Ci_num);
+                // B4.leftCols(Ci_num) = -SparseMatrixMatrixProduct(2 * Ci_num, vertex_num, nonzeros_VPt, B1);
+                // B4.rightCols(Ci_num) = -SparseMatrixMatrixProduct(2 * Ci_num, vertex_num, nonzeros_VPt, B2);
+                SparseMatrixElements B4_elements = FromSparseMatrix(-VPt * B1);
+                SparseMatrixElements B4_right_elements = FromSparseMatrix(-VPt * B2);
+                for (const auto& triplet : B4_right_elements) {
+                    B4_elements.push_back(Eigen::Triplet<real>(triplet.row(), triplet.col() + Ci_num, triplet.value()));
+                }
+                for (int i = 0; i < 2 * Ci_num; ++i) B4_elements.push_back(Eigen::Triplet<real>(i, i, 1));
+                SparseMatrix B4 = ToSparseMatrix(2 * Ci_num, 2 * Ci_num, B4_elements);
+                // y1 has been computed.
+                // Compute y2.
+                VectorXr y2 = VectorXr::Zero(2 * Ci_num);
+                y2.head(Ci_num) = RowVectorXr(rhs_reshape_rows[d]) * B2;
+                y2.tail(Ci_num) = RowVectorXr(rhs_reshape_rows[d]) * B1;
+                // Compute y3.
+                Eigen::SparseLU<SparseMatrix> B4_solver;
+                B4_solver.compute(B4);
+                const VectorXr y3 = B4_solver.solve(y2);
+                // Compute solution.
+                sol.row(d) += RowVectorXr(B1 * y3.head(Ci_num) + B2 * y3.tail(Ci_num));
+            } else {
+                // Compute Acici.
+                MatrixXr Acici = MatrixXr::Zero(Ci_num, Ci_num);
+                int row_cnt = 0, col_cnt = 0;
+                for (const auto& pair_row : frozen_nodes) {
+                    col_cnt = 0;
+                    for (const auto& pair_col : frozen_nodes) {
+                        Acici(row_cnt, col_cnt) = Acc_[d](frictional_boundary_vertex_indices_.at(pair_row.first),
+                            frictional_boundary_vertex_indices_.at(pair_col.first));
+                        ++col_cnt;
+                    }
+                    ++row_cnt;
+                }
+                // Compute B1.
+                MatrixXr B1 = MatrixXr::Zero(vertex_num, Ci_num);
+                col_cnt = 0;
+                for (const auto& pair_col : frozen_nodes) {
+                    B1.col(col_cnt) = AinvIc_[d].col(frictional_boundary_vertex_indices_.at(pair_col.first));
+                    ++col_cnt;
+                }
+                // Compute B2.
+                // MatrixXr B2 = -B1 * Acici;
+                MatrixXr B2 = -MatrixMatrixProduct(B1, Acici);
+                col_cnt = 0;
+                for (const auto& pair_col : frozen_nodes) {
+                    B2(pair_col.first, col_cnt) += 1;
+                    ++col_cnt;
+                }
+                // Assemble VPt.
+                SparseMatrixElements nonzeros_VPt;
+                row_cnt = 0;
+                for (const auto& pair : frozen_nodes) {
+                    for (SparseMatrix::InnerIterator it(pd_lhs_[d], pair.first); it; ++it) {
+                        if (frozen_nodes.find(it.row()) == frozen_nodes.end())
+                            nonzeros_VPt.push_back(Eigen::Triplet<real>(row_cnt, it.row(), it.value()));
+                    }
+                    nonzeros_VPt.push_back(Eigen::Triplet<real>(Ci_num + row_cnt, pair.first, 1));
+                    ++row_cnt;
+                }
+                // Compute B4.
+                // const SparseMatrix VPt = ToSparseMatrix(2 * Ci_num, vertex_num, nonzeros_VPt);
+                // MatrixXr B4 = -VPt * B3;
+                MatrixXr B4(2 * Ci_num, 2 * Ci_num);
+                B4.leftCols(Ci_num) = -SparseMatrixMatrixProduct(2 * Ci_num, vertex_num, nonzeros_VPt, B1);
+                B4.rightCols(Ci_num) = -SparseMatrixMatrixProduct(2 * Ci_num, vertex_num, nonzeros_VPt, B2);
+                for (int i = 0; i < 2 * Ci_num; ++i) B4(i, i) += 1;
+                // y1 has been computed.
+                // Compute y2.
+                VectorXr y2 = VectorXr::Zero(2 * Ci_num);
+                y2.head(Ci_num) = RowVectorXr(rhs_reshape_rows[d]) * B2;
+                y2.tail(Ci_num) = RowVectorXr(rhs_reshape_rows[d]) * B1;
+                // Compute y3.
+                const VectorXr y3 = B4.colPivHouseholderQr().solve(y2);
+                // Compute solution.
+                sol.row(d) += RowVectorXr(B1 * y3.head(Ci_num) + B2 * y3.tail(Ci_num));
             }
-            // Compute B4.
-            // const SparseMatrix VPt = ToSparseMatrix(2 * Ci_num, vertex_num, nonzeros_VPt);
-            // MatrixXr B4 = -VPt * B3;
-            MatrixXr B4(2 * Ci_num, 2 * Ci_num);
-            B4.leftCols(Ci_num) = -SparseMatrixMatrixProduct(2 * Ci_num, vertex_num, nonzeros_VPt, B1);
-            B4.rightCols(Ci_num) = -SparseMatrixMatrixProduct(2 * Ci_num, vertex_num, nonzeros_VPt, B2);
-            for (int i = 0; i < 2 * Ci_num; ++i) B4(i, i) += 1;
-            // y1 has been computed.
-            // Compute y2.
-            VectorXr y2 = VectorXr::Zero(2 * Ci_num);
-            y2.head(Ci_num) = RowVectorXr(rhs_reshape_rows[d]) * B2;
-            y2.tail(Ci_num) = RowVectorXr(rhs_reshape_rows[d]) * B1;
-            // Compute y3.
-            const VectorXr y3 = B4.colPivHouseholderQr().solve(y2);
-            // Compute solution.
-            sol.row(d) += RowVectorXr(B1 * y3.head(Ci_num) + B2 * y3.tail(Ci_num));
         }
     } else {
         // Use the O(n^2c) algorithm in the paper.
@@ -689,8 +823,8 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const std::string
             for (const auto& pair_col : frozen_nodes) {
                 VectorXr ej = VectorXr::Zero(vertex_num);
                 ej(pair_col.first) = 1;
-                if (method == "pd_eigen") B1.col(col_cnt) = pd_eigen_solver_[d].solve(ej);
-                else if (method == "pd_pardiso") B1.col(col_cnt) = pd_pardiso_solver_[d].Solve(ej);
+                if (BeginsWith(method, "pd_eigen")) B1.col(col_cnt) = pd_eigen_solver_[d].solve(ej);
+                else if (BeginsWith(method, "pd_pardiso")) B1.col(col_cnt) = pd_pardiso_solver_[d].Solve(ej);
                 // Equivalent code in use_acc:
                 // B1.col(col_cnt) = AinvIc_[d].col(frictional_boundary_vertex_indices_.at(pair_col.first));
                 ++col_cnt;
@@ -740,5 +874,7 @@ const VectorXr Deformable<vertex_dim, element_dim>::PdLhsSolve(const std::string
     return x;
 }
 
+template class Deformable<2, 3>;
 template class Deformable<2, 4>;
+template class Deformable<3, 4>;
 template class Deformable<3, 8>;

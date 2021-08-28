@@ -7,8 +7,8 @@ import os
 import numpy as np
 
 from py_diff_pd.common.renderer import PbrtRenderer
-from py_diff_pd.common.mesh import voxelize, generate_hex_mesh
-from py_diff_pd.core.py_diff_pd_core import Mesh3d
+from py_diff_pd.common.hex_mesh import voxelize, generate_hex_mesh
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d
 from py_diff_pd.common.common import print_info, create_folder
 from py_diff_pd.common.project_path import root_path
 
@@ -22,7 +22,7 @@ if __name__ == '__main__':
     origin = [0, 0, 0]
     bin_file_name = '.tmp.bin'
     generate_hex_mesh(voxels, dx, origin, bin_file_name)
-    mesh = Mesh3d()
+    mesh = HexMesh3d()
     mesh.Initialize(bin_file_name)
     os.remove(bin_file_name)
 

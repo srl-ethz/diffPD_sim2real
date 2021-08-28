@@ -46,6 +46,9 @@ def create_folder(folder_name, exist_ok=False):
         shutil.rmtree(folder_name)
     os.makedirs(folder_name, exist_ok=exist_ok)
 
+def delete_folder(folder_name):
+    shutil.rmtree(folder_name)
+
 from py_diff_pd.core.py_diff_pd_core import StdRealVector
 def to_std_real_vector(v):
     v = ndarray(v).ravel()
@@ -58,6 +61,12 @@ def to_std_real_vector(v):
 from py_diff_pd.core.py_diff_pd_core import StdIntVector
 def copy_std_int_vector(v):
     v2 = StdIntVector(v.size())
+    for i, a in enumerate(v):
+        v2[i] = a
+    return v2
+
+def to_std_int_vector(v):
+    v2 = StdIntVector(len(v))
     for i, a in enumerate(v):
         v2[i] = a
     return v2
@@ -105,3 +114,38 @@ def rpy_to_rotation_gradient(rpy):
     dR_dyaw = ndarray([[-sy, -cy, 0], [cy, -sy, 0], [0, 0, 0]])
 
     return R_yaw @ R_pitch @ dR_droll, R_yaw @ dR_dpitch @ R_roll, dR_dyaw @ R_pitch @ R_roll
+
+# Filter unreferenced vertices in a mesh.
+# Input:
+# - vertices: n x l.
+# - elements: m x k.
+# This function checks all rows in elements and generates a new (vertices, elements) pair such that all
+# vertices are referenced.
+def filter_unused_vertices(vertices, elements):
+    vert_num = vertices.shape[0]
+    elem_num = elements.shape[0]
+
+    used = np.zeros(vert_num)
+    for e in elements:
+        for ei in e:
+            used[ei] = 1
+
+    remap = np.ones(vert_num) * -1
+    used_so_far = 0
+    for idx, val in enumerate(used):
+        if val > 0:
+            remap[idx] = used_so_far
+            used_so_far += 1
+
+    new_vertices = []
+    for idx, val in enumerate(used):
+        if val > 0:
+            new_vertices.append(vertices[idx])
+    new_vertices = ndarray(new_vertices)
+
+    new_elements = []
+    for e in elements:
+        new_ei = [remap[ei] for ei in e]
+        new_elements.append(new_ei)
+    new_elements = ndarray(new_elements).astype(np.int)
+    return new_vertices, new_elements

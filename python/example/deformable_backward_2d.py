@@ -19,10 +19,14 @@ def test_deformable_backward_2d(verbose):
     refinement = 1
     youngs_modulus = 1e4
     poissons_ratio = 0.45
+    actuator_parameters = ndarray([4., 4.])
+    state_force_parameters = ndarray([0., -9.81])
     env = BenchmarkEnv2d(seed, folder, {
         'refinement': refinement,
         'youngs_modulus': youngs_modulus,
-        'poissons_ratio': poissons_ratio })
+        'poissons_ratio': poissons_ratio,
+        'actuator_parameters': actuator_parameters,
+        'state_force_parameters': state_force_parameters })
     deformable = env.deformable()
 
     methods = ['newton_pcg', 'newton_cholesky', 'pd_eigen']
@@ -52,6 +56,7 @@ def test_deformable_backward_2d(verbose):
 
     material_params = ndarray([youngs_modulus, poissons_ratio])
     material_rel_eps = 1e-4
+    act_eps = 1e-2
     for method, opt in zip(methods, opts):
         if verbose:
             print_info('Checking gradients in {} method.'.format(method))
@@ -69,17 +74,78 @@ def test_deformable_backward_2d(verbose):
             material_params_neg[i] -= material_eps
             env_pos = BenchmarkEnv2d(seed, folder, { 'refinement': refinement,
                 'youngs_modulus': material_params_pos[0],
-                'poissons_ratio': material_params_pos[1] })
+                'poissons_ratio': material_params_pos[1],
+                'actuator_parameters': actuator_parameters,
+                'state_force_parameters': state_force_parameters })
             env_neg = BenchmarkEnv2d(seed, folder, { 'refinement': refinement,
                 'youngs_modulus': material_params_neg[0],
-                'poissons_ratio': material_params_neg[1] })
+                'poissons_ratio': material_params_neg[1],
+                'actuator_parameters': actuator_parameters,
+                'state_force_parameters': state_force_parameters })
             loss_pos, _ = env_pos.simulate(dt, frame_num, method, opt, q0, v0, act, f_ext, require_grad=False, vis_folder=None)
             loss_neg, _ = env_neg.simulate(dt, frame_num, method, opt, q0, v0, act, f_ext, require_grad=False, vis_folder=None)
             grad_numerical = (loss_pos - loss_neg) / 2 / material_eps
             grad_analytical = material_grad[i]
-            if not np.isclose(grad_analytical, grad_numerical):
+            if not np.isclose(grad_analytical, grad_numerical, rtol=rtol, atol=atol):
                 if verbose:
                     print_error('Material parameter gradient {} is incorrect: {}, {}'.format(i, grad_analytical, grad_numerical))
+                return False
+
+        # Check gradients with actuator parameters.
+        act_grad = info['actuator_parameter_gradients']
+        for i in range(act_grad.size):
+            act_params_pos = np.copy(actuator_parameters)
+            act_params_pos[i] += act_eps
+            act_params_neg = np.copy(actuator_parameters)
+            act_params_neg[i] -= act_eps
+            env_pos = BenchmarkEnv2d(seed, folder, {
+                'refinement': refinement,
+                'youngs_modulus': youngs_modulus,
+                'poissons_ratio': poissons_ratio,
+                'actuator_parameters': act_params_pos,
+                'state_force_parameters': state_force_parameters })
+            env_neg = BenchmarkEnv2d(seed, folder, {
+                'refinement': refinement,
+                'youngs_modulus': youngs_modulus,
+                'poissons_ratio': poissons_ratio,
+                'actuator_parameters': act_params_neg,
+                'state_force_parameters': state_force_parameters })
+            loss_pos, _ = env_pos.simulate(dt, frame_num, method, opt, q0, v0, act, f_ext, require_grad=False, vis_folder=None)
+            loss_neg, _ = env_neg.simulate(dt, frame_num, method, opt, q0, v0, act, f_ext, require_grad=False, vis_folder=None)
+            grad_numerical = (loss_pos - loss_neg) / 2 / act_eps
+            grad_analytical = act_grad[i]
+            if not np.isclose(grad_analytical, grad_numerical, rtol=rtol, atol=atol):
+                if verbose:
+                    print_error('Actuator parameter gradient {} is incorrect: {}, {}'.format(i, grad_analytical, grad_numerical))
+                return False
+
+        # Check gradients with state force parameters.
+        state_grad = info['state_force_parameter_gradients']
+        state_eps = 1e-4
+        for i in range(state_grad.size):
+            state_params_pos = np.copy(state_force_parameters)
+            state_params_pos[i] += state_eps
+            state_params_neg = np.copy(state_force_parameters)
+            state_params_neg[i] -= state_eps
+            env_pos = BenchmarkEnv2d(seed, folder, {
+                'refinement': refinement,
+                'youngs_modulus': youngs_modulus,
+                'poissons_ratio': poissons_ratio,
+                'actuator_parameters': actuator_parameters,
+                'state_force_parameters': state_params_pos })
+            env_neg = BenchmarkEnv2d(seed, folder, {
+                'refinement': refinement,
+                'youngs_modulus': youngs_modulus,
+                'poissons_ratio': poissons_ratio,
+                'actuator_parameters': actuator_parameters,
+                'state_force_parameters': state_params_neg })
+            loss_pos, _ = env_pos.simulate(dt, frame_num, method, opt, q0, v0, act, f_ext, require_grad=False, vis_folder=None)
+            loss_neg, _ = env_neg.simulate(dt, frame_num, method, opt, q0, v0, act, f_ext, require_grad=False, vis_folder=None)
+            grad_numerical = (loss_pos - loss_neg) / 2 / state_eps
+            grad_analytical = state_grad[i]
+            if not np.isclose(grad_analytical, grad_numerical, rtol=rtol, atol=atol):
+                if verbose:
+                    print_error('Actuator parameter gradient {} is incorrect: {}, {}'.format(i, grad_analytical, grad_numerical))
                 return False
 
         t0 = time.time()

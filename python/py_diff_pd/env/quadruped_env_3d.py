@@ -5,9 +5,9 @@ import numpy as np
 
 from py_diff_pd.env.env_base import EnvBase
 from py_diff_pd.common.common import create_folder, ndarray, print_info
-from py_diff_pd.common.mesh import generate_hex_mesh
+from py_diff_pd.common.hex_mesh import generate_hex_mesh
 from py_diff_pd.common.display import render_hex_mesh, export_gif
-from py_diff_pd.core.py_diff_pd_core import Mesh3d, Deformable3d, StdRealVector
+from py_diff_pd.core.py_diff_pd_core import HexMesh3d, HexDeformable, StdRealVector
 
 class QuadrupedEnv3d(EnvBase):
     # Refinement is an integer controlling the resolution of the mesh.
@@ -17,16 +17,18 @@ class QuadrupedEnv3d(EnvBase):
         np.random.seed(seed)
         create_folder(folder, exist_ok=True)
 
-        youngs_modulus = options['youngs_modulus']
-        poissons_ratio = options['poissons_ratio']
+        youngs_modulus = options['youngs_modulus'] if 'youngs_modulus' in options else 1e6
+        poissons_ratio = options['poissons_ratio'] if 'poissons_ratio' in options else 0.49
+        actuator_parameters = options['actuator_parameters'] if 'actuator_parameters' in options else ndarray([np.log10(5) + 5])
+        state_force_parameters = options['state_force_parameters'] if 'state_force_parameters' in options else ndarray([0.0, 0.0, -9.81])
         # Configure the size of the quadruped:
         # Foot width = 1.
         foot_width_size = 0.1
-        leg_z_length = options['leg_z_length']
-        body_x_length = options['body_x_length']
-        body_y_length = options['body_y_length']
-        body_z_length = options['body_z_length']
-        refinement = options['refinement']
+        leg_z_length = options['leg_z_length'] if 'leg_z_length' in options else 2
+        body_x_length = options['body_x_length'] if 'body_x_length' in options else 4
+        body_y_length = options['body_y_length'] if 'body_y_length' in options else 4
+        body_z_length = options['body_z_length'] if 'body_z_length' in options else 1
+        refinement = options['refinement'] if 'refinement' in options else 2
         assert leg_z_length >= 1
         assert body_x_length >= 3
         assert body_y_length >= 3
@@ -58,13 +60,13 @@ class QuadrupedEnv3d(EnvBase):
                         (i >= body_x_length * refinement - refinement and j >= body_y_length * refinement - refinement):
                         voxels[i][j][k] = 1
         generate_hex_mesh(voxels, dx, origin, bin_file_name)
-        mesh = Mesh3d()
+        mesh = HexMesh3d()
         mesh.Initialize(str(bin_file_name))
 
-        deformable = Deformable3d()
+        deformable = HexDeformable()
         deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
         # State-based forces.
-        deformable.AddStateForce('gravity', [0, 0, -9.81])
+        deformable.AddStateForce('gravity', state_force_parameters)
         # Elasticity.
         deformable.AddPdEnergy('corotated', [2 * mu,], [])
         deformable.AddPdEnergy('volume', [la,], [])
@@ -117,7 +119,8 @@ class QuadrupedEnv3d(EnvBase):
                 leg_indices[key].append(count)
                 act_indices.append(i)
                 count += 1
-        deformable.AddActuation(5e5, [0.0, 0.0, 1.0], act_indices)
+        actuator_stiffness = self._actuator_parameter_to_stiffness(actuator_parameters)
+        deformable.AddActuation(actuator_stiffness[0], [0.0, 0.0, 1.0], act_indices)
 
         # Initial conditions.
         dofs = deformable.dofs()
@@ -134,6 +137,8 @@ class QuadrupedEnv3d(EnvBase):
         self._f_ext = f_ext
         self._youngs_modulus = youngs_modulus
         self._poissons_ratio = poissons_ratio
+        self._actuator_parameters = actuator_parameters
+        self._state_force_parameters = state_force_parameters
         self._stepwise_loss = False
         self.__node_nums = node_nums
         self.__element_num = element_num
@@ -141,7 +146,12 @@ class QuadrupedEnv3d(EnvBase):
         self._act_indices = act_indices
         self._options = options
 
-        self.__spp = options['spp'] if 'spp' in options else 4
+        scale = 0.5
+        self._spp = options['spp'] if 'spp' in options else 8
+        self._camera_pos = (0.25, -1, .25)
+        self._camera_lookat = (0.25, 0, 0.1)
+        self._color = (0.8, 0.8, 0.3)
+        self._scale = scale
 
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)
@@ -161,16 +171,6 @@ class QuadrupedEnv3d(EnvBase):
 
     def act_indices(self):
         return self._act_indices
-
-    def _display_mesh(self, mesh_file, file_name):
-        mesh = Mesh3d()
-        mesh.Initialize(mesh_file)
-        render_hex_mesh(mesh, file_name=file_name,
-            resolution=(400, 400), sample=self.__spp, transforms=[
-                ('s', 1)
-            ],
-            camera_pos=(2, -2.2, 1.5),
-            render_voxel_edge=True)
 
     def _loss_and_grad(self, q, v):
         # Compute the center of mass.

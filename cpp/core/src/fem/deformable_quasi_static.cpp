@@ -115,9 +115,10 @@ template<int vertex_dim, int element_dim>
 const VectorXr Deformable<vertex_dim, element_dim>::QuasiStaticMatrixOp(const VectorXr& q, const VectorXr& a, const VectorXr& dq) const {
     VectorXr dq_w_bonudary = dq;
     for (const auto& pair : dirichlet_) dq_w_bonudary(pair.first) = 0;
-    const int w_dofs = static_cast<int>(pd_element_energies_.size());
-    VectorXr ret = ElasticForceDifferential(q, dq_w_bonudary) + PdEnergyForceDifferential(q, dq_w_bonudary, VectorXr::Zero(w_dofs))
-        + ActuationForceDifferential(q, a, dq_w_bonudary, VectorXr::Zero(act_dofs_));
+    const int mat_w_dofs = NumOfPdElementEnergies();
+    const int act_w_dofs = NumOfPdMuscleEnergies();
+    VectorXr ret = ElasticForceDifferential(q, dq_w_bonudary) + PdEnergyForceDifferential(q, dq_w_bonudary, VectorXr::Zero(mat_w_dofs))
+        + ActuationForceDifferential(q, a, dq_w_bonudary, VectorXr::Zero(act_dofs_), VectorXr::Zero(act_w_dofs));
     for (const auto& pair : dirichlet_) ret(pair.first) = dq(pair.first);
     return ret;
 }
@@ -127,8 +128,8 @@ const SparseMatrix Deformable<vertex_dim, element_dim>::QuasiStaticMatrix(const 
     SparseMatrixElements nonzeros = ElasticForceDifferential(q);
     SparseMatrixElements nonzeros_pd, nonzeros_dummy;
     PdEnergyForceDifferential(q, true, false, false, nonzeros_pd, nonzeros_dummy);
-    SparseMatrixElements nonzeros_act_dq, nonzeros_act_da;
-    ActuationForceDifferential(q, a, nonzeros_act_dq, nonzeros_act_da);
+    SparseMatrixElements nonzeros_act_dq, nonzeros_act_da, nonzeros_act_dw;
+    ActuationForceDifferential(q, a, nonzeros_act_dq, nonzeros_act_da, nonzeros_act_dw);
     nonzeros.insert(nonzeros.end(), nonzeros_pd.begin(), nonzeros_pd.end());
     nonzeros.insert(nonzeros.end(), nonzeros_act_dq.begin(), nonzeros_act_dq.end());
     SparseMatrixElements nonzeros_new;
@@ -143,5 +144,7 @@ const SparseMatrix Deformable<vertex_dim, element_dim>::QuasiStaticMatrix(const 
     return ToSparseMatrix(dofs_, dofs_, nonzeros_new);
 }
 
+template class Deformable<2, 3>;
 template class Deformable<2, 4>;
+template class Deformable<3, 4>;
 template class Deformable<3, 8>;
