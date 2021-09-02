@@ -46,36 +46,6 @@ if __name__ == '__main__':
     dt = 1e-2
     frame_num = len(qs_real)-1 
 
-    # Actuation parameters 
-    act_stiffness = 2e5
-    act_group_num = 1
-    x_lb = np.zeros(frame_num)*(-2)
-    x_ub = np.ones(frame_num) * 10
-
-    # We have many fibers that all actuate with the same amount
-    def variable_to_act(x):
-        acts = []
-        for t in range(frame_num):
-            frame_act_1 = np.concatenate([
-                np.ones(len(fiber)) * (1+2*x) for fiber in hex_env.fibers_1
-            ])
-            frame_act_2 = np.concatenate([
-                np.ones(len(fiber)) * (1-x) for fiber in hex_env.fibers_2
-            ])
-            frame_act_tot = np.concatenate([frame_act_1,frame_act_2])
-            acts.append(frame_act_tot)
-        return np.stack(acts, axis=0)
-
-    # def variable_to_gradient(x, dl_dact):
-    #     # Specifically for 1 muscle actuation
-    #     grad = 0
-    #     for i in range(frame_num):
-    #         for k in range(len(hex_env.fibers)):
-    #             grad_act = dl_dact[i]
-
-    #             grad += np.sum(grad_act[:len(hex_env.fibers[k])]) if k == 0 else np.sum(grad_act[len(hex_env.fibers[k-1]):len(hex_env.fibers[k-1])+len(hex_env.fibers[k])])
-
-    #     return grad
 
     # Material parameters: Dragon Skin 10 
     youngs_modulus = 263824 
@@ -109,7 +79,47 @@ if __name__ == '__main__':
     ### Optimize for the best frame
     R, t = hex_env.fit_realframe(qs_real[0])
     qs_real = qs_real @ R.T + t
-    #hex_env.qs_real = qs_real
+    hex_env.qs_real = qs_real
+
+    # Actuation parameters 
+    act_stiffness = 2e5
+    act_group_num = 1
+    x_lb = np.zeros(frame_num)*(-2)
+    x_ub = np.ones(frame_num) * 10
+
+    # We have many fibers that all actuate with the same amount
+    def variable_to_act(x, linear=False):
+        acts = []
+        for t in range(frame_num):
+            if linear:
+                # We might want to linearly ramp up the actuation value to mimick quasistatic pressure increase
+                actuation = x * t / frame_num
+            else:
+                actuation = x
+
+            frame_act_1 = np.concatenate([
+                np.ones(len(fiber)) * (1+2*actuation) for fiber in hex_env.fibers_1
+            ])
+            frame_act_2 = np.concatenate([
+                np.ones(len(fiber)) * (1-actuation) for fiber in hex_env.fibers_2
+            ])
+            frame_act_tot = np.concatenate([frame_act_1,frame_act_2])
+            acts.append(frame_act_tot)
+        return np.stack(acts, axis=0)
+
+    def variable_to_gradient(x, dl_dact, linear=False):
+        grad = 0
+        for i in range(frame_num):
+            for j, fiber in enumerate([hex_env.fibers_1, hex_env.fibers_2]):
+                for k in range(len(fiber)):
+                    grad_act = dl_dact[i]
+                    dact_dx = 2 if j==1 else -1 
+                    if linear:
+                        dact_dx *= i / frame_num
+
+                    grad += dact_dx * (np.sum(grad_act[:len(fiber[k])]) if k == 0 else np.sum(grad_act[len(fiber[k-1]):len(fiber[k-1])+len(fiber[k])]))
+
+        return grad
 
 
 
@@ -129,7 +139,7 @@ if __name__ == '__main__':
 
 
 
-    init_a=[1.8,1.8]
+    init_a = 0.3
 
 
 
@@ -150,9 +160,9 @@ if __name__ == '__main__':
         return loss, grad
 
     t0 = time.time()
-    #result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
-    #    method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-8, 'gtol': 1e-8, 'maxiter': 50 })
-    x_fin = 0.33#result.x
+    result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
+        method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-8, 'gtol': 1e-8, 'maxiter': 50 })
+    x_fin = result.x
 
     print(f"act: {x_fin}")
 
