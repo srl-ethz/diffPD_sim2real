@@ -41,7 +41,7 @@ if __name__ == '__main__':
         qs_real = read_measurement_data(start_frame,end_frame,f'Measurement_data/{pressure}mbar_V3.c3d')
         
         ### Material and simulation parameters
-        # QTM by default captures 100Hz data, dt =0.01
+        # QTM by default captures 100Hz data, dt = 0.01
         dt = 1e-2
         frame_num = len(qs_real)-1 
 

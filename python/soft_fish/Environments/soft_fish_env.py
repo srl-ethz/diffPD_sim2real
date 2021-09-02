@@ -301,7 +301,7 @@ class FishEnv(EnvBase):
 
     def _stepwise_loss_and_grad(self, q, v, i):
         # We track the center of the tip
-        q_i = q.reshape(-1,3).take(self.target_idx_hex, axis=0)[0]
+        q_i = q.reshape(-1,3).take(self.target_points_idx, axis=0)[0]
         qs_real_i = self.qs_real[-1,0]
 
         # [::2] ignores the y coordinate, only consider x and z for loss
@@ -309,11 +309,11 @@ class FishEnv(EnvBase):
         loss = 0.5 * diff.dot(diff)
 
         grad = np.zeros_like(q)
-        for idx in self.target_idx_hex:
+        for idx in self.target_points_idx:
             # We need to derive the previous loss after the simulated positions q. The division follows from the mean operation.
             # We only consider x and z coordinates
-            grad[3*idx] = diff[0] / len(self.target_idx_hex)
-            grad[3*idx+2] = diff[1] / len(self.target_idx_hex)
+            grad[3*idx] = diff[0] / len(self.target_points_idx)
+            grad[3*idx+2] = diff[1] / len(self.target_points_idx)
 
         return loss, grad, np.zeros_like(q)
 

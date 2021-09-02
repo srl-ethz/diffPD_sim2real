@@ -35,44 +35,14 @@ if __name__ == '__main__':
     folder = Path(f'Soft_Fish')
     seed = 42
 
-
-
     ### Motion Markers data
     qs_real = read_measurement_data('Measurement_data/soft_fish_data.csv')
 
     
     ### Material and simulation parameters
-    # QTM by default captures 100Hz data, dt =0.01
+    # QTM by default captures 100Hz data, dt = 0.01
     dt = 1e-2
     frame_num = len(qs_real)-1 
-
-    # Actuation parameters 
-    act_stiffness = 2e5
-    act_group_num = 1
-    x_lb = np.zeros(frame_num)*(-2)
-    x_ub = np.ones(frame_num) * 10
-
-    # We have many fibers that all actuate with the same amount
-    def variable_to_act(x):
-        acts = []
-        for t in range(frame_num):
-            frame_act = np.concatenate([
-                np.ones(len(chamber)) * x for chamber in hex_env.fibers
-            ])
-            acts.append(frame_act)
-        return np.stack(acts, axis=0)
-
-
-    # def variable_to_gradient(x, dl_dact):
-    #     # Specifically for 1 muscle actuation
-    #     grad = 0
-    #     for i in range(frame_num):
-    #         for k in range(len(hex_env.fibers)):
-    #             grad_act = dl_dact[i]
-
-    #             grad += np.sum(grad_act[:len(hex_env.fibers[k])]) if k == 0 else np.sum(grad_act[len(hex_env.fibers[k-1]):len(hex_env.fibers[k-1])+len(hex_env.fibers[k])])
-
-    #     return grad
 
     # Material parameters: Dragon Skin 10 
     youngs_modulus = 263824 
@@ -100,14 +70,40 @@ if __name__ == '__main__':
         { 'max_pd_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct, 'use_bfgs': 1, 'bfgs_history_size': 10 },
         { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
     )
-    
 
 
     ### Optimize for the best frame
     R, t = hex_env.fit_realframe(qs_real[0])
     qs_real = qs_real @ R.T + t
-    #hex_env.qs_real = qs_real
+    hex_env.qs_real = qs_real
 
+    # Actuation parameters 
+    act_stiffness = 2e5
+    act_group_num = 1
+    x_lb = np.zeros(frame_num)*(-2)
+    x_ub = np.ones(frame_num) * 10
+
+    # We have many fibers that all actuate with the same amount
+    def variable_to_act(x):
+        acts = []
+        for t in range(frame_num):
+            frame_act = np.concatenate([
+                np.ones(len(chamber)) * x for chamber in hex_env.fibers
+            ])
+            acts.append(frame_act)
+        return np.stack(acts, axis=0)
+
+
+    def variable_to_gradient(x, dl_dact):
+        # Specifically for 1 muscle actuation
+        grad = 0
+        for i in range(frame_num):
+            for k in range(len(hex_env.fibers)):
+                grad_act = dl_dact[i]
+
+                grad += np.sum(grad_act[:len(hex_env.fibers[k])]) if k == 0 else np.sum(grad_act[len(hex_env.fibers[k-1]):len(hex_env.fibers[k-1])+len(hex_env.fibers[k])])
+
+        return grad
 
 
     ### Compute the initial state.
@@ -124,11 +120,7 @@ if __name__ == '__main__':
     x_lb = np.ones(1) * -5
     x_ub = np.ones(1) * 5
 
-
-
-    init_a=[1.6,1.6]
-
-
+    init_a = 1.6
 
     x_init = np.ones(1) * init_a
     x_bounds = scipy.optimize.Bounds(x_lb, x_ub)
@@ -147,13 +139,11 @@ if __name__ == '__main__':
         return loss, grad
 
     t0 = time.time()
-    #result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
-    #    method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-8, 'gtol': 1e-8, 'maxiter': 50 })
-    x_fin = [1.8]#result.x
+    result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
+        method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-8, 'gtol': 1e-8, 'maxiter': 50 })
+    x_fin = result.x
 
     print(f"act: {x_fin}")
-
-
 
 
 
