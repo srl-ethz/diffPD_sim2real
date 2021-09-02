@@ -85,15 +85,15 @@ if __name__ == '__main__':
     act_stiffness = 2e5
     act_group_num = 1
 
+    control_frames = 20     # Every so many frames we get a new control input
+    control_frame_num = 1 + (frame_num // control_frames)
+
     # We have many fibers that all actuate with the same amount
-    def variable_to_act(x, linear=False):
+    def variable_to_act(x):
         acts = []
         for t in range(frame_num):
-            if linear:
-                # We might want to linearly ramp up the actuation value to mimick quasistatic pressure increase
-                actuation = x * t / frame_num
-            else:
-                actuation = x
+            i_c = t // control_frames
+            actuation = x[i_c]
 
             frame_act_1 = np.concatenate([
                 np.ones(len(fiber)) * (1+2*actuation) for fiber in hex_env.fibers_1
@@ -105,17 +105,16 @@ if __name__ == '__main__':
             acts.append(frame_act_tot)
         return np.stack(acts, axis=0)
 
-    def variable_to_gradient(x, dl_dact, linear=False):
-        grad = 0
+    def variable_to_gradient(x, dl_dact):
+        grad = np.zeros(control_frame_num)
         for i in range(frame_num):
+            i_c = i // control_frames
             for j, fiber in enumerate([hex_env.fibers_1, hex_env.fibers_2]):
                 for k in range(len(fiber)):
                     grad_act = dl_dact[i]
-                    dact_dx = 2 if j==1 else -1 
-                    if linear:
-                        dact_dx *= i / frame_num
+                    dact_dx = 2 if j==1 else -1
 
-                    grad += dact_dx * (np.sum(grad_act[:len(fiber[k])]) if k == 0 else np.sum(grad_act[len(fiber[k-1]):len(fiber[k-1])+len(fiber[k])]))
+                    grad[i_c] += dact_dx * (np.sum(grad_act[:len(fiber[k])]) if k == 0 else np.sum(grad_act[len(fiber[k-1]):len(fiber[k-1])+len(fiber[k])]))
 
         return grad
 
@@ -132,9 +131,8 @@ if __name__ == '__main__':
 
 
     ### Optimization
-    linearAct = True
-    x_lb = np.zeros(1) * 0
-    x_ub = np.ones(1) * 2
+    x_lb = np.zeros(control_frame_num) * 0
+    x_ub = np.ones(control_frame_num) * 2
     init_a = 0.3
 
     x_init = np.ones(1) * init_a
@@ -142,12 +140,12 @@ if __name__ == '__main__':
 
 
     def loss_and_grad (x):
-        act = variable_to_act(x, linear=linearAct)
+        act = variable_to_act(x)
 
         loss, grad, info = hex_env.simulate(dt, frame_num, method, opts[0], q0, v0, act=act, f_ext=f0, require_grad=True, vis_folder=None)
         dl_act = grad[2]
 
-        grad = variable_to_gradient(x, dl_act, linear=linearAct)
+        grad = variable_to_gradient(x, dl_act)
 
         print('loss: {:8.4e}, |grad|: {:8.3e}, forward time: {:6.2f}s, backward time: {:6.2f}s, act_x: {},'.format(loss, np.linalg.norm(grad), info['forward_time'], info['backward_time'], x))
 
@@ -162,11 +160,9 @@ if __name__ == '__main__':
 
 
 
-
-
     ### Simulation of final optimization result
     print_info("DiffPD Simulation is starting...")
-    _, info_hex = hex_env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, act=variable_to_act(x_fin, linear=linearAct), f_ext=f0, require_grad=False, 
+    _, info_hex = hex_env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, act=variable_to_act(x_fin), f_ext=f0, require_grad=False, 
         vis_folder="pd_eigen_hex",
         verbose=1)
 

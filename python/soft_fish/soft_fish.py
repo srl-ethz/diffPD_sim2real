@@ -84,22 +84,30 @@ if __name__ == '__main__':
     x_ub = np.ones(frame_num) * 10
 
     # We have many fibers that all actuate with the same amount
-    def variable_to_act(x):
+    def variable_to_act(x, linear=False):
         acts = []
         for t in range(frame_num):
+            if linear:
+                # We might want to linearly ramp up the actuation value to mimick quasistatic pressure increase
+                actuation = x * t / frame_num
+            else:
+                actuation = x
+
             frame_act = np.concatenate([
-                np.ones(len(chamber)) * x for chamber in hex_env.fibers
+                np.ones(len(chamber)) * actuation for chamber in hex_env.fibers
             ])
             acts.append(frame_act)
         return np.stack(acts, axis=0)
 
 
-    def variable_to_gradient(x, dl_dact):
+    def variable_to_gradient(x, dl_dact, linear=False):
         # Specifically for 1 muscle actuation
         grad = 0
         for i in range(frame_num):
             for k in range(len(hex_env.fibers)):
                 grad_act = dl_dact[i]
+                if linear:
+                        grad_act *= i / frame_num
 
                 grad += np.sum(grad_act[:len(hex_env.fibers[k])]) if k == 0 else np.sum(grad_act[len(hex_env.fibers[k-1]):len(hex_env.fibers[k-1])+len(hex_env.fibers[k])])
 
