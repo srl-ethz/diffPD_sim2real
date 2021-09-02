@@ -316,7 +316,7 @@ def create_video_soft_fish(folder,frame_num, fibers, hex_env,qs_real,method,fps,
 	frame_names_info = sorted(frame_names_info)
 
 	fps=20
-	export_mp4(folder / "combined" / "info", folder / '_all.mp4', fps)
+	export_mp4(folder / "combined" / "info", folder / 'soft_fish.mp4', fps)
 
 ### Create Video Soft Fish 2 Muscles
 def create_video_soft_fish_2muscles(folder,frame_num, fibers_1, fibers_2, hex_env,qs_real,method,fps,dt, target_points_idx):#qs_real
@@ -469,7 +469,7 @@ def create_video_soft_fish_2muscles(folder,frame_num, fibers_1, fibers_2, hex_en
 	frame_names_info = sorted(frame_names_info)
 
 	fps=20
-	export_mp4(folder / "combined" / "info", folder / '_all.mp4', fps)
+	export_mp4(folder / "combined" / "info", folder / 'soft_fish_2muscles.mp4', fps)
 
 
 	
