@@ -253,7 +253,7 @@ def create_video_soft_fish(folder,frame_num, fibers, hex_env,qs_real,method,fps,
 		    renderer.add_shape_mesh({
 		        'name': 'sphere',
 		        'center': ndarray(mesh_hex.py_vertex(idx)),
-		        'radius': 0.02
+		        'radius': 0.004
 		        },
 		        color='000000', #black
 		        transforms=[
@@ -266,7 +266,7 @@ def create_video_soft_fish(folder,frame_num, fibers, hex_env,qs_real,method,fps,
 		    renderer.add_shape_mesh({
 		        'name': 'sphere',
 		        'center': q_real,
-		        'radius': 0.036
+		        'radius': 0.0036
 		        },
 		        color='d60000', #red
 		        transforms=[
