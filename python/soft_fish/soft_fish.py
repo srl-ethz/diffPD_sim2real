@@ -44,7 +44,7 @@ if __name__ == '__main__':
     ### Material and simulation parameters
     # QTM by default captures 100Hz data, dt =0.01
     dt = 1e-2
-    frame_num = 4#70#len(qs_real)-1 
+    frame_num = len(qs_real)-1 
 
     # Actuation parameters 
     act_stiffness = 2e5
