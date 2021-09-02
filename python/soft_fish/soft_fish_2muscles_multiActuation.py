@@ -135,7 +135,7 @@ if __name__ == '__main__':
     x_ub = np.ones(control_frame_num) * 2
     init_a = 0.3
 
-    x_init = np.ones(1) * init_a
+    x_init = np.linspace(0.1, 0.5, control_frame_num)
     x_bounds = scipy.optimize.Bounds(x_lb, x_ub)
 
 
