@@ -39,7 +39,7 @@ class FishEnv(EnvBase):
 
         np.random.seed(seed)
         create_folder(folder, exist_ok=True)
-        stlFile = "./Soft_Fish/soft_fish.stl"
+        stlFile = "./STL_files/soft_fish.stl"
 
         youngs_modulus = options['youngs_modulus'] if 'youngs_modulus' in options else 1e6
         poissons_ratio = options['poissons_ratio'] if 'poissons_ratio' in options else 0.45
