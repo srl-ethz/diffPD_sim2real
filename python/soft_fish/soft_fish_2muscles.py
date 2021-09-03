@@ -155,7 +155,7 @@ if __name__ == '__main__':
 
     t0 = time.time()
     result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
-        method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-8, 'gtol': 1e-8, 'maxiter': 50 })
+        method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-8, 'gtol': 1e-8, 'maxiter': 10 })
     x_fin = result.x
 
     print(f"act: {x_fin}")

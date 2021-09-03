@@ -265,7 +265,7 @@ class FishEnv(EnvBase):
         self._poissons_ratio = poissons_ratio
         self._state_force_parameters = state_force_parameters
         self._actuator_parameters = np.tile(actuator_parameters, len(self.actuation_top_1)+len(self.actuation_top_2))
-        self._stepwise_loss = False#True
+        self._stepwise_loss = True
         self.__loss_q_grad = np.random.normal(size=dofs)
         self.__loss_v_grad = np.random.normal(size=dofs)
         self.fibers_1 = fibers_1
@@ -332,35 +332,27 @@ class FishEnv(EnvBase):
         return jac_total
 
 
-    # def _stepwise_loss_and_grad(self, q, v, i):
-    #     # We track the center of the tip
-    #     sim_mean = q.reshape(-1,3).take(self.target_idx_hex, axis=0).mean(axis=0)
+    def _stepwise_loss_and_grad(self, q, v, i):
+        # We track the center of the tip
+        q_i = q.reshape(-1,3).take(self.target_points_idx, axis=0)[0]
+        qs_real_i = self.qs_real[i,0]
 
-    #     # Collect the data from the 3 QTM points at the tip of the arm segment  
-    #     qs_real_i = self.qs_real[-1, 4:]
+        # [::2] ignores the y coordinate, only consider x and z for loss
+        diff = (q_i - qs_real_i)[::2].ravel()
+        loss = 0.5 * diff.dot(diff)
 
-    #     # Define a point (named 7) at the center of point 4 and 5 (two "side points")
-    #     qs_real_i_7 = qs_real_i[:2].mean(axis=0)
+        grad = np.zeros_like(q)
+        for idx in self.target_points_idx:
+            # We need to derive the previous loss after the simulated positions q. The division follows from the mean operation.
+            # We only consider x and z coordinates
+            grad[3*idx] = diff[0] / len(self.target_points_idx)
+            grad[3*idx+2] = diff[1] / len(self.target_points_idx)
 
-    #     # Find the center point using the geometrical relation:
-    #     real_mean = qs_real_i_7 - (qs_real_i[2] - qs_real_i_7) * 9.645/18.555
+        return loss, grad, np.zeros_like(q)
 
-    #     # [::2] ignores the y coordinate, only consider x and z for loss
-    #     diff = (sim_mean - real_mean)[::2].ravel()
-    #     loss = 0.5 * diff.dot(diff)
-
-    #     grad = np.zeros_like(q)
-    #     for idx in self.target_idx_hex:
-    #         # We need to derive the previous loss after the simulated positions q. The division follows from the mean operation.
-    #         # We only consider x and z coordinates
-    #         grad[3*idx] = diff[0] / len(self.target_idx_hex)
-    #         grad[3*idx+2] = diff[1] / len(self.target_idx_hex)
-
-    #     return loss, grad, np.zeros_like(q)
-
-    def _loss_and_grad(self, q, v):
-        loss = q.dot(self.__loss_q_grad) + v.dot(self.__loss_v_grad)
-        return loss, np.copy(self.__loss_q_grad), np.copy(self.__loss_v_grad)
+    # def _loss_and_grad(self, q, v):
+    #     loss = q.dot(self.__loss_q_grad) + v.dot(self.__loss_v_grad)
+    #     return loss, np.copy(self.__loss_q_grad), np.copy(self.__loss_v_grad)
 
 
 
