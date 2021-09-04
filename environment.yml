@@ -1,4 +1,4 @@
-name: diff_pd
+name: diffPD_sim2real
 channels:
   - pytorch
   - conda-forge
@@ -113,5 +113,4 @@ dependencies:
     - tetgen==0.5.1
     - vtk==9.0.1
     - c3d==0.3.0
-prefix: /home/taodu/libraries/miniconda3/envs/diff_pd
 
