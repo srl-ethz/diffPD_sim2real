@@ -1,6 +1,6 @@
 # Differentiable Projective Dynamics
 
-The work and examples in this project are based on the original work of https://github.com/mit-gfx/diff_pd. This is the code accompanying our paper "Sim-to-Real  for  Differentiable  Projective  Dynamics  on  Soft  Robots:Meshing,  Damping,  and  Actuation" to run the simulation experiments that are shown.
+The work and examples in this project are based on the original work of https://github.com/mit-gfx/diff_pd. This is the code accompanying our paper "Sim-to-Real  for  Differentiable  Projective  Dynamics  on  Soft  Robots: Meshing,  Damping,  and  Actuation" to run the simulation experiments that are shown.
 
 
 ## Recommended systems
@@ -11,9 +11,9 @@ The work and examples in this project are based on the original work of https://
 ## Installation
 ```
 git clone --recursive git@github.com:srl-ethz/diffPD_sim2real.git
-cd diff_pd
+cd diffPD_sim2real
 conda env create -f environment.yml
-conda activate diff_pd
+conda activate diffPD_sim2real
 ./install.sh
 ```
 
