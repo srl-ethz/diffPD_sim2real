@@ -126,7 +126,7 @@ if __name__ == '__main__':
                 verbose=1
             )
         else:
-            _, info_tet = tet_env.simulate(dt, frame_num, method, opt, require_grad=False,
+            _, info_hex = hex_env.simulate(dt, frame_num, method, opt, require_grad=False,
                 verbose=1  
             )
 
