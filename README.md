@@ -22,7 +22,7 @@ Navigate to `python/[scenario]` where `scenario` is one of the following:
 
 ### realbeam_experiments
 Here you'll find the examples for the Clamped Beam under External Force, run `python [example_name]` where `example_name` is one of the following:
-- `clamped_beam_Case_A-1.py`: Generates the results for the first case from TABLE 1 in our paper. Similarly, the other cases can also be run.
+- `clamped_beam_Case_A-1.py`: Generates the results for the first case from TABLE 1 in our paper. Similarly, the other cases can also be run. Running these examples with the `--video` flag will create a video of the simulation as well, however, this will require much more time to run.
 
 ### 1segment_arm
 Here you'll find the examples for the Soft Robotic Arm, run `python [example_name].py` where `example_name` is one of the following:
