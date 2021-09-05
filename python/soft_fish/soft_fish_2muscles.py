@@ -132,7 +132,7 @@ if __name__ == '__main__':
 
 
     ### Optimization
-    linearAct = True
+    linearAct = False
     x_lb = np.zeros(1) * 0
     x_ub = np.ones(1) * 2
     init_a = 0.3
