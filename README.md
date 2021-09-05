@@ -4,9 +4,9 @@ The work and examples in this project are based on the original work of https://
 
 
 ## Recommended systems
-- Ubuntu 20.04
+- Ubuntu 20.04 (18.04 also tested)
 - (Mini)conda 4.7.12 or higher
-- GCC 7.5 (Other versions might work but we tested the codebase with 7.5 only)
+- GCC 9.3.0 (7.5 also tested, other versions might work but we tested the codebase with these versions)
 
 ## Installation
 ```
