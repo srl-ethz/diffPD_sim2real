@@ -158,14 +158,17 @@ class BeamEnv(EnvBase):
         ]
 
         self.target_idx = []
+        self.virtual_target_points = []
 
         # Find corresponding vertices to the target points
         for point in self.target_points[:3]:
             norm=np.linalg.norm(verts-point, axis=1)
             self.target_idx.append(int(np.argmin(norm)))
+            self.virtual_target_points.append(verts[self.target_idx[-1]])
         
         def target_idx(self):
             return self.target_idx
+        
        
         # Define the tip side points (will be used in diagrams later)
         self.tip_side_points_idx = []
@@ -323,7 +326,7 @@ class BeamEnv(EnvBase):
         renderer.render()
 
 
-    def fit_realframe (self, qs_init, MAX_ITER=100):
+    def fit_realframe (self, qs_init, MAX_ITER=200):
         """
         Optimize for the frame that would best make the real data fit the initial frame of the simulated beam.
         """
@@ -367,7 +370,8 @@ class BeamEnv(EnvBase):
             return 0., np.zeros_like(q), np.zeros_like(q)
         
         # Match z coordinate of the target motion with reality of specific target point
-        z_sim = q.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - (q.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2]-0.024)
+        # 
+        z_sim = q.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
         diff = (z_sim - self.qs_real[i,1,2]).ravel()
         loss = 0.5 * diff.dot(diff)
 
