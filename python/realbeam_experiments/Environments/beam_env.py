@@ -233,7 +233,7 @@ class BeamEnv(EnvBase):
         self._youngs_modulus = youngs_modulus
         self._poissons_ratio = poissons_ratio
         self._state_force_parameters = state_force_parameters
-        self._stepwise_loss = False
+        self._stepwise_loss = True
         self.__loss_q_grad = np.random.normal(size=dofs)
         self.__loss_v_grad = np.random.normal(size=dofs)
 
@@ -242,6 +242,8 @@ class BeamEnv(EnvBase):
         self._mesh_type = mesh_type
 
         self._vx, self._vy,self._vz = verts[100]
+        
+        self.qs_real = options['qs_real'] if 'qs_real' in options else None
 
 
 
@@ -349,8 +351,32 @@ class BeamEnv(EnvBase):
         return totalR, totalt
 
 
-    def _loss_and_grad(self, q, v):
-        loss = q.dot(self.__loss_q_grad) + v.dot(self.__loss_v_grad)
-        return loss, np.copy(self.__loss_q_grad), np.copy(self.__loss_v_grad)
+    def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
+        # Using Corotated
+        jac = self._material_jacobian(youngs_modulus, poissons_ratio)
+        # Material Jacobian returns d(la, mu)/d(E, nu) for lame, shear modulus and youngs, poisson ratio.
+        jac_total = np.zeros((2, 2))
+        jac_total[0] = 2 * jac[1]
+        jac_total[1] = jac[0]
+
+        return jac_total
+        
+
+    def _stepwise_loss_and_grad(self, q, v, i):
+        if self.qs_real is None:
+            return 0., np.zeros_like(q), np.zeros_like(q)
+        
+        # Match z coordinate of the target motion with reality of specific target point
+        z_sim = q.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - (q.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2]-0.024)
+        diff = (z_sim - self.qs_real[i,1,2]).ravel()
+        loss = 0.5 * diff.dot(diff)
+
+        grad = np.zeros_like(q)
+        for j, idx in enumerate(self.target_idx_tip_left):
+            grad[3*idx] = 0
+            grad[3*idx+1] = 0
+            grad[3*idx+2] = diff[0]
+
+        return loss, grad, np.zeros_like(q)
 
 
