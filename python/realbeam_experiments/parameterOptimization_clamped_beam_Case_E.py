@@ -35,8 +35,7 @@ if __name__ == '__main__':
 
 
     ### Motion Markers data
-    #qs_real = read_measurement_data(51,300,'Measurement_data/beam_load101_V2_a.c3d')
-    qs_real = read_measurement_data(51,100,'Measurement_data/beam_load101_V2_a.c3d')
+    qs_real = read_measurement_data(51,300,'Measurement_data/beam_load101_V2_a.c3d')
 
     ### Material and simulation parameters
     # QTM by default captures 100Hz data, dt = h = 0.01
