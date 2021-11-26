@@ -120,9 +120,11 @@ if __name__ == '__main__':
     t0 = time.time()
     result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
         method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-8, 'gtol': 1e-8, 'maxiter': 50 })
-    x_fin = result.x
+    x_fin = result.x[0]
 
     print(f"E: {np.exp(x_fin)}")
+    
+    #x_fin = np.log(293506.21331244265)
         
     tet_params['youngs_modulus'] = np.exp(x_fin)
     hex_params['youngs_modulus'] = np.exp(x_fin)

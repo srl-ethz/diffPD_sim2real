@@ -370,9 +370,8 @@ class BeamEnv(EnvBase):
             return 0., np.zeros_like(q), np.zeros_like(q)
         
         # Match z coordinate of the target motion with reality of specific target point
-        # 
         z_sim = q.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
-        diff = (z_sim - self.qs_real[i,1,2]).ravel()
+        diff = (z_sim - self.qs_real[-1,1,2]).ravel()
         loss = 0.5 * diff.dot(diff)
 
         grad = np.zeros_like(q)
