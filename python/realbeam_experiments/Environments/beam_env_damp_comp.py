@@ -234,7 +234,7 @@ class BeamEnv(EnvBase):
         self._youngs_modulus = youngs_modulus
         self._poissons_ratio = poissons_ratio
         self._state_force_parameters = state_force_parameters
-        self._stepwise_loss = True
+        self._stepwise_loss = False
         self.__loss_q_grad = np.random.normal(size=dofs)
         self.__loss_v_grad = np.random.normal(size=dofs)
 
@@ -245,8 +245,6 @@ class BeamEnv(EnvBase):
         self._vx, self._vy,self._vz = verts[100]
         self.qs_real = options['qs_real'] if 'qs_real' in options else None
         self.dt = dt
-
-
 
 
     def _display_mesh(self, mesh_file, file_name):
@@ -362,29 +360,86 @@ class BeamEnv(EnvBase):
 
         return jac_total
         
-
-    def _stepwise_loss_and_grad(self, q, v, i):
-        # First peak of oscillation is at 0.06s (more or less), we match this for several frames in the surroundings in simulation.
-        target_time = 0.06
-        margin = 3
-        peak_start_idx = max(0, int(np.floor(target_time/self.dt)) - margin)
-        peak_end_idx = int(np.ceil(target_time/self.dt)) + margin
+    
+    def _loss_and_grad(self, q, v):
+        q = np.array(q)
+        q = q.reshape(q.shape[0],-1,3)[:,self.target_idx_tip_left,2].reshape(-1)
         
-        # Now we want to find the point where it reaches the lowest z-position, so the first point in this interval with a positive z-velocity is our target simulation point.
-        if self.qs_real is None or (i < peak_start_idx or i > peak_end_idx or v.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] < 0):
-            return 0., np.zeros_like(q), np.zeros_like(q)
+        ### Find the peaks and troughs
+        u_x = [0,]
+        l_x = []
+            
+        for k in range(1,len(q)-1):
+            if (np.sign(q[k]-q[k-1])==1) and (np.sign(q[k]-q[k+1])==1):
+                u_x.append(k)
+
+            if (np.sign(q[k]-q[k-1])==-1) and ((np.sign(q[k]-q[k+1]))==-1):
+                l_x.append(k)
+        
         
         # Match z coordinate of the target motion with reality of specific target point
-        z_sim = q.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
+        z_sim_upper = q[u_x] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
+        z_sim_lower = q[l_x] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
         
-        diff = (z_sim - self.qs_real[int(target_time*100),1,2]).ravel()
+        # Find points on envelope (precomputed envelopes of real data)
+        upper_env = 0.00635486 * np.exp(-2.9106797 * np.array([k*self.dt for k in u_x])) + 0.01771898
+        lower_env = -0.00492362 * np.exp(-2.67923014 * np.array([k*self.dt for k in l_x])) + 0.01754319
+        
+        # All of these losses apply to a single point on the beam
+        diff = (z_sim_upper - upper_env).ravel().sum(keepdims=True) + (z_sim_lower - lower_env).ravel().sum(keepdims=True)
         loss = 0.5 * diff.dot(diff)
 
-        grad = np.zeros_like(q)
+        grad = np.zeros_like(self._q0)
         for j, idx in enumerate(self.target_idx_tip_left):
             grad[3*idx] = 0
             grad[3*idx+1] = 0
             grad[3*idx+2] = diff[0]
+
+        return loss, grad, np.zeros_like(self._q0)
+
+
+    def _stepwise_loss_and_grad(self, q, v, i):
+        # First peak of oscillation is at 0.06s (more or less), we match this for several frames in the surroundings in simulation.
+        margin = 0
+        target_time = 0.07
+        peak_start_idx = max(0, int(np.floor(target_time/self.dt)) - margin)
+        peak_end_idx = int(np.ceil(target_time/self.dt)) + margin
+        
+        # Hardcode target time
+        peak_start_idx = peak_end_idx = round(target_time/self.dt)
+        peak1 = round(0.07/self.dt)
+        peak2 = round(0.15/self.dt)
+        
+        loss = 0.
+        grad = np.zeros_like(q)
+        
+        # Now we want to find the point where it reaches the lowest z-position, so the first point in this interval with a positive z-velocity is our target simulation point.
+        if i == peak1:
+            # Match z coordinate of the target motion with reality of specific target point
+            z_sim = q.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
+            
+            diff = (z_sim - self.qs_real[6,1,2]).ravel() 
+            loss = 0.5 * diff.dot(diff)
+
+            grad = np.zeros_like(q)
+            for j, idx in enumerate(self.target_idx_tip_left):
+                grad[3*idx] = 0
+                grad[3*idx+1] = 0
+                grad[3*idx+2] = diff[0]
+            
+        elif i == peak2:
+            # Match z coordinate of the target motion with reality of specific target point
+            z_sim = q.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
+            
+            diff = (z_sim - self.qs_real[13,1,2]).ravel()
+            loss = 0.5 * diff.dot(diff)
+
+            grad = np.zeros_like(q)
+            for j, idx in enumerate(self.target_idx_tip_left):
+                grad[3*idx] = 0
+                grad[3*idx+1] = 0
+                grad[3*idx+2] = diff[0]
+                
 
         return loss, grad, np.zeros_like(q)
 

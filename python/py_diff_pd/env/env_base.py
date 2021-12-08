@@ -223,6 +223,9 @@ class EnvBase:
             q_next = ndarray(q_next_array)
             v_next = ndarray(v_next_array)
             active_contact_indices.append(active_contact_idx)
+            q.append(q_next)
+            v.append(v_next)
+            
             if self._stepwise_loss:
                 # See if a custom grad is provided.
                 ret = self._stepwise_loss_and_grad(q_next, v_next, i + 1)
@@ -236,7 +239,9 @@ class EnvBase:
                             grad_custom[grad_c_key] = grad_c_val
                 loss += l
             elif i == frame_num - 1:
-                ret = self._loss_and_grad(q_next, v_next)
+                # TODO: Changed the loss and grad to take ALL frames and not just last one
+                #ret = self._loss_and_grad(q_next, v_next)
+                ret = self._loss_and_grad(q, v)
                 l, grad_q, grad_v = ret[:3]
                 if len(ret) > 3:
                     grad_c = ret[3]
@@ -246,8 +251,6 @@ class EnvBase:
                         else:
                             grad_custom[grad_c_key] = grad_c_val
                 loss += l
-            q.append(q_next)
-            v.append(v_next)
 
         # Save data.
         info = { 'grad_custom': grad_custom }
@@ -290,7 +293,7 @@ class EnvBase:
             dl_dact_w = np.zeros(act_w_dofs)
             dl_dstate_p = np.zeros(state_p_dofs)
             for i in reversed(range(frame_num)):
-                # i -> i + 1.
+                # i -> i - 1.
                 dl_dq = StdRealVector(dofs)
                 dl_dv_clamped = StdRealVector(dofs)
                 dl_da = StdRealVector(act_dofs)

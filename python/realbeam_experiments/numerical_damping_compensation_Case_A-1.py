@@ -125,7 +125,7 @@ if __name__ == '__main__':
             f_ext = DampingForce(hex_env, dt, lmbda)
             
             # When matching first peak, not all frames necessary for optimization
-            loss, grad, info = hex_env.simulate(dt, frame_num//5, methods[0], opts[0], f_ext=f_ext, require_grad=True, vis_folder=None)
+            loss, grad, info = hex_env.simulate(dt, frame_num, methods[0], opts[0], f_ext=f_ext, require_grad=True, vis_folder=None)
             # Add together all gradients from all timesteps
             lmbda_grad = np.sum(grad[3]).reshape(1)
 
@@ -138,13 +138,13 @@ if __name__ == '__main__':
         print_info(f"DOFs: {hex_deformable.dofs()} Hex, h={dt}")
         
         x_lb = np.ones(1) * (-0.2)
-        x_ub = np.ones(1) * (0.5)
-        x_init = np.ones(1) * (0.1)
+        x_ub = np.ones(1) * (0.2)
+        x_init = np.ones(1) * (0.0)
 
         x_bounds = scipy.optimize.Bounds(x_lb, x_ub)
         
         t0 = time.time()
-        result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init), method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-8, 'gtol': 1e-8, 'maxiter': 50 })
+        result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init), method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-9, 'gtol': 1e-9, 'maxiter': 50 })
         lmbda_fin = (result.x[0])
         # lmbda_fin = -0.06578169791033436
         # lmbda_fin = 0.1
@@ -158,7 +158,7 @@ if __name__ == '__main__':
         create_folder(hex_env._folder / vis_folder, exist_ok=False)
             
         f_ext = DampingForce(hex_env, dt, lmbda_fin)
-        loss, info = hex_env.simulate(dt, frame_num, methods[0], opts[0], f_ext=f_ext, require_grad=False, vis_folder=vis_folder, verbose=2)
+        loss, info = hex_env.simulate(dt, frame_num, methods[0], opts[0], f_ext=f_ext, require_grad=False, vis_folder=None, verbose=0)
         qs_hex = info['q']
 
 
