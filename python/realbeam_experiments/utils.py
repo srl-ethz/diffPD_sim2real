@@ -129,7 +129,7 @@ def plots_A(folder_name,frame_num,dt,left_hex,left_tet,dofs_hex,dofs_tet, qs_tet
 
 
 ### Plots for Damping Compensation Case A-1
-def plots_damp_comp_A(folder_name,frame_num,dt,left_hex,dofs_hex, qs_hex,qs_real):
+def plots_damp_comp_A(folder_name,frame_num,dt,left_hex,dofs_hex, qs_hex,qs_real, lmbda=None):
 
 	### Info message
 	print_info("Creating plots...")
@@ -173,20 +173,20 @@ def plots_damp_comp_A(folder_name,frame_num,dt,left_hex,dofs_hex, qs_hex,qs_real
 	ax.grid(which='minor', alpha=0.2)
 	ax.grid(which='major', alpha=0.5)
 
-	ax.set_title("Hexahedral z Position of Left Tip Point vs Real Data (dt={}s)".format(dt), fontsize=28)
+	ax.set_title(f"Hexahedral z Position of Left Tip Point vs Real Data (dt={dt:.4f}s)", fontsize=28)
 	ax.set_xlabel("Time [s]", fontsize=24)
 	ax.set_ylabel("z Position [m]", fontsize=24)
 	ax.title.set_position([.5, 1.03])
 	ax.legend(loc="lower center", bbox_to_anchor=(0.5, -0.35), ncol= 2, prop={'size': 24})
 
-	fig.savefig(f"{folder_name}/z_position_point_left_{dofs_hex}_{dt}.png", bbox_inches='tight')
+	fig.savefig(f"{folder_name}/z_position_point_left_{dofs_hex}_{dt}_{lmbda}.png", bbox_inches='tight')
 	plt.close()
 
 
 	### Store the points in csv files
-	np.savetxt(f"{folder_name}/point_left_z_hex_{dofs_hex}_{dt}.csv", z_hex, delimiter =",",fmt ='% s')
+	np.savetxt(f"{folder_name}/point_left_z_hex_{dofs_hex}_{dt:.4f}_{lmbda:.6f}.csv", z_hex, delimiter =",",fmt ='% s')
 	np.savetxt(f"{folder_name}/point_left_z_real_data.csv", z_qs, delimiter =",",fmt ='% s')
-
+  
 
 	### Info message
 	print_info("Plots are now available")
