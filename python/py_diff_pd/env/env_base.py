@@ -168,13 +168,18 @@ class EnvBase:
         for a in sim_act:
             assert a.size == self._deformable.act_dofs()
 
-        if f_ext is None:
-            sim_f_ext = [self._f_ext for _ in range(frame_num)]
+        ### Allow callable functions for f_ext that take (q, v) as inputs! Both forward and backward implemented in class!
+        # In the case of backward, the gradient of the backward function will be multiplied on top, hence the result will be the derivatives w.r.t. what the backward function tells it is.
+        if f_ext is not None and hasattr(f_ext, "forward") and hasattr(f_ext, "backward"):
+            sim_f_ext = []
         else:
-            sim_f_ext = [ndarray(f) for f in f_ext]
-        assert len(sim_f_ext) == frame_num
-        for f in sim_f_ext:
-            assert f.size == self._deformable.dofs()
+            if f_ext is None:
+                sim_f_ext = [self._f_ext for _ in range(frame_num)]
+            else:
+                sim_f_ext = [ndarray(f) for f in f_ext]
+            assert len(sim_f_ext) == frame_num
+            for f in sim_f_ext:
+                assert f.size == self._deformable.dofs()
 
         if vis_folder is not None:
             create_folder(self._folder / vis_folder, exist_ok=False)
@@ -198,6 +203,7 @@ class EnvBase:
         grad_v = np.zeros(dofs)
         grad_custom = {}
         active_contact_indices = [StdIntVector(0),]
+            
         for i in range(frame_num):
             if verbose > 0:
                 print(f"Forward {i+1}/{frame_num}")
@@ -206,8 +212,14 @@ class EnvBase:
             q_next_array = StdRealVector(dofs)
             v_next_array = StdRealVector(dofs)
             active_contact_idx = copy_std_int_vector(active_contact_indices[-1])
+            
+            # Compute external force per frame based on current position and velocity
+            if hasattr(f_ext, "forward") and hasattr(f_ext, "backward"):
+                sim_f_ext.append(f_ext.forward(q[-1], v_clamped[-1]))
+            
             self._deformable.PyForward(forward_method, q[-1], v_clamped[-1], sim_act[i], sim_f_ext[i], dt, forward_opt,
                 q_next_array, v_next_array, active_contact_idx)
+            
             q_next = ndarray(q_next_array)
             v_next = ndarray(v_next_array)
             active_contact_indices.append(active_contact_idx)
@@ -286,9 +298,11 @@ class EnvBase:
                 dl_dmat_wi = StdRealVector(mat_w_dofs)
                 dl_dact_wi = StdRealVector(act_w_dofs)
                 dl_dstate_pi = StdRealVector(state_p_dofs)
+                
                 self._deformable.PyBackward(backward_method, q[i], v_clamped[i], sim_act[i], sim_f_ext[i], dt,
                     q[i + 1], v[i + 1], active_contact_indices[i + 1], dl_dq_next, dl_dv_next,
                     backward_opt, dl_dq, dl_dv_clamped, dl_da, dl_df, dl_dmat_wi, dl_dact_wi, dl_dstate_pi)
+                
                 # Backpropagate v_clamped[i] = clip(v[i], -velocity_bound, velocity_bound).
                 dl_dv_clamped = ndarray(dl_dv_clamped)
                 dl_dv = np.copy(dl_dv_clamped)
@@ -304,6 +318,10 @@ class EnvBase:
                     dl_dv_next += ndarray(dvi)
                 dl_act[i] = ndarray(dl_da)
                 dl_df_ext[i] = ndarray(dl_df)
+
+                if hasattr(f_ext, "forward") and hasattr(f_ext, "backward"):
+                    dl_df_ext[i] *= f_ext.backward(q[i], v[i])
+                    
                 dl_dmat_w += ndarray(dl_dmat_wi)
                 dl_dact_w += ndarray(dl_dact_wi)
                 dl_dstate_p += ndarray(dl_dstate_pi)
