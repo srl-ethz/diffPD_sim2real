@@ -65,7 +65,6 @@ if __name__ == '__main__':
     }
 
     for dt, frame_num in zip(timesteps, frame_nums):
-        frame_num = 10
         hex_env = BeamEnv(seed, folder, hex_params,0,'A-1', dt)
         hex_deformable = hex_env.deformable()
 
@@ -120,15 +119,14 @@ if __name__ == '__main__':
             
         
         def loss_and_grad (x):
-            # Log the value to have larger gradients BUT assumes we stay positive
-            lmbda = np.log(x[0])
+            lmbda = (x[0])
             f_ext = DampingForce(hex_env, dt, lmbda)
             
-            loss, grad, info = hex_env.simulate(dt, frame_num, methods[0], opts[0], f_ext=f_ext, require_grad=True, vis_folder=None, verbose=2)
+            loss, grad, info = hex_env.simulate(dt, frame_num, methods[0], opts[0], f_ext=f_ext, require_grad=True, vis_folder=None)
             # Add together all gradients from all timesteps
-            lmbda_grad = np.sum(grad[3]).reshape(1) * 1/x[0]
+            lmbda_grad = np.sum(grad[3]).reshape(1)
 
-            print('loss: {:8.4e}, |grad|: {:8.3e}, forward time: {:6.2f}s, backward time: {:6.2f}s, damping parameter: {},'.format(loss, np.linalg.norm(lmbda_grad), info['forward_time'], info['backward_time'], lmbda))
+            print('loss: {:8.4e}, |grad|: {:8.3e}, forward time: {:6.2f}s, backward time: {:6.2f}s, damping parameter: {}'.format(loss, np.linalg.norm(lmbda_grad), info['forward_time'], info['backward_time'], lmbda))
 
             return loss, lmbda_grad
         
@@ -136,15 +134,15 @@ if __name__ == '__main__':
         ### Optimization
         print_info(f"DOFs: {hex_deformable.dofs()} Hex, h={dt}")
         
-        x_lb = np.ones(1) * np.exp(0)
-        x_ub = np.ones(1) * np.exp(0.5)
-        x_init = np.ones(1) * np.exp(0.1)
+        x_lb = np.ones(1) * (-0.2)
+        x_ub = np.ones(1) * (0.5)
+        x_init = np.ones(1) * (0.1)
 
         x_bounds = scipy.optimize.Bounds(x_lb, x_ub)
         
         t0 = time.time()
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init), method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-8, 'gtol': 1e-8, 'maxiter': 50 })
-        lmbda_fin = np.log(result.x[0])
+        lmbda_fin = (result.x[0])
 
         print(f"Damping Parameter: {lmbda_fin}")
 
