@@ -244,6 +244,7 @@ class BeamEnv(EnvBase):
 
         self._vx, self._vy,self._vz = verts[100]
         self.qs_real = options['qs_real'] if 'qs_real' in options else None
+        self.dt = dt
 
 
 
@@ -363,12 +364,20 @@ class BeamEnv(EnvBase):
         
 
     def _stepwise_loss_and_grad(self, q, v, i):
-        if self.qs_real is None:
+        # First peak of oscillation is at 0.06s (more or less), we match this for several frames in the surroundings in simulation.
+        target_time = 0.06
+        margin = 3
+        peak_start_idx = max(0, int(np.floor(target_time/self.dt)) - margin)
+        peak_end_idx = int(np.ceil(target_time/self.dt)) + margin
+        
+        # Now we want to find the point where it reaches the lowest z-position, so the first point in this interval with a positive z-velocity is our target simulation point.
+        if self.qs_real is None or (i < peak_start_idx or i > peak_end_idx or v.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] < 0):
             return 0., np.zeros_like(q), np.zeros_like(q)
         
         # Match z coordinate of the target motion with reality of specific target point
         z_sim = q.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
-        diff = (z_sim - self.qs_real[i,1,2]).ravel()
+        
+        diff = (z_sim - self.qs_real[int(target_time*100),1,2]).ravel()
         loss = 0.5 * diff.dot(diff)
 
         grad = np.zeros_like(q)

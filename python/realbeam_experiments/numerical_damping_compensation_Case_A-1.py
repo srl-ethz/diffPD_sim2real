@@ -81,6 +81,8 @@ if __name__ == '__main__':
         R, t = hex_env.fit_realframe(qs_real[0])
         qs_real = qs_real @ R.T + t
         hex_env.qs_real = qs_real
+        
+        # qs_real do not have same dt as simulation! Cannot compare it framewise.
 
         
         class DampingForce:
@@ -122,7 +124,8 @@ if __name__ == '__main__':
             lmbda = (x[0])
             f_ext = DampingForce(hex_env, dt, lmbda)
             
-            loss, grad, info = hex_env.simulate(dt, frame_num, methods[0], opts[0], f_ext=f_ext, require_grad=True, vis_folder=None)
+            # When matching first peak, not all frames necessary for optimization
+            loss, grad, info = hex_env.simulate(dt, frame_num//5, methods[0], opts[0], f_ext=f_ext, require_grad=True, vis_folder=None)
             # Add together all gradients from all timesteps
             lmbda_grad = np.sum(grad[3]).reshape(1)
 
@@ -143,6 +146,8 @@ if __name__ == '__main__':
         t0 = time.time()
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init), method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-8, 'gtol': 1e-8, 'maxiter': 50 })
         lmbda_fin = (result.x[0])
+        # lmbda_fin = -0.06578169791033436
+        # lmbda_fin = 0.1
 
         print(f"Damping Parameter: {lmbda_fin}")
 
@@ -153,12 +158,12 @@ if __name__ == '__main__':
         create_folder(hex_env._folder / vis_folder, exist_ok=False)
             
         f_ext = DampingForce(hex_env, dt, lmbda_fin)
-        loss, info = hex_env.simulate(dt, frame_num, methods[0], opts[0], f_ext=f_ext, require_grad=False, vis_folder=vis_folder)
+        loss, info = hex_env.simulate(dt, frame_num, methods[0], opts[0], f_ext=f_ext, require_grad=False, vis_folder=vis_folder, verbose=2)
         qs_hex = info['q']
 
 
         ### Plots
-        plots_damp_comp_A(folder, frame_num, dt, hex_env.target_idx_tip_left, hex_deformable.dofs(), qs_hex, qs_real)
+        plots_damp_comp_A(folder, frame_num, dt, hex_env.target_idx_tip_left, hex_deformable.dofs(), qs_hex, qs_real, lmbda_fin)
 
 
         
