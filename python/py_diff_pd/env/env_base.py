@@ -170,7 +170,8 @@ class EnvBase:
 
         ### Allow callable functions for f_ext that take (q, v) as inputs! Both forward and backward implemented in class!
         # In the case of backward, the gradient of the backward function will be multiplied on top, hence the result will be the derivatives w.r.t. what the backward function tells it is.
-        if f_ext is not None and hasattr(f_ext, "forward") and hasattr(f_ext, "backward"):
+        callable_fext = hasattr(f_ext, "forward") and hasattr(f_ext, "backward")
+        if f_ext is not None and callable_fext:
             sim_f_ext = []
         else:
             if f_ext is None:
@@ -285,7 +286,7 @@ class EnvBase:
             dl_dv_next = np.copy(grad_v)
             act_dofs = self._deformable.act_dofs()
             dl_act = np.zeros((frame_num, act_dofs))
-            dl_df_ext = np.zeros((frame_num, dofs))
+            dl_df_ext = np.zeros((frame_num, *f_ext.backward_shape)) if callable_fext else np.zeros((frame_num, dofs))
             mat_w_dofs = self._deformable.NumOfPdElementEnergies()
             act_w_dofs = self._deformable.NumOfPdMuscleEnergies()
             state_p_dofs = self._deformable.NumOfStateForceParameters()
@@ -320,14 +321,17 @@ class EnvBase:
                     dl_dq_next += ndarray(dqi)
                     dl_dv_next += ndarray(dvi)
                 dl_act[i] = ndarray(dl_da)
-                dl_df_ext[i] = ndarray(dl_df)
 
-                if hasattr(f_ext, "forward") and hasattr(f_ext, "backward"):
-                    dl_df_ext[i] *= f_ext.backward(q[i], v[i])
+                if callable_fext:
+                    dl_df_ext[i] = f_ext.backward(ndarray(dl_df), q[i], v[i])
+                else:
+                    dl_df_ext[i] = ndarray(dl_df)
                     
+                #import pdb; pdb.set_trace()
                 dl_dmat_w += ndarray(dl_dmat_wi)
                 dl_dact_w += ndarray(dl_dact_wi)
                 dl_dstate_p += ndarray(dl_dstate_pi)
+                
             grad = [np.copy(dl_dq_next), np.copy(dl_dv_next), dl_act, dl_df_ext]
             t_grad = time.time() - t_begin
             info['backward_time'] = t_grad

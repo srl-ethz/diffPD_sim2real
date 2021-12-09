@@ -90,6 +90,7 @@ if __name__ == '__main__':
                 self.env = env
                 self.dt = dt
                 self.lmbda = lmbda
+                self.backward_shape = (1,) # Shape of dl_dlambda (both scalar)
                 
             def forward (self, q, v):
                 f_ext = np.zeros_like(self.env._f_ext)
@@ -99,25 +100,29 @@ if __name__ == '__main__':
                 
                 for idx in range(0, self.env.vert_num):
                     if idx%2==0:  # for DoFs= 4608
-                        f_ext[int(idx),2] = self.lmbda * v[int(idx),0]
+                        ### TODO: Is there any reason we multiply with the velocity in the x direction?
+                        #f_ext[int(idx),2] = self.lmbda * v[int(idx),0]
+                        f_ext[int(idx),2] = self.lmbda * v[int(idx),2]
 
                 f_ext = f_ext.ravel() 
                 return f_ext
             
             
-            def backward (self, q, v):
+            def backward (self, dl_df, q, v):
                 # Derivatives of f_ext w.r.t. lambda damping parameter.
-                df_ext = np.zeros_like(self.env._f_ext)
-                df_ext = df_ext.reshape(-1, 3)
+                df_dlambda = np.zeros_like(self.env._f_ext)
+                df_dlambda = df_dlambda.reshape(-1, 3)
 
-                v=v.reshape(-1,3)
+                v = v.reshape(-1,3)
                 
                 for idx in range(0, self.env.vert_num):
                     if idx%2==0:  # for DoFs= 4608
-                        df_ext[int(idx),2] = v[int(idx),0]
+                        ### TODO: Is there any reason we multiply with the velocity in the x direction?
+                        df_dlambda[int(idx),2] = v[int(idx),2]
 
-                df_ext = df_ext.ravel() 
-                return df_ext
+                df_dlambda = df_dlambda.ravel() 
+                dl_dlambda = np.matmul(dl_df.reshape(1, -1), df_dlambda.reshape(-1, 1))
+                return dl_dlambda
             
         
         def loss_and_grad (x):
@@ -144,10 +149,8 @@ if __name__ == '__main__':
         x_bounds = scipy.optimize.Bounds(x_lb, x_ub)
         
         t0 = time.time()
-        result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init), method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-9, 'gtol': 1e-9, 'maxiter': 50 })
+        result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init), method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-10, 'gtol': 1e-10, 'maxiter': 50 })
         lmbda_fin = (result.x[0])
-        # lmbda_fin = -0.06578169791033436
-        # lmbda_fin = 0.1
 
         print(f"Damping Parameter: {lmbda_fin}")
 

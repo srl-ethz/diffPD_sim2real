@@ -394,6 +394,8 @@ class BeamEnv(EnvBase):
             grad[3*idx] = 0
             grad[3*idx+1] = 0
             grad[3*idx+2] = diff[0]
+            
+        #import pdb; pdb.set_trace()
 
         return loss, grad, np.zeros_like(self._q0)
 
