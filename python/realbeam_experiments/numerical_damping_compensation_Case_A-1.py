@@ -133,8 +133,10 @@ if __name__ == '__main__':
             loss, grad, info = hex_env.simulate(dt, frame_num, methods[0], opts[0], f_ext=f_ext, require_grad=True, vis_folder=None)
             # Add together all gradients from all timesteps
             lmbda_grad = np.sum(grad[3]).reshape(1)
+            
+            #import pdb; pdb.set_trace()
 
-            print('loss: {:8.4e}, |grad|: {:8.3e}, forward time: {:6.2f}s, backward time: {:6.2f}s, damping parameter: {}'.format(loss, np.linalg.norm(lmbda_grad), info['forward_time'], info['backward_time'], lmbda))
+            print('loss: {:8.4e}, grad: {:8.3e}, forward time: {:6.2f}s, backward time: {:6.2f}s, damping parameter: {}'.format(loss, lmbda_grad[0], info['forward_time'], info['backward_time'], lmbda))
 
             return loss, lmbda_grad
         

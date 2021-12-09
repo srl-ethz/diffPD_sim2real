@@ -388,7 +388,6 @@ class BeamEnv(EnvBase):
         # All of these losses apply to a single point on the beam
         all_diff = np.concatenate([(z_sim_upper - upper_env), (z_sim_lower - lower_env)]).ravel()
         loss = 0.5 * (all_diff**2).sum()
-        #loss = 0.5 * (all_diff**2).sum() / (0.001)**2       # Scale of original shape from meter to millimeter
         #diff = (z_sim_upper - upper_env).ravel().sum(keepdims=True) + (z_sim_lower - lower_env).ravel().sum(keepdims=True)
         #loss = 0.5 * diff.dot(diff)
 
@@ -397,7 +396,6 @@ class BeamEnv(EnvBase):
             grad[3*idx] = 0
             grad[3*idx+1] = 0
             grad[3*idx+2] = all_diff.sum()
-            #grad[3*idx+2] = all_diff.sum() / int(self._q0 // 3) / (0.001)**2    # Divide by vertex num too
             
         #import pdb; pdb.set_trace()
 
