@@ -234,7 +234,7 @@ class BeamEnv(EnvBase):
         self._youngs_modulus = youngs_modulus
         self._poissons_ratio = poissons_ratio
         self._state_force_parameters = state_force_parameters
-        self._stepwise_loss = False
+        self._stepwise_loss = True
         self.__loss_q_grad = np.random.normal(size=dofs)
         self.__loss_v_grad = np.random.normal(size=dofs)
 
@@ -403,49 +403,48 @@ class BeamEnv(EnvBase):
 
 
     def _stepwise_loss_and_grad(self, q, v, i):
-        # First peak of oscillation is at 0.06s (more or less), we match this for several frames in the surroundings in simulation.
-        margin = 0
-        target_time = 0.07
-        peak_start_idx = max(0, int(np.floor(target_time/self.dt)) - margin)
-        peak_end_idx = int(np.ceil(target_time/self.dt)) + margin
+        ### Special stepwise! Assumes we get all timesteps of q, v
+        q = np.array(q)
+        q = q.reshape(q.shape[0],-1,3)[:,self.target_idx_tip_left,2].reshape(-1)
         
-        # Hardcode target time
-        peak_start_idx = peak_end_idx = round(target_time/self.dt)
-        peak1 = round(0.07/self.dt)
-        peak2 = round(0.15/self.dt)
+        ### Find the peaks and troughs
+        u_x = [0,]
+        l_x = []
+            
+        for k in range(1,len(q)-1):
+            if (np.sign(q[k]-q[k-1])==1) and (np.sign(q[k]-q[k+1])==1):
+                u_x.append(k)
+
+            if (np.sign(q[k]-q[k-1])==-1) and ((np.sign(q[k]-q[k+1]))==-1):
+                l_x.append(k)
         
-        loss = 0.
-        grad = np.zeros_like(q)
+        if not (i in u_x or i in l_x):
+            return 0., np.zeros_like(self._q0), np.zeros_like(self._q0)
         
-        # Now we want to find the point where it reaches the lowest z-position, so the first point in this interval with a positive z-velocity is our target simulation point.
-        if i == peak1:
-            # Match z coordinate of the target motion with reality of specific target point
-            z_sim = q.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
-            
-            diff = (z_sim - self.qs_real[6,1,2]).ravel() 
-            loss = 0.5 * diff.dot(diff)
+        # Match z coordinate of the target motion with reality of specific target point
+        z_sim_upper = q[u_x] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
+        z_sim_lower = q[l_x] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
+        
+        # Find points on envelope (precomputed envelopes of real data)
+        upper_env = 0.00635486 * np.exp(-2.9106797 * np.array([k*self.dt for k in u_x])) + 0.01771898
+        lower_env = -0.00492362 * np.exp(-2.67923014 * np.array([k*self.dt for k in l_x])) + 0.01754319
+        
+        if i in u_x:
+            diff = (z_sim_upper[i] - upper_env[i]).ravel()
+        else:
+            diff = (z_sim_lower[i] - lower_env[i]).ravel()
+        loss = 0.5 * diff.dot(diff)
 
-            grad = np.zeros_like(q)
-            for j, idx in enumerate(self.target_idx_tip_left):
-                grad[3*idx] = 0
-                grad[3*idx+1] = 0
-                grad[3*idx+2] = diff[0]
+        grad = np.zeros_like(self._q0)
+        for j, idx in enumerate(self.target_idx_tip_left):
+            grad[3*idx] = 0
+            grad[3*idx+1] = 0
+            grad[3*idx+2] = diff[0]
             
-        elif i == peak2:
-            # Match z coordinate of the target motion with reality of specific target point
-            z_sim = q.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
-            
-            diff = (z_sim - self.qs_real[13,1,2]).ravel()
-            loss = 0.5 * diff.dot(diff)
+        #import pdb; pdb.set_trace()
 
-            grad = np.zeros_like(q)
-            for j, idx in enumerate(self.target_idx_tip_left):
-                grad[3*idx] = 0
-                grad[3*idx+1] = 0
-                grad[3*idx+2] = diff[0]
-                
-
-        return loss, grad, np.zeros_like(q)
+        return loss, grad, np.zeros_like(self._q0)
+    
 
 
     def compensate_damping(self, dt=None, q=None, v=None, lmbda=None):

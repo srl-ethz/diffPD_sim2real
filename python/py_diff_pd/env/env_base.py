@@ -321,6 +321,13 @@ class EnvBase:
                     dl_dq_next += ndarray(dqi)
                     dl_dv_next += ndarray(dvi)
                 dl_act[i] = ndarray(dl_da)
+                
+                if self._stepwise_loss and i != 0 and callable_fext:
+                    # Give the whole q and v vectors to find the peaks and match those for this specific timestep.
+                    ret = self._stepwise_loss_and_grad(q, v, i)
+                    dqi, dvi = ret[1], ret[2]
+                    dl_dq_next += ndarray(dqi)
+                    dl_dv_next += ndarray(dvi)
 
                 if callable_fext:
                     dl_df_ext[i] = f_ext.backward(ndarray(dl_df), q[i], v[i])

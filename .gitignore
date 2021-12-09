@@ -2,3 +2,6 @@
 *.ipynb
 *.csv
 *.pyc
+*.pbrt
+*.error
+*.npy
