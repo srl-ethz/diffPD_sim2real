@@ -420,19 +420,19 @@ class BeamEnv(EnvBase):
         
         if not (i in u_x or i in l_x):
             return 0., np.zeros_like(self._q0), np.zeros_like(self._q0)
-        
-        # Match z coordinate of the target motion with reality of specific target point
-        z_sim_upper = q[u_x] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
-        z_sim_lower = q[l_x] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
-        
-        # Find points on envelope (precomputed envelopes of real data)
-        upper_env = 0.00635486 * np.exp(-2.9106797 * np.array([k*self.dt for k in u_x])) + 0.01771898
-        lower_env = -0.00492362 * np.exp(-2.67923014 * np.array([k*self.dt for k in l_x])) + 0.01754319
+    
         
         if i in u_x:
-            diff = (z_sim_upper[i] - upper_env[i]).ravel()
+            z_sim_upper = q[i] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
+            upper_env = 0.00635486 * np.exp(-2.9106797 * i*self.dt) + 0.01771898
+            
+            diff = (z_sim_upper - upper_env).ravel()
         else:
-            diff = (z_sim_lower[i] - lower_env[i]).ravel()
+            z_sim_lower = q[i] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
+            lower_env = -0.00492362 * np.exp(-2.67923014 * i*self.dt) + 0.01754319
+            
+            diff = (z_sim_lower - lower_env).ravel()
+            
         loss = 0.5 * diff.dot(diff)
 
         grad = np.zeros_like(self._q0)

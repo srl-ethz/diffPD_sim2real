@@ -227,7 +227,19 @@ class EnvBase:
             q.append(q_next)
             v.append(v_next)
             
-            if self._stepwise_loss:
+            if self._stepwise_loss and callable_fext and i == frame_num-1:
+                # Give the whole q and v vectors to find the peaks and match those for this specific timestep.
+                ret = self._loss_and_grad(q, v)
+                l, grad_q, grad_v = ret[:3]
+                if len(ret) > 3:
+                    grad_c = ret[3]
+                    for grad_c_key, grad_c_val in grad_c.items():
+                        if grad_c_key in grad_custom:
+                            grad_custom[grad_c_key] += grad_c_val
+                        else:
+                            grad_custom[grad_c_key] = grad_c_val
+                loss += l
+            elif self._stepwise_loss and not callable_fext:
                 # See if a custom grad is provided.
                 ret = self._stepwise_loss_and_grad(q_next, v_next, i + 1)
                 l, grad_q, grad_v = ret[:3]
@@ -315,20 +327,19 @@ class EnvBase:
                         dl_dv[k] = 0
                 dl_dq_next = ndarray(dl_dq)
                 dl_dv_next = ndarray(dl_dv)
-                if self._stepwise_loss and i != 0:
+                if self._stepwise_loss and i != 0 and not callable_fext:
                     ret = self._stepwise_loss_and_grad(q[i], v[i], i)
                     dqi, dvi = ret[1], ret[2]
                     dl_dq_next += ndarray(dqi)
                     dl_dv_next += ndarray(dvi)
-                dl_act[i] = ndarray(dl_da)
-                
-                if self._stepwise_loss and i != 0 and callable_fext:
+                elif self._stepwise_loss and i != 0 and callable_fext:
                     # Give the whole q and v vectors to find the peaks and match those for this specific timestep.
                     ret = self._stepwise_loss_and_grad(q, v, i)
                     dqi, dvi = ret[1], ret[2]
                     dl_dq_next += ndarray(dqi)
                     dl_dv_next += ndarray(dvi)
-
+                dl_act[i] = ndarray(dl_da)
+                
                 if callable_fext:
                     dl_df_ext[i] = f_ext.backward(ndarray(dl_df), q[i], v[i])
                 else:
