@@ -23,6 +23,8 @@ Navigate to `python/[scenario]` where `scenario` is one of the following:
 ### realbeam_experiments
 Here you'll find the examples for the Clamped Beam under External Force, run `python [example_name]` where `example_name` is one of the following:
 - `clamped_beam_Case_A-1.py`: Generates the results for the first case from TABLE 1 in our paper. Similarly, the other cases can also be run. Running these examples with the `--video` flag will create a video of the simulation as well, however, this will require much more time to run.
+- `parameterOptimization_clamped_beam_Case_E.py`: Optimize Young's Modulus of beam to fit real data.
+- `numerical_damping_compensation_Case_A-1.py`: Optimizes damping parameter such that the external force can dampen the dynamic behavior in simulation to match the real motion.
 
 ### 1segment_arm
 Here you'll find the examples for the Soft Robotic Arm, run `python [example_name].py` where `example_name` is one of the following:
@@ -30,6 +32,7 @@ Here you'll find the examples for the Soft Robotic Arm, run `python [example_nam
 - `muscles_AC1.py`: Run the optimization for the single segment robotic arm with muscle model AC1 from our paper. 
 - `muscles_AC2.py`: Run the optimization for the single segment robotic arm with muscle model AC2 from our paper. 
 - `muscles_AC2_multiActuation.py`: Run the optimization for the single segment robotic arm with muscle model AC2 from our paper using multiple actuations, every 5 frames (0.05s), now matching the dynamic behavior of the real pressure actuation better.
+- `muscles_AC2_interpolation.py`: Fits curve through optimized actuation-pressure points, then predicts muscle actuation for new pressure values, and runs the simulation to compute the final position error of the predicted values.
 
 ### soft_fish
 Here you'll find the examples for the Soft Fish Tail, run `python [example_name].py` where `example_name` is one of the following:

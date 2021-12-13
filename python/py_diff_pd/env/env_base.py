@@ -227,9 +227,9 @@ class EnvBase:
             q.append(q_next)
             v.append(v_next)
             
-            if self._stepwise_loss and callable_fext and i == frame_num-1:
+            if self._stepwise_loss and callable_fext:
                 # Give the whole q and v vectors to find the peaks and match those for this specific timestep.
-                ret = self._stepwise_loss_and_grad(q, v)
+                ret = self._stepwise_loss_and_grad(q, v, i)
                 l, grad_q, grad_v = ret[:3]
                 if len(ret) > 3:
                     grad_c = ret[3]

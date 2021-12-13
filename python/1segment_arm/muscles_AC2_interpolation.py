@@ -31,18 +31,38 @@ from Environments.AC2_env import ArmEnv
 if __name__ == '__main__':
     captured_data = np.load("Measurement_data/blackframe_25mbarIntervals.npy", allow_pickle=True)[()]
     pressures = captured_data['p'][:,0]
-    data = captured_data['data'][:, 10:111]
-    # To match previous data the last two rows are swapped, and the second and fourth.
+    data = captured_data['data'][:, :120]
+    # To match previous data the last two rows/motion markers are swapped, and the second and fourth.
     data[:, :, [1,3,5,6]] = data[:, :, [3,1,6,5]]
     
-    final_actuations = []
+    startendframes = [
+        [21, 80],
+        [12, 80],
+        [10, 80],
+        [9, 80],
+        [7, 80],
+        
+        [7, 80],
+        [7, 80],
+        [7, 80],
+        [7, 80],
+        [7, 80],
+        
+        [8, 80],
+        [7, 80],
+        [7, 80],
+        [7, 80],
+        [7, 80]
+    ]
     
-    for pressure, qs_real in zip(pressures, data):
+    final_actuations = []
+    for pressure, qs_real, sef in zip(pressures, data, startendframes):
         seed = 42
         folder = Path(f'Muscles_Design_AC2_{pressure}')
        
         ### Material and simulation parameters
         # QTM by default captures 100Hz data, dt=0.01
+        qs_real = qs_real[sef[0]:sef[1]]
         dt = 1e-2
         frame_num = len(qs_real)-1 
                 
@@ -176,6 +196,6 @@ if __name__ == '__main__':
         create_video_AC2(folder,frame_num, hex_env.fibers_1, hex_env.fibers_2, hex_env,qs_real,method,20,dt)
         
         # Back up the values also during the intermediate steps
-        np.save("optimized_actuations.npy", np.array(final_actuations))  
+        np.save("Measurement_data/optimized_actuations.npy", {'pressures': pressures, 'actuations': np.array(final_actuations)}) 
 
-    np.save("optimized_actuations.npy", np.array(final_actuations))
+    np.save("Measurement_data/optimized_actuations.npy", {'pressures': pressures, 'actuations': np.array(final_actuations)})
