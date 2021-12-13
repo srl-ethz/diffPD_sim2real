@@ -45,6 +45,9 @@ if __name__ == '__main__':
     # Number of frames we want to simulate change inversely with timestep
     frame_nums = (np.ceil(1.6/timesteps)).astype(int)
     
+    timesteps = [0.0025]
+    frame_nums = [(np.ceil(1.6/timesteps[0])).astype(int)]
+    
 
     # Material parameters: Dragon Skin 10 
     youngs_modulus = 263824 # Optimized value
@@ -74,7 +77,7 @@ if __name__ == '__main__':
         methods = ('pd_eigen', )
         thread_ct = 16
         opts = (
-            { 'max_pd_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct, 'use_bfgs': 1, 'bfgs_history_size': 10 },
+            { 'max_pd_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-10, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': thread_ct, 'use_bfgs': 1, 'bfgs_history_size': 10 },
         )
 
         ### Optimize for the best frame
@@ -144,8 +147,8 @@ if __name__ == '__main__':
         ### Optimization
         print_info(f"DOFs: {hex_deformable.dofs()} Hex, h={dt}")
         
-        x_lb = np.ones(1) * (-0.2)
-        x_ub = np.ones(1) * (0.2)
+        x_lb = np.ones(1) * (-0.05)
+        x_ub = np.ones(1) * (0.05)
         x_init = np.ones(1) * (0.0)
 
         x_bounds = scipy.optimize.Bounds(x_lb, x_ub)

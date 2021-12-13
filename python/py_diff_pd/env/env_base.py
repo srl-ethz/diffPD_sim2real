@@ -229,7 +229,7 @@ class EnvBase:
             
             if self._stepwise_loss and callable_fext and i == frame_num-1:
                 # Give the whole q and v vectors to find the peaks and match those for this specific timestep.
-                ret = self._loss_and_grad(q, v)
+                ret = self._stepwise_loss_and_grad(q, v)
                 l, grad_q, grad_v = ret[:3]
                 if len(ret) > 3:
                     grad_c = ret[3]
@@ -252,9 +252,7 @@ class EnvBase:
                             grad_custom[grad_c_key] = grad_c_val
                 loss += l
             elif i == frame_num - 1:
-                # TODO: Changed the loss and grad to take ALL frames and not just last one
-                #ret = self._loss_and_grad(q_next, v_next)
-                ret = self._loss_and_grad(q, v)
+                ret = self._loss_and_grad(q_next, v_next)
                 l, grad_q, grad_v = ret[:3]
                 if len(ret) > 3:
                     grad_c = ret[3]
@@ -285,7 +283,7 @@ class EnvBase:
                     self._display_mesh(mesh_file, self._folder / vis_folder / '{:04d}.png'.format(i), force_vec=sim_f_ext)
                 else:
                     self._display_mesh(mesh_file, self._folder / vis_folder / '{:04d}.png'.format(i))
-            export_mp4(self._folder / vis_folder, self._folder / '{}.mp4'.format(vis_folder), 20)
+            export_mp4(self._folder / vis_folder, self._folder / '{}.mp4'.format(vis_folder), 100)
 
             t_vis = time.time() - t_begin
             info['visualize_time'] = t_vis

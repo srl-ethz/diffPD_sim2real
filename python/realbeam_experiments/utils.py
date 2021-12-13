@@ -179,7 +179,7 @@ def plots_damp_comp_A(folder_name,frame_num,dt,left_hex,dofs_hex, qs_hex,qs_real
 	ax.title.set_position([.5, 1.03])
 	ax.legend(loc="lower center", bbox_to_anchor=(0.5, -0.35), ncol= 2, prop={'size': 24})
 
-	fig.savefig(f"{folder_name}/z_position_point_left_{dofs_hex}_{dt}_{lmbda}.png", bbox_inches='tight')
+	fig.savefig(f"{folder_name}/z_position_point_left_{dofs_hex}_{dt:.4f}_{lmbda:.6f}.png", bbox_inches='tight')
 	plt.close()
 
 
