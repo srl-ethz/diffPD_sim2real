@@ -45,9 +45,6 @@ if __name__ == '__main__':
     # Number of frames we want to simulate change inversely with timestep
     frame_nums = (np.ceil(1.6/timesteps)).astype(int)
     
-    timesteps = [0.0025]
-    frame_nums = [(np.ceil(1.6/timesteps[0])).astype(int)]
-    
 
     # Material parameters: Dragon Skin 10 
     youngs_modulus = 263824 # Optimized value
