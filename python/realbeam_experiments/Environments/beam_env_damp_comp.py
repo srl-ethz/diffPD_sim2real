@@ -431,8 +431,6 @@ class BeamEnv(EnvBase):
         if len(l_x) > 0:
             l_vals = np.stack(l_vals) - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
             l_mean /= len(l_x)
-        else:
-            print("WARNING: Too fast oscillation decay for deformation, cannot optimize properly!")
         
         if not (i in u_x or i in l_x):
             return 0., np.zeros_like(self._q0), np.zeros_like(self._q0)
