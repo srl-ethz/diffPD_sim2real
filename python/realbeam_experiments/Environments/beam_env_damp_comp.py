@@ -402,27 +402,37 @@ class BeamEnv(EnvBase):
 
     def _stepwise_loss_and_grad(self, q, v, i):
         
+        #import pdb; pdb.set_trace()
         ### Special stepwise! Assumes we get all timesteps of q, v
         q = np.array(q)
         q = q.reshape(q.shape[0],-1,3)[:,self.target_idx_tip_left,2].reshape(-1)
         
         ### Find the peaks and troughs
         u_x = [0,]
+        u_vals = []
         u_mean = q[0]
         l_x = []
+        l_vals = []
         l_mean = 0.
 
         for k in range(1,len(q)-1):
             if (np.sign(q[k]-q[k-1])==1) and (np.sign(q[k]-q[k+1])==1):
                 u_x.append(k)
+                u_vals.append(q[k])
                 u_mean += q[k]
 
             if (np.sign(q[k]-q[k-1])==-1) and ((np.sign(q[k]-q[k+1]))==-1):
                 l_x.append(k)
+                l_vals.append(q[k])
                 l_mean += q[k]
         
+        u_vals = np.stack(u_vals) - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
         u_mean /= len(u_x)
-        l_mean /= len(l_x) if len(l_x)!=0 else 1
+        if len(l_x) > 0:
+            l_vals = np.stack(l_vals) - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
+            l_mean /= len(l_x)
+        else:
+            print("WARNING: Too fast oscillation decay for deformation, cannot optimize properly!")
         
         if not (i in u_x or i in l_x):
             return 0., np.zeros_like(self._q0), np.zeros_like(self._q0)
@@ -436,8 +446,10 @@ class BeamEnv(EnvBase):
             # diff = (z_sim_upper - upper_env).ravel()
             
             ### Optimizing for critical damping value
-            diff = (z_sim_upper - u_mean).ravel()
+            diff = (z_sim_upper - u_vals[0]).ravel()
         else:
+            if len(l_x) == 0:
+                return 0., np.zeros_like(self._q0), np.zeros_like(self._q0)
             z_sim_lower = q[i] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
             
             ### Optimizing for envelope (precomputed)
@@ -445,7 +457,7 @@ class BeamEnv(EnvBase):
             # diff = (z_sim_lower - lower_env).ravel()
             
             ### Optimizing for critical damping value
-            diff = (z_sim_lower - l_mean).ravel()
+            diff = (z_sim_lower - l_vals[0]).ravel() 
             
             
         loss = 0.5 * diff.dot(diff)
