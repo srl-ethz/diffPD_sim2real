@@ -396,13 +396,12 @@ class BeamEnv(EnvBase):
             grad[3*idx] = 0
             grad[3*idx+1] = 0
             grad[3*idx+2] = all_diff.sum()
-            
-        #import pdb; pdb.set_trace()
 
         return loss, grad, np.zeros_like(self._q0)
 
 
     def _stepwise_loss_and_grad(self, q, v, i):
+        
         ### Special stepwise! Assumes we get all timesteps of q, v
         q = np.array(q)
         q = q.reshape(q.shape[0],-1,3)[:,self.target_idx_tip_left,2].reshape(-1)
@@ -432,23 +431,22 @@ class BeamEnv(EnvBase):
         if i in u_x:
             z_sim_upper = q[i] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
             
-            # Optimizing for envelope (precomputed)
-            upper_env = 0.00635486 * np.exp(-2.9106797 * i*self.dt) + 0.01771898
-            diff = (z_sim_upper - upper_env).ravel()
+            ### Optimizing for envelope (precomputed)
+            # upper_env = 0.00635486 * np.exp(-2.9106797 * i*self.dt) + 0.01771898
+            # diff = (z_sim_upper - upper_env).ravel()
             
-            # Optimizing for critical damping value
+            ### Optimizing for critical damping value
             diff = (z_sim_upper - u_mean).ravel()
         else:
             z_sim_lower = q[i] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
             
-            # Optimizing for envelope (precomputed)
-            lower_env = -0.00492362 * np.exp(-2.67923014 * i*self.dt) + 0.01754319
-            diff = (z_sim_lower - lower_env).ravel()
+            ### Optimizing for envelope (precomputed)
+            # lower_env = -0.00492362 * np.exp(-2.67923014 * i*self.dt) + 0.01754319
+            # diff = (z_sim_lower - lower_env).ravel()
             
-            # Optimizing for critical damping value
+            ### Optimizing for critical damping value
             diff = (z_sim_lower - l_mean).ravel()
             
-        #import pdb; pdb.set_trace()
             
         loss = 0.5 * diff.dot(diff)
 

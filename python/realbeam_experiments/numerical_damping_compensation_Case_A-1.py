@@ -64,7 +64,7 @@ if __name__ == '__main__':
         'refinement': 2.35 
     }
 
-    for dt, frame_num in zip(timesteps, frame_nums):
+    for i, (dt, frame_num) in enumerate(zip(timesteps, frame_nums)):
         hex_env = BeamEnv(seed, folder, hex_params,0,'A-1', dt)
         hex_deformable = hex_env.deformable()
 
@@ -141,9 +141,22 @@ if __name__ == '__main__':
         ### Optimization
         print_info(f"DOFs: {hex_deformable.dofs()} Hex, h={dt}")
         
-        x_lb = np.ones(1) * (-0.05)
+        # Have bounds based on optimized values
+        damping = np.array([
+            0.005577240672069684,
+            0.00493906996465535,
+            0.004144966473112475,
+            0.0033642089853526333,
+            0.0025690735199912895,
+            0.001727949571555505,
+            0.0008479616826417235,
+            -1.241069279772321e-05
+        ])
+        
+        #x_lb = np.ones(1) * (-0.05)
+        x_lb = np.ones(1) * damping[i]
         x_ub = np.ones(1) * (0.05)
-        x_init = np.ones(1) * (0.0)
+        x_init = np.ones(1) * damping[i]
 
         x_bounds = scipy.optimize.Bounds(x_lb, x_ub)
         
