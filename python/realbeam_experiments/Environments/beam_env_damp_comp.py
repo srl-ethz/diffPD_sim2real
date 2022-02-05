@@ -409,14 +409,21 @@ class BeamEnv(EnvBase):
         
         ### Find the peaks and troughs
         u_x = [0,]
+        u_mean = q[0]
         l_x = []
-            
+        l_mean = 0.
+
         for k in range(1,len(q)-1):
             if (np.sign(q[k]-q[k-1])==1) and (np.sign(q[k]-q[k+1])==1):
                 u_x.append(k)
+                u_mean += q[k]
 
             if (np.sign(q[k]-q[k-1])==-1) and ((np.sign(q[k]-q[k+1]))==-1):
                 l_x.append(k)
+                l_mean += q[k]
+        
+        u_mean /= len(u_x)
+        l_mean /= len(l_x) if len(l_x)!=0 else 1
         
         if not (i in u_x or i in l_x):
             return 0., np.zeros_like(self._q0), np.zeros_like(self._q0)
@@ -424,14 +431,24 @@ class BeamEnv(EnvBase):
         
         if i in u_x:
             z_sim_upper = q[i] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
-            upper_env = 0.00635486 * np.exp(-2.9106797 * i*self.dt) + 0.01771898
             
+            # Optimizing for envelope (precomputed)
+            upper_env = 0.00635486 * np.exp(-2.9106797 * i*self.dt) + 0.01771898
             diff = (z_sim_upper - upper_env).ravel()
+            
+            # Optimizing for critical damping value
+            diff = (z_sim_upper - u_mean).ravel()
         else:
             z_sim_lower = q[i] - (self._q0.reshape(-1,3).take(self.target_idx_tip_left, axis=0)[:,2] - 0.024)
-            lower_env = -0.00492362 * np.exp(-2.67923014 * i*self.dt) + 0.01754319
             
+            # Optimizing for envelope (precomputed)
+            lower_env = -0.00492362 * np.exp(-2.67923014 * i*self.dt) + 0.01754319
             diff = (z_sim_lower - lower_env).ravel()
+            
+            # Optimizing for critical damping value
+            diff = (z_sim_lower - l_mean).ravel()
+            
+        #import pdb; pdb.set_trace()
             
         loss = 0.5 * diff.dot(diff)
 
@@ -440,8 +457,6 @@ class BeamEnv(EnvBase):
             grad[3*idx] = 0
             grad[3*idx+1] = 0
             grad[3*idx+2] = diff[0]
-            
-        #import pdb; pdb.set_trace()
 
         return loss, grad, np.zeros_like(self._q0)
     

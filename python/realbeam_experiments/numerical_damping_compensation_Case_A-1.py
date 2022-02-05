@@ -100,8 +100,6 @@ if __name__ == '__main__':
                 
                 for idx in range(0, self.env.vert_num):
                     if idx%2==0:  # for DoFs= 4608
-                        ### TODO: Is there any reason we multiply with the velocity in the x direction?
-                        #f_ext[int(idx),2] = self.lmbda * v[int(idx),0]
                         f_ext[int(idx),2] = self.lmbda * v[int(idx),2]
 
                 f_ext = f_ext.ravel() 
@@ -117,7 +115,6 @@ if __name__ == '__main__':
                 
                 for idx in range(0, self.env.vert_num):
                     if idx%2==0:  # for DoFs= 4608
-                        ### TODO: Is there any reason we multiply with the velocity in the x direction?
                         df_dlambda[int(idx),2] = v[int(idx),2]
 
                 df_dlambda = df_dlambda.ravel() 
@@ -126,17 +123,17 @@ if __name__ == '__main__':
             
         
         def loss_and_grad (x):
-            lmbda = (x[0])
+            lmbda = x[0]
             f_ext = DampingForce(hex_env, dt, lmbda)
             
             # When matching first peak, not all frames necessary for optimization
+            # Set the correct stepwise loss computation in the environment, will optimize for different objectives based on this!
             loss, grad, info = hex_env.simulate(dt, frame_num, methods[0], opts[0], f_ext=f_ext, require_grad=True, vis_folder=None)
             # Add together all gradients from all timesteps
             lmbda_grad = np.sum(grad[3]).reshape(1)
-            
-            #import pdb; pdb.set_trace()
 
-            print('loss: {:8.4e}, grad: {:8.3e}, forward time: {:6.2f}s, backward time: {:6.2f}s, damping parameter: {}'.format(loss, lmbda_grad[0], info['forward_time'], info['backward_time'], lmbda))
+            # Hint: {: 2.5e} the space between the colon and print causes a positive number to have an extra space so it aligns with negative numbers.
+            print('loss: {:8.6e}, grad: {: 8.2e}, forward time: {:6.2f}s, backward time: {:6.2f}s, damping parameter: {}'.format(loss, lmbda_grad[0], info['forward_time'], info['backward_time'], lmbda))
 
             return loss, lmbda_grad
         
@@ -152,7 +149,7 @@ if __name__ == '__main__':
         
         t0 = time.time()
         result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init), method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-10, 'gtol': 1e-10, 'maxiter': 50 })
-        lmbda_fin = (result.x[0])
+        lmbda_fin = result.x[0]
 
         print(f"Damping Parameter: {lmbda_fin}")
 
