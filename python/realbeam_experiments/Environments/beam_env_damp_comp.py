@@ -409,7 +409,7 @@ class BeamEnv(EnvBase):
         
         ### Find the peaks and troughs
         u_x = [0,]
-        u_vals = []
+        u_vals = [q[0],]
         u_mean = q[0]
         l_x = []
         l_vals = []
