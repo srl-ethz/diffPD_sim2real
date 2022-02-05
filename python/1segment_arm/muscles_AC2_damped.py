@@ -1,0 +1,224 @@
+# ------------------------------------------------------------------------------
+# AC2 Design
+# ------------------------------------------------------------------------------
+### Import some useful functions
+import sys
+sys.path.append('../')
+
+from pathlib import Path
+import time
+import os
+import numpy as np
+from argparse import ArgumentParser
+import scipy.optimize
+
+from py_diff_pd.common.common import ndarray, create_folder, print_info,delete_folder
+from py_diff_pd.common.project_path import root_path
+from py_diff_pd.common.renderer import PbrtRenderer
+from py_diff_pd.core.py_diff_pd_core import StdRealVector, HexMesh3d, HexDeformable, TetMesh3d, TetDeformable
+from py_diff_pd.common.hex_mesh import generate_hex_mesh, voxelize, hex2obj
+from py_diff_pd.common.display import render_hex_mesh, export_gif, export_mp4
+
+
+
+# Utility functions 
+from utils import read_measurement_data, plot_opt_result, create_video_AC2 
+### Import the simulation scene
+from Environments.AC2_env import ArmEnv
+
+
+### MAIN
+if __name__ == '__main__':
+    pressures = [100, 150, 200, 250, 300, 350, 400, 450]
+    startendframes = [[59, 140], [67, 148], [79, 160], [77, 158], [155, 240], [78, 140], [50, 146], [40, 98]]
+    initial_values = [0.02, 0.04, 0.07, 0.1, 0.15, 0.21, 0.31, 0.46]
+
+    pressures = pressures[4:5]
+    startendframes = startendframes[4:5]
+    initial_values = initial_values[4:5]
+
+    for pressure, startendframes, init_x in zip(pressures, startendframes, initial_values):
+        seed = 42
+        folder = Path(f'Muscles_Design_AC2_damped_{pressure}')
+ 
+        start_frame = startendframes[0]
+        end_frame = startendframes[1]
+
+
+        ### Motion Markers data
+        qs_real = read_measurement_data(start_frame,end_frame,f'Measurement_data/{pressure}mbar_V3.c3d')
+       
+        ### Material and simulation parameters
+        # QTM by default captures 100Hz data, dt =0.01
+        dt = 1e-2
+        frame_num = len(qs_real)-1 
+
+        # Actuation parameters 
+        act_stiffness = 2e5
+        act_group_num = 1
+        x_lb = np.zeros(frame_num)*(-2)
+        x_ub = np.ones(frame_num) * 10
+   
+        
+
+        def variable_to_act(x):
+            acts = []
+            for t in range(frame_num):
+                frame_act_1 = np.concatenate([
+                    np.ones(len(fiber)) * (1+2*x) for fiber in hex_env.fibers_1
+                ])
+                frame_act_2 = np.concatenate([
+                    np.ones(len(fiber)) * (1-x) for fiber in hex_env.fibers_2
+                ])
+                frame_act_tot = np.concatenate([frame_act_1,frame_act_2])
+                acts.append(frame_act_tot)
+            return np.stack(acts, axis=0)
+
+
+        def variable_to_gradient(x, dl_dact):
+            grad = 0
+            for i in range(frame_num):
+                for j, fiber in enumerate([hex_env.fibers_1, hex_env.fibers_2]):
+                    for k in range(len(fiber)):
+                        grad_act = dl_dact[i]
+                        dact_dx = 2 if j==1 else -1 
+
+                        grad += dact_dx * (np.sum(grad_act[:len(fiber[k])]) if k == 0 else np.sum(grad_act[len(fiber[k-1]):len(fiber[k-1])+len(fiber[k])]))
+
+            return grad
+
+        # Material parameters: Dragon Skin 10 
+        youngs_modulus = 263824 
+        poissons_ratio = 0.499
+        density = 1.07e3
+        state_force = [0,0,-9.81]
+        actuation_fibers = [0]
+
+        # Create simulation scene
+        hex_env = ArmEnv(seed, folder, { 
+            'youngs_modulus': youngs_modulus,
+            'poissons_ratio': poissons_ratio,
+            'state_force_parameters': state_force,
+            'material': 'none',
+            'mesh_type': 'hex', 
+            'refinement': 2.8  
+        })
+        deformable = hex_env.deformable()
+
+        # Simulation parameters
+        methods = ('pd_eigen', )
+        method=methods[0]
+        thread_ct = 16
+        opts = (
+            { 'max_pd_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct, 'use_bfgs': 1, 'bfgs_history_size': 10 },
+            { 'max_newton_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct }
+        )
+
+
+        
+        ### Optimize for the best frame
+        R, t = hex_env.fit_realframe(qs_real[0])
+        qs_real = qs_real @ R.T + t
+        hex_env.qs_real = qs_real
+
+
+
+
+        ### Compute the initial state.
+        dofs = deformable.dofs()
+        q0 = hex_env.default_init_position()
+        v0 = hex_env.default_init_velocity()
+        f_ext = ndarray([np.zeros(dofs) for _ in range(frame_num)])
+
+
+        print_info("-----------")
+        print_info("DoFs: {}".format(dofs))
+
+
+
+
+        ### Optimization
+        x_lb = np.ones(1) * 0
+        x_ub = np.ones(1) * 2
+
+        x_init = np.ones(1) * init_x
+        x_bounds = scipy.optimize.Bounds(x_lb, x_ub)
+
+
+        def loss_and_grad (x):
+            act = variable_to_act(x)
+
+            loss, grad, info = hex_env.simulate(dt, frame_num, method, opts[0], q0, v0, act=act, f_ext=f_ext, require_grad=True, vis_folder=None)
+            dl_act = grad[2]
+
+            grad = variable_to_gradient(x, dl_act)
+
+            print('loss: {:8.4e}, |grad|: {:8.3e}, forward time: {:6.2f}s, backward time: {:6.2f}s, act_x: {},'.format(loss, np.linalg.norm(grad), info['forward_time'], info['backward_time'], x))
+
+            return loss, grad
+
+        t0 = time.time()
+        #result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init),
+        #    method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-8, 'gtol': 1e-8, 'maxiter': 50 })
+        #x_fin = result.x
+        x_fin = x_init
+
+        print(f"act: {x_fin}")
+
+
+        ### Simulation of final optimization result
+        print_info("DiffPD Simulation is starting...")
+        qs_hex = []
+
+        q_hex, v_hex = hex_env._q0, hex_env._v0
+
+        vis_folder = method+'_hex'
+        create_folder(hex_env._folder / vis_folder, exist_ok=False)
+        #hex_mesh_file = str(hex_env._folder / vis_folder / '{:04d}.bin'.format(0))
+        #hex_env._deformable.PySaveToMeshFile(q_hex, hex_mesh_file)
+        #hex_env._display_mesh(hex_mesh_file, hex_env._folder / vis_folder / '{:04d}.png'.format(0), qs_real, 0)
+       
+        for t in range(1, frame_num+1): 
+                start = time.time()
+                # add external force to compensate the numerical damping
+                f_ext = np.zeros(dofs).reshape(-1, 3)
+                v = v_hex.reshape(-1, 3)
+                for idx in range(f_ext.shape[0]):
+                    f_ext[int(idx),2]=0.048*v[int(idx),0]
+                f_ext = [f_ext.ravel()]
+
+                _, info_hex = hex_env.simulate(dt, 1, method, opts[0], q0=q_hex, v0=v_hex, act=variable_to_act(x_fin)[t-1:t], f_ext=f_ext, require_grad=False, vis_folder=None)
+
+                q_hex = info_hex['q'][1]
+                v_hex = info_hex['v'][1]
+
+                qs_hex.append(q_hex)
+
+                # Manually store the visualization
+                vis_folder = method+'_hex'
+                #hex_mesh_file = str(hex_env._folder / vis_folder / '{:04d}.bin'.format(t))
+                #hex_env._deformable.PySaveToMeshFile(q_hex, hex_mesh_file)
+                #hex_env._display_mesh(hex_mesh_file, hex_env._folder / vis_folder / '{:04d}.png'.format(t), qs_real, t)           
+                
+
+                print(f"Frame {t}/{frame_num} for Hex: {time.time()-start:.2f}s")
+
+        # _, info_hex = hex_env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, act=variable_to_act(x_fin), f_ext=f_ext, require_grad=False, 
+        #     vis_folder="pd_eigen_hex",
+        #     verbose=1)
+
+
+
+        print_info("-----------")
+        print_info(f"Total for {frame_num} frames took {info_hex['forward_time']:.2f}s for Hex {method}")
+        print_info(f"Time per frame: {1000*info_hex['forward_time']/frame_num:.2f}ms")
+        #print_info(f"Time for visualization: {info_hex['visualize_time']:.2f}s")
+        print_info("-----------")
+  
+
+        ### Plots: coordinates of the center point of the tip
+        plot_opt_result(folder,frame_num,dt,hex_env.target_idx_hex,qs_hex,qs_real,deformable.dofs(),x_fin)
+
+
+        ### Visualize both in same setting
+        #create_video_AC2(folder,frame_num, hex_env.fibers_1, hex_env.fibers_2, hex_env,qs_real,method,20,dt)  
