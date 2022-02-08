@@ -14,9 +14,21 @@ damping = np.flip([
     -1.241069279772321e-05
 ])
 
+critical_damping = np.flip([
+    0.007382461764075759,
+    0.006454885556833581,
+    0.005544007592831606,
+    0.00461652523239477,
+    0.0036922887972658937,
+    0.0027715548895692935,
+    0.0018469585456226357,
+    0.0009222746589705064
+])
+
 
 fig, ax = plt.subplots(figsize=(12,8))
 ax.scatter(timesteps, damping, marker='o', facecolor='none', edgecolors='k', s=120, label='Optimized Damping Parameters')
+ax.scatter(timesteps, critical_damping, marker='x', c='r', s=120, label='Critical Damping Parameters')
 #ax.plot(x_cont, y_cont, linewidth=1.5, c='k', linestyle='dashed', label=f"Continuous Actuation: \n {curve_string}")
 #ax.scatter(X_test, y_pred, marker='x', c='r', s=120, label='COMSOL')
 

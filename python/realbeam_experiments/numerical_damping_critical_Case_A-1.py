@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------------
-# Numerical Damping Compensation - Case A-1
+# Numerical Damping Compensation - Critical Damping - Case A-1
 # ------------------------------------------------------------------------------
 ### Import some useful functions
 import sys
@@ -25,13 +25,13 @@ from utils import read_measurement_data, plots_damp_comp_A, create_combined_vide
 
 
 ### Import the simulation scene
-from Environments.beam_env_damp_comp import BeamEnv
+from Environments.beam_env_damp_crit import BeamEnv
 
 ### MAIN
 if __name__ == '__main__':
     seed = 42
     np.random.seed(seed)
-    folder = Path('Numerical_Damping_Compensation_Case_A-1')
+    folder = Path('Numerical_Damping_Critical_Case_A-1')
 
 
     ### Motion Markers data
@@ -64,7 +64,7 @@ if __name__ == '__main__':
         'refinement': 2.35 
     }
 
-    for dt, frame_num in zip(timesteps, frame_nums):
+    for i, (dt, frame_num) in enumerate(zip(timesteps, frame_nums)):
         hex_env = BeamEnv(seed, folder, hex_params,0,'A-1', dt)
         hex_deformable = hex_env.deformable()
 
@@ -74,7 +74,7 @@ if __name__ == '__main__':
         methods = ('pd_eigen', )
         thread_ct = 16
         opts = (
-            { 'max_pd_iter': 5000, 'max_ls_iter': 10, 'abs_tol': 1e-10, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': thread_ct, 'use_bfgs': 1, 'bfgs_history_size': 10 },
+            { 'max_pd_iter': 10000, 'max_ls_iter': 10, 'abs_tol': 1e-6, 'rel_tol': 1e-6, 'verbose': 0, 'thread_ct': thread_ct, 'use_bfgs': 1, 'bfgs_history_size': 10 },
         )
 
         ### Optimize for the best frame
@@ -141,14 +141,27 @@ if __name__ == '__main__':
         ### Optimization
         print_info(f"DOFs: {hex_deformable.dofs()} Hex, h={dt}")
         
-        x_lb = np.ones(1) * (-0.05)
-        x_ub = np.ones(1) * (0.05)
-        x_init = np.ones(1) * (0.0)
+        # Have bounds based on optimized values
+        damping = np.array([
+            0.005577240672069684,
+            0.00493906996465535,
+            0.004144966473112475,
+            0.0033642089853526333,
+            0.0025690735199912895,
+            0.001727949571555505,
+            0.0008479616826417235,
+            -1.241069279772321e-05
+        ])
+        
+        #x_lb = np.ones(1) * (-0.05)
+        x_lb = np.ones(1) * damping[i]
+        x_ub = np.ones(1) * (0.01)
+        x_init = np.ones(1) * damping[i]
 
         x_bounds = scipy.optimize.Bounds(x_lb, x_ub)
         
         t0 = time.time()
-        result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init), method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-10, 'gtol': 1e-10, 'maxiter': 50 })
+        result = scipy.optimize.minimize(loss_and_grad, np.copy(x_init), method='L-BFGS-B', jac=True, bounds=x_bounds, options={ 'ftol': 1e-7, 'gtol': 1e-7, 'maxiter': 20 })
         lmbda_fin = result.x[0]
 
         print(f"Damping Parameter: {lmbda_fin}")
